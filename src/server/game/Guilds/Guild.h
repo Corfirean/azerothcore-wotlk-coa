@@ -290,8 +290,12 @@ private:
 
 using SlotIds = std::set<uint8>;
 
+class BotMgr;
+
 class Guild
 {
+    friend class BotMgr;
+
 public: // pussywizard: public class Member
     // Class representing guild member
     class Member

@@ -2503,6 +2503,14 @@ namespace lfg
         return state;
     }
 
+    uint32 LFGMgr::GetProposalIdForPlayer(ObjectGuid guid) const
+    {
+        for (auto const& [proposalId, proposal] : ProposalsStore)
+            if (proposal.players.find(guid) != proposal.players.end())
+                return proposalId;
+        return 0;
+    }
+
     LfgState LFGMgr::GetOldState(ObjectGuid guid)
     {
         LfgState state;

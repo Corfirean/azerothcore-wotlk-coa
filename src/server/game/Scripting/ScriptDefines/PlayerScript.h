@@ -240,6 +240,7 @@ enum PlayerHook
     PLAYERHOOK_ON_GET_MAX_ALLOWED_LEVEL,
     PLAYERHOOK_ON_HAS_NO_BONUS_EXPERIENCE,
     PLAYERHOOK_ON_BANKER_ACTIVATE,
+    PLAYERHOOK_ON_PETITION_OFFERED,
     PLAYERHOOK_ON_BANK_WITHDRAW,
     PLAYERHOOK_ON_LEARN_PET_TALENT,
     PLAYERHOOK_ON_LEARN_TRAINER_SPELL,
@@ -420,6 +421,12 @@ public:
     virtual void OnPlayerNormalizeActionButtonSpell(Player* /*player*/, uint32& /*action*/, bool /*loading*/) { }
     virtual void OnPlayerSpellChargeConsumed(Player* /*player*/, SpellInfo const* /*spellInfo*/, Spell* /*spell*/, uint32 /*recoveryMs*/, uint64 /*nowEpochMs*/) { }
     virtual void OnPlayerSpellCooldownCalculated(Player* /*player*/, SpellInfo const* /*spellInfo*/, Spell* /*spell*/, uint32 /*recoveryMs*/) { }
+
+    // Fires when a petition (guild charter or arena team charter) is offered to a specific
+    // player via HandleOfferPetitionOpcode (the real "Request Signature" action) -- lets a
+    // module react to "this specific player was just explicitly asked to sign," as opposed to
+    // guessing intent from group membership alone.
+    virtual void OnPetitionOffered(Player* /*player*/, ObjectGuid /*petitionGuid*/) { }
 
     // Called when a player is bound to an instance
     virtual void OnPlayerBindToInstance(Player* /*player*/, Difficulty /*difficulty*/, uint32 /*mapId*/, bool /*permanent*/) { }

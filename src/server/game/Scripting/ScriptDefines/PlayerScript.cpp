@@ -394,6 +394,11 @@ void ScriptMgr::OnPlayerJoinArena(Player* player)
     CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_PLAYER_JOIN_ARENA, script->OnPlayerJoinArena(player));
 }
 
+void ScriptMgr::OnPetitionOffered(Player* player, ObjectGuid petitionGuid)
+{
+    CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_PETITION_OFFERED, script->OnPetitionOffered(player, petitionGuid));
+}
+
 void ScriptMgr::OnPlayerGetMaxPersonalArenaRatingRequirement(Player const* player, uint32 minSlot, uint32& maxArenaRating) const
 {
     CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_GET_MAX_PERSONAL_ARENA_RATING_REQUIREMENT, script->OnPlayerGetMaxPersonalArenaRatingRequirement(player, minSlot, maxArenaRating));

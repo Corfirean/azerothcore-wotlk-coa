@@ -389,6 +389,7 @@ public: /* PlayerScript */
     void OnPlayerUnequip(Player* player, Item* it);
     void OnPlayerJoinBG(Player* player);
     void OnPlayerJoinArena(Player* player);
+    void OnPetitionOffered(Player* player, ObjectGuid petitionGuid);
     void OnPlayerGetMaxPersonalArenaRatingRequirement(Player const* player, uint32 minSlot, uint32& maxArenaRating) const;
     void OnPlayerLootItem(Player* player, Item* item, uint32 count, ObjectGuid lootguid);
     void OnPlayerBeforeFillQuestLootItem(Player* player, LootItem& item);

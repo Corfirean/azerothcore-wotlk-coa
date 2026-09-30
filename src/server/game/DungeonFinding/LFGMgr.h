@@ -465,6 +465,10 @@ namespace lfg
         LfgDungeonSet const& GetSelectedDungeons(ObjectGuid guid);
         /// Get current lfg state
         LfgState GetState(ObjectGuid guid);
+        /// Get the pending proposal id a player is a member of (0 if none) -- needed by anything
+        /// that has to call UpdateProposal() without already knowing the id a real client would
+        /// have learned from its own SMSG_LFG_PROPOSAL_UPDATE packet (mod-coa-playerbots).
+        uint32 GetProposalIdForPlayer(ObjectGuid guid) const;
         /// Get current dungeon
         uint32 GetDungeon(ObjectGuid guid, bool asId = true);
         /// Get the map id of the current dungeon
