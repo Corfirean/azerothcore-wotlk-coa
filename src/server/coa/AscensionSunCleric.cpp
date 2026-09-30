@@ -1,6 +1,7 @@
 /* Copyright (C) 2016+ AzerothCore, GNU AGPL v3. */
 #include "AscensionSunCleric.h"
 #include "AscensionSunClericData.h"
+#include "AscensionCustomResourceData.h"
 #include "CellImpl.h"
 #include "GameTime.h"
 #include "GridNotifiers.h"
@@ -230,7 +231,8 @@ bool Resource(Player* player, uint32 id, int32 delta)
         return false;
     if (delta > 0 && (player->HasAura(Dawn) || State(player).dawnEvent))
         return true;
-    uint32 after = uint32(std::clamp<int64>(int64(Count(player, id)) + delta, 0, 20));
+    uint32 after = uint32(std::clamp<int64>(int64(Count(player, id)) + delta, 0,
+        int64(AscensionCompatData::SUN_CLERIC_SOLAR_POWER_MAX)));
     if (!after)
         player->RemoveAurasDueToSpell(id);
     else if (Aura* aura = player->GetAura(id))

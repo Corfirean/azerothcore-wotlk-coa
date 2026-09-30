@@ -1,6 +1,7 @@
 /* Copyright (C) 2016+ AzerothCore, GNU AGPL v3. */
 #include "AscensionCultist.h"
 #include "AscensionCultistData.h"
+#include "AscensionCustomResourceData.h"
 #include "CellImpl.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
@@ -55,6 +56,10 @@ bool Derived(SpellInfo const* info)
             if (info->Id == id)
                 return true;
     return false;
+}
+bool IsInsanitySpender(SpellInfo const* info)
+{
+    return Any(info, {805116, 804152});
 }
 uint32 Count(Unit const* unit, uint32 id)
 {
@@ -143,7 +148,8 @@ bool Resource(Player* player, uint32 id, int32 delta, bool force)
     if (delta < 0 && player->HasAura(Madness) && !force)
         return true;
     uint32 before = Count(player, id);
-    uint32 after = uint32(std::clamp<int64>(int64(before) + delta, 0, 100));
+    uint32 after = uint32(std::clamp<int64>(int64(before) + delta, 0,
+        int64(AscensionCompatData::CULTIST_INSANITY_MAX)));
     if (!after)
         player->RemoveAurasDueToSpell(id);
     else if (Aura* aura = player->GetAura(id))

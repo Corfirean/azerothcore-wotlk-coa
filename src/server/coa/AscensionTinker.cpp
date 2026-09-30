@@ -1,6 +1,7 @@
 /* Copyright (C) 2016+ AzerothCore, GNU AGPL v3. */
 #include "AscensionTinker.h"
 #include "AscensionTinkerData.h"
+#include "AscensionCustomResourceData.h"
 #include "CellImpl.h"
 #include "DynamicObject.h"
 #include "GameTime.h"
@@ -240,7 +241,8 @@ bool Resource(Player* player, uint32 id, int32 delta)
 {
     if (!player || player->getClass() != CLASS_TINKER || id != Scrap)
         return false;
-    uint32 after = uint32(std::clamp<int64>(int64(Count(player,Scrap)) + delta,0,100));
+    uint32 after = uint32(std::clamp<int64>(int64(Count(player,Scrap)) + delta,0,
+        int64(AscensionCompatData::TINKER_SCRAP_MAX)));
     if (!after)
     {
         player->RemoveAurasDueToSpell(Scrap);

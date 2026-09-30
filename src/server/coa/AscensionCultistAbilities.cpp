@@ -49,7 +49,7 @@ public:
         if (!player || spell->IsTriggered() || result != SPELL_CAST_OK)
             return;
         auto* info = spell->GetSpellInfo();
-        if (Any(info, {805116, 804152}) && !player->HasAura(Madness) && Count(player, Insanity) < 40)
+        if (IsInsanitySpender(info) && !player->HasAura(Madness) && Count(player, Insanity) < 40)
             result = SPELL_FAILED_NO_POWER;
         if (info->Id == 520345 && spell->m_targets.GetUnitTarget() == player)
             result = SPELL_FAILED_BAD_TARGETS;
@@ -70,7 +70,7 @@ public:
                 }
         if (Named(info, 800416) && Count(player, 712291) >= 3)
             spell->SetScriptValue(712291, 1);
-        if (Any(info, {805116, 804152}))
+        if (IsInsanitySpender(info))
             Resource(player, Insanity, -40);
     }
     void OnSpellCritChance(Spell* spell, Unit* target, float& chance) override

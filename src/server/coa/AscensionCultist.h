@@ -37,6 +37,10 @@ CultistState& State(Player* player);
 bool Named(SpellInfo const* info, uint32 root);
 bool Any(SpellInfo const* info, std::initializer_list<uint32> roots);
 bool Derived(SpellInfo const* info);
+// True for the two abilities that spend a full 40-Insanity bar (see the OnSpellCheckCast/
+// OnSpellBeforeEffects gate in AscensionCultistAbilities.cpp) -- extracted so
+// AscensionResourceQuery.h can ask the same question without hardcoding the spell ids itself.
+bool IsInsanitySpender(SpellInfo const* info);
 uint32 Count(Unit const* unit, uint32 id);
 int32 Amount(uint32 id, uint8 slot = 0, Unit* caster = nullptr);
 float Radius(uint32 id, uint8 slot = 0);

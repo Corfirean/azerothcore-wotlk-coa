@@ -4,12 +4,15 @@
  * https://github.com/azerothcore/azerothcore-wotlk/blob/master/LICENSE-AGPL3
  */
 
+#include "AscensionClassServiceBridge.h"
 #include "AscensionFelsworn.h"
 #include "AscensionPyromancer.h"
 #include "AscensionCultist.h"
 #include "AscensionVenomancer.h"
 #include "AscensionTinker.h"
 #include "AscensionSunCleric.h"
+#include "AscensionXoroth.h"
+#include "AscensionNecromancer.h"
 #include "AllCreatureScript.h"
 #include "AllSpellScript.h"
 #include "AscensionChangelogCompat.h"
@@ -50,6 +53,7 @@
 #include "AscensionBloodmageHemoglobe.h"
 #include "AscensionReaperPainmail.h"
 #include "AscensionReaperScytheRush.h"
+#include "AscensionResourceQuery.h"
 #include "AscensionVenomancerCatalyst.h"
 #include "AscensionSpecialization.h"
 #include "AscensionSpellProgressionData.h"
@@ -3289,6 +3293,14 @@ public:
     std::shared_ptr<PlayerCollectionState> state = TakeLoginState(player);
     if (!state)
       state = LoadCollectionState(player);
+
+    // Socketless bots do not have an active client UI -- skip heavy appearance/wardrobe packet sync
+    if (player->GetSession() && player->GetSession()->IsSocketClosed())
+    {
+      std::lock_guard lock(_stateMutex);
+      _playerStates[player->GetGUID().GetCounter()] = state;
+      return;
+    }
 
     UnlockLocalAppearanceCatalog(player, *state);
 
@@ -6613,6 +6625,247 @@ class spell_ascension_experience_potion : public SpellScript
 
 }
 
+namespace AscensionCompatData
+{
+    // Additive, read-only implementation of AscensionResourceQuery.h -- see that header for the
+    // contract each function promises. Deliberately placed here, outside the anonymous namespace
+    // above, purely to gain external linkage; it reads the same tables and mirrors the same
+    // per-class special-case constants AscensionResourceService already enforces internally
+    // (GetAuraStacks/CheckCast/OnSpellCast/ModifyAuraStacks, all above), it does not duplicate or
+    // reimplement any of that class's actual mutation logic, and it never changes player state.
+
+    std::vector<ResourceChannel> const& GetResourceChannels(uint8 classId)
+    {
+        static std::unordered_map<uint8, std::vector<ResourceChannel>> cache;
+        auto itr = cache.find(classId);
+        if (itr != cache.end())
+            return itr->second;
+
+        std::vector<ResourceChannel> channels;
+        for (ResourceDisplay const& display : ResourceDisplays)
+            if (display.ClassId == classId)
+                channels.push_back(ResourceChannel{false, 0, display.SpellId, display.Name});
+
+        // Manually-curated additions for resources that exist in a class's own hand-written
+        // Resource()/OnSpellCheckCast code but have no ResourceDisplays row at all -- see
+        // AscensionVenomancer::Resource (Exposed, AscensionVenomancer.cpp) and
+        // xoroth_casts::OnSpellCheckCast (Blood, AscensionXorothAbilities.cpp). Reaper's native
+        // Runic Power is included since AscensionClassMechanics26To32.cpp grants it a real
+        // crit-proc bonus (Soul Generator) outside NativePowerGainRules, making it a load-bearing
+        // part of that class's resource economy rather than an ordinary native bar a caller would
+        // already think to check.
+        if (classId == CLASS_PROPHET) // Venomancer
+            channels.push_back(ResourceChannel{false, 0, 805095, "Exposed"});
+        else if (classId == CLASS_FLESHWARDEN) // Knight of Xoroth
+            channels.push_back(ResourceChannel{false, 0, 800999, "Blood"});
+        else if (classId == CLASS_REAPER)
+            channels.push_back(ResourceChannel{true, POWER_RUNIC_POWER, 0, "Runic Power"});
+
+        return cache.emplace(classId, std::move(channels)).first->second;
+    }
+
+    ResourceState QueryAuraResourceState(Player* player, uint32 resourceSpellId)
+    {
+        ResourceState state;
+        if (!player)
+            return state;
+
+        if (Aura const* aura = player->GetAura(resourceSpellId))
+            state.Current = aura->GetStackAmount();
+
+        // Real caps that diverge from (or aren't represented in) that resource's own
+        // ResourceDisplays row -- these constants live in AscensionCustomResourceData.h and are
+        // the SAME ones AscensionCultist::Resource/AscensionTinker::Resource/AscensionSunCleric::
+        // Resource clamp to, not an independently hardcoded copy (see item 5 of the resource-
+        // engine review: SUN_CLERIC_SOLAR_POWER_MAX etc. used to only exist here).
+        switch (resourceSpellId)
+        {
+            case 500706: // Cultist Insanity
+                state.Maximum = CULTIST_INSANITY_MAX;
+                state.MaximumKnown = true;
+                return state;
+            case 801816: // Tinker Scrap
+                state.Maximum = TINKER_SCRAP_MAX;
+                state.MaximumKnown = true;
+                return state;
+            case 500149: // SunCleric SolarPower
+                state.Maximum = SUN_CLERIC_SOLAR_POWER_MAX;
+                state.MaximumKnown = true;
+                return state;
+            default:
+                break;
+        }
+
+        for (ResourceDisplay const& display : ResourceDisplays)
+        {
+            if (display.SpellId != resourceSpellId)
+                continue;
+            if (display.DisplayMaximum)
+            {
+                state.Maximum = display.DisplayMaximum;
+                state.MaximumKnown = true;
+                return state;
+            }
+            break;
+        }
+
+        // No fixed display cap -- fall back to the spell's own real max stack count (accounting
+        // for any stack-count-modifying talent, unlike a plain DisplayMaximum-or-StackAmount
+        // guess). Matches what AscensionVenomancer::Resource itself uses for Brood/Exposed.
+        if (SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(resourceSpellId))
+        {
+            if (uint8 maxStacks = spellInfo->CalcMaxAuraStacks(player))
+            {
+                state.Maximum = maxStacks;
+                state.MaximumKnown = true;
+                return state;
+            }
+        }
+
+        state.MaximumKnown = false;
+        return state;
+    }
+
+    std::vector<ResourceRequirement> QueryAbilityResourceRequirements(uint8 classId, uint32 resolvedSpellId)
+    {
+        std::vector<ResourceRequirement> out;
+
+        for (ResourceCostRule const& rule : ResourceCostRules)
+        {
+            if (rule.ClassId != classId || resolvedSpellId < rule.FirstSpellId || resolvedSpellId > rule.LastSpellId)
+                continue;
+            out.push_back(ResourceRequirement{rule.ResourceSpellId, rule.Amount, rule.Consumption,
+                rule.PreserveCostAuraSpellId, rule.PreserveCostChancePercent, 0, 0});
+            // ResourceCostRules never defines more than one requirement per spell today -- mirrors
+            // AscensionResourceService::CheckCast/OnSpellCast's own first-match-then-break. This
+            // table is the sole real gate for Felsworn/Stormbringer/Pyromancer -- confirmed by a
+            // full-tree audit of every OnSpellCheckCast/CanPrepare in this module; none of those
+            // three classes has any other custom-resource cast gate anywhere in their own files.
+            break;
+        }
+
+        // Every other hardcoded special-case gate found by that same full-tree audit -- see
+        // AscensionResourceQuery.h's own comment on this function for what each one is.
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(resolvedSpellId);
+
+        if (classId == CLASS_REAPER && resolvedSpellId == 805078) // Generate Soul
+            out.push_back(ResourceRequirement{805077, 3, ResourceConsumption::None, 0, 0, 0, 0});
+
+        if (classId == CLASS_RANGER && spellInfo && spellInfo->SpellFamilyName == uint32(CLASS_RANGER) + 6)
+            out.push_back(ResourceRequirement{804329, 1, ResourceConsumption::None, 0, 0, 0, 0});
+
+        if (classId == CLASS_STARCALLER && resolvedSpellId == 800386) // Lunar Phase spender
+            out.push_back(ResourceRequirement{802985, 4, ResourceConsumption::Fixed, 0, 0, 0, 0});
+
+        if (classId == CLASS_FLESHWARDEN && spellInfo)
+        {
+            // Blood spender (two explicit spells, fully drained on cast).
+            if (resolvedSpellId == 520294 || resolvedSpellId == 805679)
+                out.push_back(ResourceRequirement{800999, 1, ResourceConsumption::All, 0, 0, 0, 0});
+            // Demonfire spender -- via the real AscensionXoroth::Spender predicate (an 11-root
+            // spell-chain match), not a hand-copied id list, so this can never drift out of sync
+            // with the actual gameplay gate in AscensionXorothAbilities.cpp. Also fully drained.
+            if (AscensionXoroth::Spender(spellInfo))
+                out.push_back(ResourceRequirement{500906, 1, ResourceConsumption::All, 0, 0, 0, 0});
+        }
+
+        if (classId == CLASS_PROPHET && spellInfo && AscensionVenomancer::Spender(spellInfo))
+            // Brood spender -- via the real AscensionVenomancer::Spender predicate, same reasoning
+            // as Xoroth above. Drains the full current stack (AscensionVenomancerAbilities.cpp's
+            // own OnSpellBeforeEffects: Resource(player, Brood, -int32(Count(player, Brood)))).
+            out.push_back(ResourceRequirement{804972, 1, ResourceConsumption::All, 0, 0, 0, 0});
+
+        if (classId == CLASS_CULTIST && spellInfo && AscensionCultist::IsInsanitySpender(spellInfo))
+            // Conditional: only a real requirement while Madness is ABSENT -- see
+            // AscensionCultist::Resource's own comment on why a decrease silently no-ops under
+            // Madness (AscensionCultistAbilities.cpp:52-53,73-74).
+            out.push_back(ResourceRequirement{500706, 40, ResourceConsumption::Fixed, 0, 0, 0, 803061});
+
+        if (classId == CLASS_SUN_CLERIC && resolvedSpellId == 804584) // DawnCast
+            out.push_back(ResourceRequirement{500149, 20, ResourceConsumption::Fixed, 0, 0, 0, 0});
+
+        if (classId == CLASS_TINKER && resolvedSpellId == 801384) // Mechsuit
+            out.push_back(ResourceRequirement{801816, 1, ResourceConsumption::None, 0, 0, 0, 0});
+
+        return out;
+    }
+
+    std::vector<AuraGate> QueryAbilityAuraGates(uint8 classId, uint32 resolvedSpellId)
+    {
+        std::vector<AuraGate> out;
+
+        // Sun Cleric's DawnCast is blocked outright while Dawn is already up, independent of its
+        // real SolarPower>=20 numeric requirement (see QueryAbilityResourceRequirements) --
+        // AscensionSunClericAbilities.cpp:75-76's own `|| player->HasAura(Dawn)`.
+        if (classId == CLASS_SUN_CLERIC && resolvedSpellId == 804584)
+            out.push_back(AuraGate{807440, true});
+
+        return out;
+    }
+
+    MinionCapacityState QueryMinionCapacityState(Player* player)
+    {
+        MinionCapacityState state;
+        if (!player || player->getClass() != CLASS_NECROMANCER)
+            return state;
+
+        state.Maximum = AscensionNecromancer::Capacity(player);
+        state.Current = AscensionNecromancer::Used(player);
+        return state;
+    }
+
+    uint32 QueryMinionCapacityCost(Player* player, uint32 resolvedSpellId)
+    {
+        if (!player || player->getClass() != CLASS_NECROMANCER)
+            return 0;
+        return AscensionNecromancer::Cost(player, resolvedSpellId);
+    }
+
+    std::vector<ResourceGain> QueryAbilityResourceGains(uint8 classId, uint32 resolvedSpellId)
+    {
+        std::vector<ResourceGain> out;
+
+        for (ResourceGainRule const& rule : ResourceGainRules)
+        {
+            if (rule.ClassId != classId)
+                continue;
+            if ((rule.FirstSpellId || rule.LastSpellId) &&
+                (resolvedSpellId < rule.FirstSpellId || resolvedSpellId > rule.LastSpellId))
+                continue;
+
+            ResourceGain gain;
+            gain.IsNative = false;
+            gain.ResourceSpellId = rule.ResourceSpellId;
+            gain.Amount = rule.Amount;
+            gain.Event = rule.Event;
+            gain.RequiredAuraSpellId = rule.RequiredAuraSpellId;
+            gain.ForbiddenAuraSpellId = rule.ForbiddenAuraSpellId;
+            gain.ChancePercent = rule.ChancePercent;
+            out.push_back(gain);
+        }
+
+        for (NativePowerGainRule const& rule : NativePowerGainRules)
+        {
+            if (rule.ClassId != classId)
+                continue;
+            if ((rule.FirstSpellId || rule.LastSpellId) &&
+                (resolvedSpellId < rule.FirstSpellId || resolvedSpellId > rule.LastSpellId))
+                continue;
+
+            ResourceGain gain;
+            gain.IsNative = true;
+            gain.NativePowerType = rule.PowerType;
+            gain.Amount = rule.InternalAmount;
+            gain.Event = rule.Event;
+            gain.RequiredAuraSpellId = rule.RequiredAuraSpellId;
+            gain.ForbiddenAuraSpellId = rule.ForbiddenAuraSpellId;
+            out.push_back(gain);
+        }
+
+        return out;
+    }
+}
+
 bool IsAscensionPrimalistTameEligible(Player const* player)
 {
     return player && ascensionCompatConfig.GetConfigValue<bool>(AscensionCompatConfig::ENABLED) &&
@@ -6803,6 +7056,16 @@ public:
     }
   }
 };
+
+bool AscensionClassServiceBridge::SwitchSpecialization(Player* player, uint32 specializationId)
+{
+    return AscensionClassService::Instance().SwitchSpecialization(player, specializationId);
+}
+
+bool AscensionClassServiceBridge::SetTalentRank(Player* player, AscensionCompatData::CoATalentEntry const& entry, uint32 rank, std::string& error)
+{
+    return AscensionClassService::Instance().SetTalentRank(player, entry, rank, error);
+}
 
 void AppendConfiguredClientConfigs(AscensionClientConfig& config) {
   AppendAscensionClientConfigList(ascensionCompatConfig.GetConfigValue<std::string>(
