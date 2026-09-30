@@ -129,6 +129,8 @@ WorldSocket::WorldSocket(IoContextTcpSocket&& socket)
         sConfigMgr->GetOption<bool>("CoA.AllowRemoteClients", false, false);
     _ascensionCompatEnabled = allowAscensionClient &&
         sConfigMgr->GetOption<bool>("CoA.Enable", false, false);
+    _usePlaintextWorldHeaders = allowAscensionClient &&
+        sConfigMgr->GetOption<bool>("CoA.PlaintextWorldHeaders", false, false);
 
     // Extensions.dll changes the Ascension client's ping period to five seconds.
     // Allow one second of jitter while retaining the ordinary overspeed strike limit.
@@ -631,6 +633,8 @@ void WorldSocket::HandleAuthSessionCallback(std::shared_ptr<ClientAuthSession> a
 
     AccountInfo account(result->Fetch());
 
+    bool const usePlaintextWorldHeaders = _usePlaintextWorldHeaders;
+
     // For hook purposes, we get Remoteaddress at this point.
     std::string address = sConfigMgr->GetOption<bool>("AllowLoggingIPAddressesInDatabase", true, true) ? GetRemoteIpAddress().to_string() : "0.0.0.0";
 
@@ -643,9 +647,16 @@ void WorldSocket::HandleAuthSessionCallback(std::shared_ptr<ClientAuthSession> a
     LoginDatabase.Execute(stmt);
     // This also allows to check for possible "hack" attempts on account
 
-    if (!sToCloud9Sidecar->ClusterModeEnabled())
+    if (!sToCloud9Sidecar->ClusterModeEnabled() && !_authCrypt.IsInitialized() && !usePlaintextWorldHeaders)
         // even if auth credentials are bad, try using the session key we have - client cannot read auth response error without it
         _authCrypt.Init(account.SessionKey);
+
+    if (GetRemoteIpAddress().is_loopback())
+    {
+        LOG_INFO("coa",
+            "Loopback world-header mode selected: plaintextCompatibility={}, cryptInitialized={}",
+            usePlaintextWorldHeaders, _authCrypt.IsInitialized());
+    }
 
     // First reject the connection if packet contains invalid data or realm state doesn't allow logging in
     if (sWorld->IsClosed())

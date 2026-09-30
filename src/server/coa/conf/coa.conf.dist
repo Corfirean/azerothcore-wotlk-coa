@@ -13,6 +13,11 @@ CoA.Enable = 1
 # Authentication proofs and packet size checks remain required. Restart to apply.
 CoA.AllowRemoteClients = 0
 
+# The Ascension client with the original (not reconstructed) Extensions.dll keeps world packet headers unencrypted
+# after a valid login. 1 accepts and sends plain headers (needs loopback or CoA.AllowRemoteClients); 0 uses the
+# stock header cipher, for clients whose Extensions.dll is the reconstructed one. Restart to apply.
+CoA.PlaintextWorldHeaders = 1
+
 # Ascension's classless character creator submits reserved WotLK class ID 10.
 # Use a stock warrior shell until the classless progression backend is added.
 CoA.MapClass10ToWarrior = 1
