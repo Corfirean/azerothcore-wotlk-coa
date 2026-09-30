@@ -13447,6 +13447,20 @@ void Unit::RemoveFromWorld()
     if (IsInWorld())
     {
         m_duringRemoveFromWorld = true;
+
+        // A unit queued into i_objectsForDelayedVisibility (Unit::Update(), relocation timer
+        // expiry) stays a raw pointer there until Map::HandleDelayedVisibility() processes and
+        // clears the set later in the same Map::Update() tick. Nothing else ever unhooked a
+        // unit's pointer from that set if it left the world (despawn, logout, kill, teleport)
+        // in between -- so a unit deleted after being queued but before the set was drained left
+        // a dangling Unit* that HandleDelayedVisibility() would dereference on
+        // ExecuteDelayedUnitRelocationEvent(), crashing with an access violation deep inside
+        // Object::SetFloatValue. Confirmed live under heavy bot load (mass spawn/despawn/kill
+        // churn makes this easy to hit). Erase here, the single choke point every removal path
+        // (despawn, logout, death cleanup, map change) already funnels through.
+        if (Map* map = FindMap())
+            map->i_objectsForDelayedVisibility.erase(this);
+
         if (IsAIEnabled)
             GetAI()->OnDespawn();
 

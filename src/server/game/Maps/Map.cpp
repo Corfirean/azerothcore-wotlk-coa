@@ -2315,7 +2315,26 @@ void InstanceMap::PermBindAllPlayers()
 
 void InstanceMap::UnloadAll()
 {
-    ASSERT(!HavePlayers());
+    // Map::AddPlayerToMap() (any map, including this instance) takes no lock around inserting
+    // into m_mapRefMgr, and MapUpdater genuinely runs different maps' Update() concurrently on
+    // separate worker threads. DestroyInstance() already checks HavePlayers() right before
+    // calling UnloadAll() (after RemoveAllPlayers() and the OnDestroyInstance script hook), but
+    // that check-then-act window is not synchronized against a player on a DIFFERENT map
+    // finishing a far teleport INTO this exact instance on another thread at the same moment --
+    // confirmed live twice (instance_halls_of_lightning, instance_gundrak), both under heavy
+    // mod-coa-playerbots dungeon traffic, which multiplies exposure to this window far beyond
+    // what a handful of real players would ever trigger. A hard ASSERT here crashed the whole
+    // worldserver over a single late-arriving player; unloading grids/transports out from under
+    // a player that's still linked to this map would be its own dangling-pointer crash, so bail
+    // out instead of proceeding -- DestroyInstance() re-checks HavePlayers() after this call and
+    // simply retries the unload on a later cycle rather than deleting the map.
+    if (HavePlayers())
+    {
+        LOG_ERROR("maps", "InstanceMap::UnloadAll: map (Name: {}, Entry: {}, InstanceId: {}) still "
+            "has players linked to it at unload time (late-arriving teleport race) -- skipping "
+            "this unload, will retry.", GetMapName(), GetId(), GetInstanceId());
+        return;
+    }
 
     if (m_resetAfterUnload)
     {

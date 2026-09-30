@@ -300,6 +300,17 @@ bool MapInstanced::DestroyInstance(InstancedMaps::iterator& itr)
 
     itr->second->UnloadAll();
 
+    // UnloadAll() bails out (logs, does not tear down grids/transports) instead of unloading if
+    // a player linked to this exact instance between the HavePlayers() check above and now (see
+    // its comment -- AddPlayerToMap() takes no lock, and MapUpdater runs maps concurrently) --
+    // deleting the map object out from under that still-linked player would just trade one
+    // dangling-pointer crash for another, so leave it alive and retry on a later cycle instead.
+    if (itr->second->HavePlayers())
+    {
+        ++itr;
+        return false;
+    }
+
     // erase map
     delete itr->second;
     m_InstancedMaps.erase(itr++);
