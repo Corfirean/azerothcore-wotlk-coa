@@ -2,6 +2,19 @@ name: coa-bots-build
 # Compiles this fork together with the mod-coa-playerbots module and checks the result starts.
 # The release pipeline (coa-server-build) builds the same way from exact commit SHAs.
 on:
+  workflow_call:
+    inputs:
+      core_ref:
+        type: string
+        default: coa-bots
+      bots_ref:
+        type: string
+        default: master
+    outputs:
+      core_sha:
+        value: ${{ jobs.build.outputs.core_sha }}
+      bots_sha:
+        value: ${{ jobs.build.outputs.bots_sha }}
   workflow_dispatch:
     inputs:
       bots_ref:
@@ -18,12 +31,17 @@ concurrency:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 180
+    timeout-minutes: 240
+    outputs:
+      core_sha: ${{ steps.shas.outputs.core_sha }}
+      bots_sha: ${{ steps.shas.outputs.bots_sha }}
     env:
       BOOST_ROOT: C:\local\boost_1_87_0
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: Corfirean/azerothcore-wotlk-coa
+          ref: ${{ inputs.core_ref || github.sha }}
           fetch-depth: 1
       # Cache the fetched Boost + MySQL client so we don't re-download ~350 MB
       # and re-run the Boost installer on every run. The Test-Path guards in
@@ -134,8 +152,11 @@ jobs:
           ref: ${{ inputs.bots_ref || 'master' }}
           path: _bots
       - name: Place the module where the core expects it
+        id: shas
         shell: pwsh
         run: |
+          "core_sha=$(git rev-parse HEAD)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "bots_sha=$(git -C _bots rev-parse HEAD)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           $dst = 'modules/mod-coa-playerbots'
           New-Item -ItemType Directory -Force -Path $dst | Out-Null
           Copy-Item -Recurse -Force '_bots/module/src' "$dst/src"
