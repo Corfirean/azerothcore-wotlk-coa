@@ -13,11 +13,24 @@
 #include <optional>
 
 class Creature;
+class CreatureTemplate;
 class Player;
+class Quest;
 
 namespace LocalLevelScaling
 {
+using QuestBaseLevelResolver = std::int32_t (*)(Quest const*);
+inline std::atomic<QuestBaseLevelResolver> QuestBaseLevelOwner{nullptr};
+
+std::int32_t GetEffectiveQuestBaseLevel(Quest const* quest);
+
+using CreatureBaseLevelResolver = std::uint8_t (*)(CreatureTemplate const*, Creature const*);
+inline std::atomic<CreatureBaseLevelResolver> CreatureBaseLevelOwner{nullptr};
+
+std::uint8_t GetEffectiveCreatureBaseLevel(CreatureTemplate const* cinfo, Creature const* creature = nullptr);
+
 inline std::atomic<bool> QuestEnabled{false};
+inline std::atomic<bool> ContentScalingActive{false};
 inline std::atomic<std::uint8_t> CreatureOffset{3};
 
 /// How much of the level-scaled reward a quest keeps when it is lifted from its own level to the

@@ -1519,7 +1519,13 @@ namespace lfg
 
             if (itRoles == roleCheck.roles.end())
             {
-                roleCheck.state = CheckGroupRoles(roleCheck.roles) ? LFG_ROLECHECK_FINISHED : LFG_ROLECHECK_WRONG_ROLES;
+                LfgQueuePolicy policy;
+                sScriptMgr->OnResolveLfgQueuePolicy(roleCheck.leader, policy);
+
+                if (!policy.requireStandardRoles)
+                    roleCheck.state = LFG_ROLECHECK_FINISHED;
+                else
+                    roleCheck.state = CheckGroupRoles(roleCheck.roles) ? LFG_ROLECHECK_FINISHED : LFG_ROLECHECK_WRONG_ROLES;
             }
         }
 
@@ -1818,6 +1824,8 @@ namespace lfg
         SetState(gguid, LFG_STATE_DUNGEON);
 
         _SaveToDB(gguid);
+
+        sScriptMgr->OnLfgProposalMadeGroup(proposal, grp);
 
         // Select a player inside to be teleported to
         WorldLocation const* teleportLocation = nullptr;
