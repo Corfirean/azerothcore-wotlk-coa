@@ -154,6 +154,25 @@ void ScriptMgr::OnLfgProposalMadeGroup(lfg::LfgProposal const& proposal, Group* 
     CALL_ENABLED_HOOKS(GlobalScript, GLOBALHOOK_ON_LFG_PROPOSAL_MADE_GROUP, script->OnLfgProposalMadeGroup(proposal, group));
 }
 
+void ScriptMgr::OnInstanceMapCreated(InstanceMap* instanceMap, Player* player)
+{
+    CALL_ENABLED_HOOKS(GlobalScript, GLOBALHOOK_ON_INSTANCE_MAP_CREATED, script->OnInstanceMapCreated(instanceMap, player));
+}
+
+bool ScriptMgr::HasLfgAutoFillProvider() const
+{
+    bool hasProvider = false;
+    CALL_ENABLED_HOOKS(GlobalScript, GLOBALHOOK_HAS_LFG_AUTO_FILL_PROVIDER,
+    {
+        if (script->HasLfgAutoFillProvider())
+        {
+            hasProvider = true;
+            break;
+        }
+    });
+    return hasProvider;
+}
+
 GlobalScript::GlobalScript(char const* name, std::vector<uint16> enabledHooks)
     : ScriptObject(name, GLOBALHOOK_END)
 {

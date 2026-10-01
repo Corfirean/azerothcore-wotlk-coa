@@ -591,6 +591,8 @@ public: /* GlobalScript */
     void AfterInstanceGameObjectCreate(Map* instance, GameObject* go);
     void OnResolveLfgQueuePolicy(ObjectGuid const& guid, lfg::LfgQueuePolicy& policy);
     void OnLfgProposalMadeGroup(lfg::LfgProposal const& proposal, Group* group);
+    void OnInstanceMapCreated(InstanceMap* instanceMap, Player* player);
+    bool HasLfgAutoFillProvider() const;
 
 public: /* Scheduled scripts */
     uint32 IncreaseScheduledScriptsCount() { return ++_scheduledScripts; }
