@@ -56,6 +56,15 @@ std::uint8_t GetEffectiveKillContentLevel(Player const* player, Unit const* vict
     return defaultContentLevel;
 }
 
+float GetEffectiveQuestRewardRate(Player const* player, Quest const* quest, float defaultRate)
+{
+    QuestRewardRateResolver const owner = QuestRewardRateOwner.load(std::memory_order_relaxed);
+    if (owner)
+        return owner(player, quest, defaultRate);
+
+    return defaultRate;
+}
+
 std::uint8_t GetEffectiveCreatureBaseLevel(CreatureTemplate const* cinfo, Creature const* creature)
 {
     if (!cinfo)

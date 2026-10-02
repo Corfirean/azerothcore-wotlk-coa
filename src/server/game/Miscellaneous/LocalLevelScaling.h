@@ -40,6 +40,11 @@ inline std::atomic<KillContentLevelResolver> KillContentLevelOwner{nullptr};
 
 std::uint8_t GetEffectiveKillContentLevel(Player const* player, Unit const* victim, std::uint8_t defaultContentLevel);
 
+using QuestRewardRateResolver = float (*)(Player const*, Quest const*, float /*defaultRate*/);
+inline std::atomic<QuestRewardRateResolver> QuestRewardRateOwner{nullptr};
+
+float GetEffectiveQuestRewardRate(Player const* player, Quest const* quest, float defaultRate);
+
 using CreatureBaseLevelResolver = std::uint8_t (*)(CreatureTemplate const*, Creature const*);
 inline std::atomic<CreatureBaseLevelResolver> CreatureBaseLevelOwner{nullptr};
 
