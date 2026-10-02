@@ -27,6 +27,7 @@
 #include "Group.h"
 #include "GroupMgr.h"
 #include "InstanceSaveMgr.h"
+#include "LocalLevelScaling.h"
 #include "LFGGroupData.h"
 #include "LFGPlayerData.h"
 #include "LFGQueue.h"
@@ -140,10 +141,11 @@ namespace lfg
                 continue;
             }
 
-            if (!maxLevel || maxLevel > sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL))
+            uint32 allowedMaxLevel = (LocalLevelScaling::ContentScalingActive.load(std::memory_order_relaxed) ? 80 : sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL));
+            if (!maxLevel || maxLevel > allowedMaxLevel)
             {
                 LOG_ERROR("lfg", "Level {} specified for dungeon {} in table `lfg_dungeon_rewards` can never be reached!", maxLevel, dungeonId);
-                maxLevel = sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL);
+                maxLevel = allowedMaxLevel;
             }
 
             if (!firstQuestId || !sObjectMgr->GetQuestTemplate(firstQuestId))
@@ -2423,7 +2425,7 @@ namespace lfg
                 if (uint8 count = GetRandomPlayersCount(player->GetGUID()))
                     player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_USE_LFD_TO_GROUP_WITH_PLAYERS, count);
 
-            LfgReward const* reward = GetRandomDungeonReward(rDungeonId, player->GetLevel());
+            LfgReward const* reward = GetRandomDungeonReward(rDungeonId, player->GetLevel(), player);
             if (!reward)
                 continue;
 
@@ -2480,15 +2482,21 @@ namespace lfg
        @param[in]     level Player level
        @returns Reward
     */
-    LfgReward const* LFGMgr::GetRandomDungeonReward(uint32 dungeon, uint8 level)
+    LfgReward const* LFGMgr::GetRandomDungeonReward(uint32 dungeon, uint8 level, Player const* player)
     {
+        uint8 effectiveRewardLevel = level;
+        if (player)
+        {
+            sScriptMgr->OnResolveLfgRewardLevel(player, dungeon, effectiveRewardLevel);
+        }
+
         LfgReward const* rew = nullptr;
         LfgRewardContainerBounds bounds = RewardMapStore.equal_range(dungeon & 0x00FFFFFF);
         for (LfgRewardContainer::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
         {
             rew = itr->second;
             // ordered properly at loading
-            if (itr->second->maxLevel >= level)
+            if (itr->second->maxLevel >= effectiveRewardLevel)
                 break;
         }
 

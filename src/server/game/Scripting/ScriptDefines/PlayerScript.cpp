@@ -839,6 +839,11 @@ void ScriptMgr::OnResolveDungeonAccessLevels(Player const* player, uint32 mapId,
     CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_RESOLVE_DUNGEON_ACCESS_LEVELS, script->OnResolveDungeonAccessLevels(player, mapId, difficulty, minLevel, maxLevel));
 }
 
+void ScriptMgr::OnResolveLfgRewardLevel(Player const* player, uint32 dungeonId, uint8& level)
+{
+    CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_RESOLVE_LFG_REWARD_LEVEL, script->OnResolveLfgRewardLevel(player, dungeonId, level));
+}
+
 bool ScriptMgr::OnPlayerCanInitTrade(Player* player, Player* target)
 {
     CALL_ENABLED_BOOLEAN_HOOKS(PlayerScript, PLAYERHOOK_CAN_INIT_TRADE, !script->OnPlayerCanInitTrade(player, target));

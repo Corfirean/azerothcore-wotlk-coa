@@ -478,6 +478,7 @@ public: /* PlayerScript */
     bool OnPlayerCanJoinLfg(Player* player, uint8 roles, lfg::LfgDungeonSet& dungeons, std::string const& comment);
     bool OnPlayerCanEnterMap(Player* player, MapEntry const* entry, InstanceTemplate const* instance, MapDifficulty const* mapDiff, bool loginCheck);
     void OnResolveDungeonAccessLevels(Player const* player, uint32 mapId, Difficulty difficulty, uint8& minLevel, uint8& maxLevel);
+    void OnResolveLfgRewardLevel(Player const* player, uint32 dungeonId, uint8& level);
     bool OnPlayerCanInitTrade(Player* player, Player* target);
     bool OnPlayerCanSetTradeItem(Player* player, Item* tradedItem, uint8 tradeSlot);
     void OnPlayerSetServerSideVisibility(Player* player, ServerSideVisibilityType& type, AccountTypes& sec);
