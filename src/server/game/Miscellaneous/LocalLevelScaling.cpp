@@ -35,6 +35,27 @@ std::uint32_t GetEffectiveQuestMinLevel(Quest const* quest)
     return quest->GetMinLevel();
 }
 
+std::uint32_t GetEffectiveQuestMoneyMaxLevel(Quest const* quest, uint32 defaultRewardMoney)
+{
+    if (!quest)
+        return defaultRewardMoney;
+
+    QuestMoneyMaxLevelResolver const owner = QuestMoneyMaxLevelOwner.load(std::memory_order_relaxed);
+    if (owner)
+        return owner(quest, defaultRewardMoney);
+
+    return defaultRewardMoney;
+}
+
+std::uint8_t GetEffectiveKillContentLevel(Player const* player, Unit const* victim, std::uint8_t defaultContentLevel)
+{
+    KillContentLevelResolver const owner = KillContentLevelOwner.load(std::memory_order_relaxed);
+    if (owner)
+        return owner(player, victim, defaultContentLevel);
+
+    return defaultContentLevel;
+}
+
 std::uint8_t GetEffectiveCreatureBaseLevel(CreatureTemplate const* cinfo, Creature const* creature)
 {
     if (!cinfo)

@@ -351,7 +351,8 @@ uint32 Quest::GetRewMoneyMaxLevel(bool levelScaling) const
 
     rewMoney = (XPValue(sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL), levelScaling) * (6 * COPPER));
     // https://wowpedia.fandom.com/wiki/Quest?oldid=1035002 Formula is XP gained * 6c
-    return static_cast<int32>(rewMoney * sWorld->getRate(RATE_REWARD_BONUS_MONEY));
+    uint32 const finalMoney = static_cast<int32>(rewMoney * sWorld->getRate(RATE_REWARD_BONUS_MONEY));
+    return LocalLevelScaling::GetEffectiveQuestMoneyMaxLevel(this, finalMoney);
 }
 
 bool Quest::IsAutoAccept() const

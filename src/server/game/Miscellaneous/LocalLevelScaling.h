@@ -16,6 +16,7 @@ class Creature;
 class CreatureTemplate;
 class Player;
 class Quest;
+class Unit;
 
 namespace LocalLevelScaling
 {
@@ -28,6 +29,16 @@ using QuestMinLevelResolver = std::uint32_t (*)(Quest const*);
 inline std::atomic<QuestMinLevelResolver> QuestMinLevelOwner{nullptr};
 
 std::uint32_t GetEffectiveQuestMinLevel(Quest const* quest);
+
+using QuestMoneyMaxLevelResolver = std::uint32_t (*)(Quest const*, uint32 /*defaultRewardMoney*/);
+inline std::atomic<QuestMoneyMaxLevelResolver> QuestMoneyMaxLevelOwner{nullptr};
+
+std::uint32_t GetEffectiveQuestMoneyMaxLevel(Quest const* quest, uint32 defaultRewardMoney);
+
+using KillContentLevelResolver = std::uint8_t (*)(Player const*, Unit const*, std::uint8_t /*defaultContentLevel*/);
+inline std::atomic<KillContentLevelResolver> KillContentLevelOwner{nullptr};
+
+std::uint8_t GetEffectiveKillContentLevel(Player const* player, Unit const* victim, std::uint8_t defaultContentLevel);
 
 using CreatureBaseLevelResolver = std::uint8_t (*)(CreatureTemplate const*, Creature const*);
 inline std::atomic<CreatureBaseLevelResolver> CreatureBaseLevelOwner{nullptr};
