@@ -254,16 +254,19 @@ struct instance_blackwing_lair : public InstanceScript
                 case SPECIAL:
                     if (EggEvent == NOT_STARTED)
                         SetData(DATA_EGG_EVENT, IN_PROGRESS);
-                    if (++EggCount >= EggList.size())
                     {
-                        if (Creature* razor = instance->GetCreature(razorgoreGUID))
+                        uint32 requiredEggs = ResolveEncounterMechanic(DATA_RAZORGORE_THE_UNTAMED, 1 /*OBJECTIVE_COUNT*/, 4 /*OBJECTIVE_COUNT*/, static_cast<uint32>(EggList.size()));
+                        if (++EggCount >= requiredEggs)
                         {
-                            SetData(DATA_EGG_EVENT, DONE);
-                            razor->RemoveAurasDueToSpell(19832); // MindControl
-                            DoRemoveAurasDueToSpellOnPlayers(19832);
+                            if (Creature* razor = instance->GetCreature(razorgoreGUID))
+                            {
+                                SetData(DATA_EGG_EVENT, DONE);
+                                razor->RemoveAurasDueToSpell(19832); // MindControl
+                                DoRemoveAurasDueToSpellOnPlayers(19832);
+                            }
+                            _events.ScheduleEvent(EVENT_RAZOR_PHASE_TWO, 1s);
+                            _events.CancelEvent(EVENT_RAZOR_SPAWN);
                         }
-                        _events.ScheduleEvent(EVENT_RAZOR_PHASE_TWO, 1s);
-                        _events.CancelEvent(EVENT_RAZOR_SPAWN);
                     }
                     break;
             }
@@ -342,7 +345,9 @@ struct instance_blackwing_lair : public InstanceScript
                     if (EggEvent == IN_PROGRESS)
                     {
                         bool spawnMoreAdds = true;
-                        for (uint8 i = urand(2, 5); i > 0; --i)
+                        uint32 rawWaveCount = urand(2, 5);
+                        uint32 waveCount = ResolveEncounterMechanic(DATA_RAZORGORE_THE_UNTAMED, 3 /*WAVE_SIZE*/, 6 /*WAVE_SIZE*/, rawWaveCount);
+                        for (uint32 i = waveCount; i > 0; --i)
                         {
                             uint32 mobEntry = Entry[urand(0, 2)];
                             uint32 dragonkinsCount = addsCount[0];

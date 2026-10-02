@@ -439,8 +439,11 @@ public:
                 case EVENT_DREAM_PORTAL:
                     if (!IsHeroic())
                         Talk(SAY_VALITHRIA_DREAM_PORTAL);
-                    for (uint32 i = 0; i < _portalCount; ++i)
-                        me->CastSpell(me, SPELL_PRE_SUMMON_DREAM_PORTAL, true);
+                    {
+                        uint32 const portalCount = _instance ? _instance->ResolveEncounterMechanic(DATA_VALITHRIA_DREAMWALKER, 1 /*REQUIRED_INTERACTORS*/, 3 /*REQUIRED_INTERACTORS*/, _portalCount) : _portalCount;
+                        for (uint32 i = 0; i < portalCount; ++i)
+                            me->CastSpell(me, SPELL_PRE_SUMMON_DREAM_PORTAL, true);
+                    }
                     _events.ScheduleEvent(EVENT_DREAM_PORTAL, 45s, 48s);
                     break;
                 case EVENT_DREAM_SLIP:
@@ -750,6 +753,23 @@ public:
             DoMeleeAttackIfReady();
         }
 
+        void JustDied(Unit* /*killer*/) override
+        {
+            if (_instance && _instance->GetBossState(DATA_VALITHRIA_DREAMWALKER) == IN_PROGRESS)
+            {
+                uint32 const healPct = _instance->ResolveEncounterMechanic(DATA_VALITHRIA_DREAMWALKER, 2 /*HEALING_CONTRIBUTION*/, 12 /*HEALING_CONTRIBUTION*/, 0);
+                if (healPct > 0)
+                {
+                    if (Creature* valithria = ObjectAccessor::GetCreature(*me, _instance->GetGuidData(DATA_VALITHRIA_DREAMWALKER)))
+                    {
+                        uint32 heal = (valithria->GetMaxHealth() * healPct) / 100;
+                        valithria->ModifyHealth(heal);
+                        valithria->AI()->HealReceived(me, heal);
+                    }
+                }
+            }
+        }
+
     private:
         EventMap _events;
         InstanceScript* _instance;
@@ -957,6 +977,23 @@ public:
 
             if (!me->HasUnitState(UNIT_STATE_CASTING) && !me->isMoving() && me->IsWithinMeleeRange(me->GetVictim()))
                 me->CastSpell((Unit*)nullptr, SPELL_SUPPRESSION, false);
+        }
+
+        void JustDied(Unit* /*killer*/) override
+        {
+            if (_instance && _instance->GetBossState(DATA_VALITHRIA_DREAMWALKER) == IN_PROGRESS)
+            {
+                uint32 const healPct = _instance->ResolveEncounterMechanic(DATA_VALITHRIA_DREAMWALKER, 2 /*HEALING_CONTRIBUTION*/, 12 /*HEALING_CONTRIBUTION*/, 0);
+                if (healPct > 0)
+                {
+                    if (Creature* valithria = ObjectAccessor::GetCreature(*me, _instance->GetGuidData(DATA_VALITHRIA_DREAMWALKER)))
+                    {
+                        uint32 heal = (valithria->GetMaxHealth() * healPct) / 100;
+                        valithria->ModifyHealth(heal);
+                        valithria->AI()->HealReceived(me, heal);
+                    }
+                }
+            }
         }
     };
 

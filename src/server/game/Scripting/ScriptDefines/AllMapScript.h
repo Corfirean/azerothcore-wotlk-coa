@@ -102,11 +102,12 @@ public:
      *
      * @param map Contains information about the Map
      * @param encounterId Identifier for the encounter (e.g. creature entry or encounter data)
+     * @param mechanicId Sub-mechanic identifier within the encounter
      * @param mechanicType Semantic mechanic type enum
      * @param authoredValue The authored/unscaled value from the boss script
      * @param resolvedValue The value to be adapted/resolved by script modules
      */
-    virtual void OnResolveEncounterMechanic(Map* /*map*/, uint32 /*encounterId*/, uint8 /*mechanicType*/, uint32 /*authoredValue*/, uint32& /*resolvedValue*/) { }
+    virtual void OnResolveEncounterMechanic(Map* /*map*/, uint32 /*encounterId*/, uint32 /*mechanicId*/, uint8 /*mechanicType*/, uint32 /*authoredValue*/, uint32& /*resolvedValue*/) { }
 };
 
 #endif

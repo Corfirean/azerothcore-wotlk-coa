@@ -254,7 +254,11 @@ public:
     CreatureBoundary const* GetBossBoundary(uint32 id) const { return id < bosses.size() ? &bosses[id].boundary : nullptr; }
     BossInfo const* GetBossInfo(uint32 id) const { return &bosses[id]; }
 
-    uint32 ResolveEncounterMechanic(uint32 encounterId, uint8 mechanicType, uint32 authoredValue);
+    uint32 ResolveEncounterMechanic(uint32 encounterId, uint32 mechanicId, uint8 mechanicType, uint32 authoredValue);
+    uint32 ResolveEncounterMechanic(uint32 encounterId, uint8 mechanicType, uint32 authoredValue)
+    {
+        return ResolveEncounterMechanic(encounterId, 0, mechanicType, authoredValue);
+    }
 
     uint32 GetPersistentData(uint32 index) const { return index < persistentData.size() ? persistentData[index] : 0; };
     void StorePersistentData(uint32 index, uint32 data);

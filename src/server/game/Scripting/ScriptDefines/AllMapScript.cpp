@@ -273,9 +273,9 @@ void ScriptMgr::OnDestroyInstance(MapInstanced* mapInstanced, Map* map)
     CALL_ENABLED_HOOKS(AllMapScript, ALLMAPHOOK_ON_DESTROY_INSTANCE, script->OnDestroyInstance(mapInstanced, map));
 }
 
-void ScriptMgr::OnResolveEncounterMechanic(Map* map, uint32 encounterId, uint8 mechanicType, uint32 authoredValue, uint32& resolvedValue)
+void ScriptMgr::OnResolveEncounterMechanic(Map* map, uint32 encounterId, uint32 mechanicId, uint8 mechanicType, uint32 authoredValue, uint32& resolvedValue)
 {
-    CALL_ENABLED_HOOKS(AllMapScript, ALLMAPHOOK_ON_RESOLVE_ENCOUNTER_MECHANIC, script->OnResolveEncounterMechanic(map, encounterId, mechanicType, authoredValue, resolvedValue));
+    CALL_ENABLED_HOOKS(AllMapScript, ALLMAPHOOK_ON_RESOLVE_ENCOUNTER_MECHANIC, script->OnResolveEncounterMechanic(map, encounterId, mechanicId, mechanicType, authoredValue, resolvedValue));
 }
 
 AllMapScript::AllMapScript(char const* name, std::vector<uint16> enabledHooks) : ScriptObject(name, ALLMAPHOOK_END)

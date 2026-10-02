@@ -2448,8 +2448,20 @@ public:
 
         void DamageTaken(Unit*, uint32& damage, DamageEffectType, SpellSchoolMask) override
         {
-            if (IsHeroic() && !didbelow50pct && !dropped && me->HealthBelowPctDamaged(50, damage))
-                GoSiphon();
+            uint32 const authoredThreshold = IsHeroic() ? 50 : 0;
+            uint32 const dropThresholdPct = _instance ? _instance->ResolveEncounterMechanic(DATA_THE_LICH_KING, 1 /*REQUIRED_PLAYERS*/, 7 /*STACK_THRESHOLD*/, authoredThreshold) : authoredThreshold;
+
+            if (dropThresholdPct > 0 && !didbelow50pct && !dropped && me->HealthBelowPctDamaged(dropThresholdPct, damage))
+            {
+                if (IsHeroic())
+                    GoSiphon();
+                else
+                {
+                    dropped = true;
+                    me->CastSpell((Unit*)nullptr, SPELL_EJECT_ALL_PASSENGERS, false);
+                    me->DespawnOrUnsummon(1s);
+                }
+            }
         }
 
         void MovementInform(uint32 type, uint32 id) override

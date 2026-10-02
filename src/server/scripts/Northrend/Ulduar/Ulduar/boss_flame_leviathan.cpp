@@ -571,7 +571,8 @@ void boss_flame_leviathan::SpellHit(Unit*  /*caster*/, SpellInfo const* spellInf
         if (_overloadCircuitCount == 1)
             Talk(FLAME_LEVIATHAN_EMOTE_OVERLOAD_START);
 
-        uint8 const threshold = me->GetMap()->Is25ManRaid() ? 4 : 2;
+        uint32 const baseThreshold = me->GetMap()->Is25ManRaid() ? 4 : 2;
+        uint32 const threshold = instance ? instance->ResolveEncounterMechanic(BOSS_LEVIATHAN, 1 /*REQUIRED_PLAYERS*/, 2 /*REQUIRED_PLAYERS*/, baseThreshold) : baseThreshold;
         if (_overloadCircuitCount >= threshold)
         {
             _overloadCircuitCount = 0;
