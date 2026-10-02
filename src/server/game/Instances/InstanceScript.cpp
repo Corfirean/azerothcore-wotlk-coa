@@ -228,6 +228,14 @@ void InstanceScript::LoadSummonData(ObjectData const* data)
     }
 }
 
+uint32 InstanceScript::ResolveEncounterMechanic(uint32 encounterId, uint8 mechanicType, uint32 authoredValue)
+{
+    uint32 resolved = authoredValue;
+    if (instance)
+        sScriptMgr->OnResolveEncounterMechanic(instance, encounterId, mechanicType, authoredValue, resolved);
+    return resolved;
+}
+
 void InstanceScript::UpdateMinionState(Creature* minion, EncounterState state)
 {
     switch (state)

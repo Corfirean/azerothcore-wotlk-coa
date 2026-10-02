@@ -652,6 +652,7 @@ public: /* AllGameobjectScript */
 public: /* AllMapScript */
     void OnBeforeCreateInstanceScript(InstanceMap* instanceMap, InstanceScript** instanceData, bool load, std::string data, uint32 completedEncounterMask);
     void OnDestroyInstance(MapInstanced* mapInstanced, Map* map);
+    void OnResolveEncounterMechanic(Map* map, uint32 encounterId, uint8 mechanicType, uint32 authoredValue, uint32& resolvedValue);
 
 public: /* BattlefieldScript */
     void OnBattlefieldPlayerEnterZone(Battlefield* bf, Player* player);

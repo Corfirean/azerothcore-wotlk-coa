@@ -30,6 +30,7 @@ enum AllMapHook
     ALLMAPHOOK_ON_CREATE_MAP,
     ALLMAPHOOK_ON_DESTROY_MAP,
     ALLMAPHOOK_ON_MAP_UPDATE,
+    ALLMAPHOOK_ON_RESOLVE_ENCOUNTER_MECHANIC,
     ALLMAPHOOK_END
 };
 
@@ -95,6 +96,17 @@ public:
      * @param diff Contains information about the diff time
      */
     virtual void OnMapUpdate(Map* /*map*/, uint32 /*diff*/) { }
+
+    /**
+     * @brief Generic encounter mechanic resolution hook
+     *
+     * @param map Contains information about the Map
+     * @param encounterId Identifier for the encounter (e.g. creature entry or encounter data)
+     * @param mechanicType Semantic mechanic type enum
+     * @param authoredValue The authored/unscaled value from the boss script
+     * @param resolvedValue The value to be adapted/resolved by script modules
+     */
+    virtual void OnResolveEncounterMechanic(Map* /*map*/, uint32 /*encounterId*/, uint8 /*mechanicType*/, uint32 /*authoredValue*/, uint32& /*resolvedValue*/) { }
 };
 
 #endif
