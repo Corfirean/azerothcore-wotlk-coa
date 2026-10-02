@@ -251,6 +251,7 @@ enum PlayerHook
     PLAYERHOOK_ON_REFRESH_QUEST_GIVER,
     PLAYERHOOK_ON_COA_PROGRESS,
     PLAYERHOOK_ON_GET_GAME_MODE_MASK,
+    PLAYERHOOK_ON_RESOLVE_DUNGEON_ACCESS_LEVELS,
     PLAYERHOOK_END
 };
 
@@ -712,6 +713,7 @@ public:
     [[nodiscard]] virtual bool OnPlayerCanJoinLfg(Player* /*player*/, uint8 /*roles*/, std::set<uint32>& /*dungeons*/, std::string const& /*comment*/) { return true; }
 
     [[nodiscard]] virtual bool OnPlayerCanEnterMap(Player* /*player*/, MapEntry const* /*entry*/, InstanceTemplate const* /*instance*/, MapDifficulty const* /*mapDiff*/, bool /*loginCheck*/) { return true; }
+    virtual void OnResolveDungeonAccessLevels(Player const* /*player*/, uint32 /*mapId*/, uint8& /*minLevel*/, uint8& /*maxLevel*/) { }
 
     [[nodiscard]] virtual bool OnPlayerCanInitTrade(Player* /*player*/, Player* /*target*/) { return true; }
 
