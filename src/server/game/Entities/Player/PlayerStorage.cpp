@@ -6891,11 +6891,13 @@ bool Player::Satisfy(DungeonProgressionRequirements const* ar, uint32 target_map
         if (!mapEntry)
             return false;
 
+        Difficulty target_difficulty = GetDifficulty(mapEntry->IsRaid());
+
         if (!sWorld->getBoolConfig(CONFIG_INSTANCE_IGNORE_LEVEL))
         {
             uint8 minLevel = ar->levelMin;
             uint8 maxLevel = ar->levelMax;
-            sScriptMgr->OnResolveDungeonAccessLevels(this, target_map, minLevel, maxLevel);
+            sScriptMgr->OnResolveDungeonAccessLevels(this, target_map, target_difficulty, minLevel, maxLevel);
             if (minLevel && GetLevel() < minLevel)
                 LevelMin = minLevel;
             if (maxLevel && GetLevel() > maxLevel)
@@ -7000,7 +7002,7 @@ bool Player::Satisfy(DungeonProgressionRequirements const* ar, uint32 target_map
             }
         }
 
-        Difficulty target_difficulty = GetDifficulty(mapEntry->IsRaid());
+        target_difficulty = GetDifficulty(mapEntry->IsRaid());
         MapDifficulty const* mapDiff = GetDownscaledMapDifficultyData(target_map, target_difficulty);
         if (LevelMin || LevelMax || ilvlRequirementNotMet
             || missingPlayerItems.size() || missingPlayerQuests.size() || missingPlayerAchievements.size()

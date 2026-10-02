@@ -834,9 +834,9 @@ bool ScriptMgr::OnPlayerCanEnterMap(Player* player, MapEntry const* entry, Insta
     CALL_ENABLED_BOOLEAN_HOOKS(PlayerScript, PLAYERHOOK_CAN_ENTER_MAP, !script->OnPlayerCanEnterMap(player, entry, instance, mapDiff, loginCheck));
 }
 
-void ScriptMgr::OnResolveDungeonAccessLevels(Player const* player, uint32 mapId, uint8& minLevel, uint8& maxLevel)
+void ScriptMgr::OnResolveDungeonAccessLevels(Player const* player, uint32 mapId, Difficulty difficulty, uint8& minLevel, uint8& maxLevel)
 {
-    CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_RESOLVE_DUNGEON_ACCESS_LEVELS, script->OnResolveDungeonAccessLevels(player, mapId, minLevel, maxLevel));
+    CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_RESOLVE_DUNGEON_ACCESS_LEVELS, script->OnResolveDungeonAccessLevels(player, mapId, difficulty, minLevel, maxLevel));
 }
 
 bool ScriptMgr::OnPlayerCanInitTrade(Player* player, Player* target)
