@@ -10,16 +10,24 @@ on:
       bots_ref:
         type: string
         default: master
+      scaling_ref:
+        type: string
+        default: main
     outputs:
       core_sha:
         value: ${{ jobs.build.outputs.core_sha }}
       bots_sha:
         value: ${{ jobs.build.outputs.bots_sha }}
+      scaling_sha:
+        value: ${{ jobs.build.outputs.scaling_sha }}
   workflow_dispatch:
     inputs:
       bots_ref:
         description: mod-coa-playerbots ref (branch, tag or full SHA)
         default: master
+      scaling_ref:
+        description: mod-coa-content-scaling ref (branch, tag or full SHA)
+        default: main
   push:
     branches: [coa]
     paths-ignore: ['**.md', 'docs/**']
@@ -35,6 +43,7 @@ jobs:
     outputs:
       core_sha: ${{ steps.shas.outputs.core_sha }}
       bots_sha: ${{ steps.shas.outputs.bots_sha }}
+      scaling_sha: ${{ steps.shas.outputs.scaling_sha }}
     env:
       BOOST_ROOT: C:\local\boost_1_87_0
     steps:
@@ -151,18 +160,35 @@ jobs:
           repository: Corfirean/mod-coa-playerbots
           ref: ${{ inputs.bots_ref || 'master' }}
           path: _bots
-      - name: Place the module where the core expects it
+      - name: Fetch mod-coa-content-scaling
+        uses: actions/checkout@v7
+        with:
+          repository: Corfirean/mod-coa-content-scaling
+          ref: ${{ inputs.scaling_ref || 'main' }}
+          path: _scaling
+      - name: Place the modules where the core expects them
         id: shas
         shell: pwsh
         run: |
           "core_sha=$(git rev-parse HEAD)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "bots_sha=$(git -C _bots rev-parse HEAD)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "scaling_sha=$(git -C _scaling rev-parse HEAD)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           $dst = 'modules/mod-coa-playerbots'
           New-Item -ItemType Directory -Force -Path $dst | Out-Null
           Copy-Item -Recurse -Force '_bots/module/src' "$dst/src"
           New-Item -ItemType Directory -Force -Path "$dst/conf" | Out-Null
           Copy-Item -Force '_bots/module/conf/*' "$dst/conf/"
+          # Content Scaling is a module repository of its own; its TBC and WotLK content packs are modules of their own too
+          # (they sit in content-packs/ and must stand next to it in modules/).
+          robocopy '_scaling' 'modules\mod-coa-content-scaling' /E /XD .git artifacts docs tools /NFL /NDL /NJH /NJS /NP | Out-Null
+          if ($LASTEXITCODE -ge 8) { throw "copying mod-coa-content-scaling failed ($LASTEXITCODE)" }
+          foreach ($pack in 'mod-coa-tbc-content', 'mod-coa-wotlk-content') {
+            robocopy "_scaling\content-packs\$pack" "modules\$pack" /E /NFL /NDL /NJH /NJS /NP | Out-Null
+            if ($LASTEXITCODE -ge 8) { throw "copying $pack failed ($LASTEXITCODE)" }
+          }
+          $global:LASTEXITCODE = 0
           "bots commit: $(git -C _bots rev-parse HEAD)"
+          "scaling commit: $(git -C _scaling rev-parse HEAD)"
           "core commit: $(git rev-parse HEAD)"
       - name: MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
