@@ -577,7 +577,8 @@ void ObserveExtensionPacket(Actor& actor, WorldPacket const& packet)
     constexpr uint16 FirstExtensionOpcode = 0x520;
     constexpr std::size_t MaxPayloadsPerOpcode = 256;
     if (packet.GetOpcode() < FirstExtensionOpcode && packet.GetOpcode() != SMSG_MOVE_SET_CAN_FLY &&
-        packet.GetOpcode() != SMSG_MOVE_UNSET_CAN_FLY)
+        packet.GetOpcode() != SMSG_MOVE_UNSET_CAN_FLY && packet.GetOpcode() != SMSG_CONVERT_RUNE &&
+        packet.GetOpcode() != SMSG_ADD_RUNE_POWER)
         return;
 
     ++actor.extensionPackets[packet.GetOpcode()];
@@ -3339,6 +3340,12 @@ private:
                         SPELL_SCHOOL_MASK_NORMAL);
                     Require(!creatures.front()->IsAlive(),
                         "Killing blow did not kill, health left " + std::to_string(creatures.front()->GetHealth()));
+                }
+                else if (auto damagePct = step.get_optional<int32>("damage_pct"))
+                {
+                    Require(*damagePct > 0 && *damagePct < 100, "Damage share outside (0, 100)");
+                    Unit::DealDamage(player, creatures.front(), creatures.front()->CountPctFromMaxHealth(*damagePct),
+                        nullptr, DIRECT_DAMAGE, SPELL_SCHOOL_MASK_NORMAL);
                 }
                 else
                     player->GetSession()->HandleAttackSwingOpcode(packet);
