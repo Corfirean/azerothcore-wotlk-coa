@@ -2429,6 +2429,50 @@ public:
             _events.ScheduleEvent(EVENT_MOVE_TO_SIPHON_POS, 0ms);
         }
 
+        void SafeReleasePassenger()
+        {
+            if (didbelow50pct || dropped)
+                return;
+
+            dropped = true;
+            _events.Reset();
+            me->GetMotionMaster()->Clear();
+            me->StopMovingOnCurrentPos();
+
+            Player* passenger = nullptr;
+            if (Vehicle* vehicle = me->GetVehicleKit())
+                if (Unit* unit = vehicle->GetPassenger(0))
+                    passenger = unit->ToPlayer();
+
+            if (passenger)
+            {
+                // Inset towards CenterPosition from cliff/dest point to ensure safe landing on platform
+                constexpr float SAFE_INSET_DISTANCE = 12.0f;
+                float const angle = _destPoint.GetAngle(&CenterPosition);
+                float const safeX = _destPoint.GetPositionX() + std::cos(angle) * SAFE_INSET_DISTANCE;
+                float const safeY = _destPoint.GetPositionY() + std::sin(angle) * SAFE_INSET_DISTANCE;
+                float safeZ = CenterPosition.GetPositionZ();
+                if (Map* map = me->GetMap())
+                {
+                    float const groundZ = map->GetHeight(safeX, safeY, safeZ + 5.0f, true);
+                    if (std::isfinite(groundZ) && groundZ > 830.0f && groundZ < 850.0f)
+                        safeZ = groundZ;
+                }
+
+                me->CastSpell((Unit*)nullptr, SPELL_EJECT_ALL_PASSENGERS, false);
+                passenger->NearTeleportTo(safeX, safeY, safeZ, passenger->GetOrientation());
+            }
+            else
+            {
+                me->CastSpell((Unit*)nullptr, SPELL_EJECT_ALL_PASSENGERS, false);
+            }
+
+            if (IsHeroic())
+                GoSiphon();
+            else
+                me->DespawnOrUnsummon(1s);
+        }
+
         void OnCharmed(bool  /*apply*/) override {}
 
         void PassengerBoarded(Unit* pass, int8  /*seat*/, bool apply) override
@@ -2525,15 +2569,7 @@ public:
                         uint32 const safeReleaseMs = _instance ? _instance->ResolveEncounterMechanic(DATA_THE_LICH_KING, 2 /*TIMER_MS*/, 9 /*TIMER_MS*/, 0) : 0;
                         if (safeReleaseMs > 0)
                         {
-                            dropped = true;
-                            _events.Reset();
-                            me->GetMotionMaster()->Clear();
-                            me->StopMovingOnCurrentPos();
-                            me->CastSpell((Unit*)nullptr, SPELL_EJECT_ALL_PASSENGERS, false);
-                            if (IsHeroic())
-                                GoSiphon();
-                            else
-                                me->DespawnOrUnsummon(1s);
+                            SafeReleasePassenger();
                             break;
                         }
 
@@ -2627,18 +2663,7 @@ public:
                     }
                     break;
                 case EVENT_SOLO_SAFE_RELEASE:
-                    if (!didbelow50pct && !dropped)
-                    {
-                        dropped = true;
-                        _events.Reset();
-                        me->GetMotionMaster()->Clear();
-                        me->StopMovingOnCurrentPos();
-                        me->CastSpell((Unit*)nullptr, SPELL_EJECT_ALL_PASSENGERS, false);
-                        if (IsHeroic())
-                            GoSiphon();
-                        else
-                            me->DespawnOrUnsummon(1s);
-                    }
+                    SafeReleasePassenger();
                     break;
                 default:
                     break;
