@@ -197,6 +197,39 @@ void Quest::LoadQuestTemplateAddon(Field* fields)
     }
 }
 
+uint32 Quest::RoundQuestXP(uint32 rawXp)
+{
+    if (rawXp <= 100)
+    {
+        return 5 * ((rawXp + 2) / 5);
+    }
+    if (rawXp <= 500)
+    {
+        return 10 * ((rawXp + 5) / 10);
+    }
+    if (rawXp <= 1000)
+    {
+        return 25 * ((rawXp + 12) / 25);
+    }
+    return 50 * ((rawXp + 25) / 50);
+}
+
+uint32 Quest::CalculateQuestXP(uint32 baseExp, int32 questLevel, uint8 playerLevel)
+{
+    int32 diffFactor = 2 * (questLevel - playerLevel) + 20;
+    if (diffFactor < 1)
+    {
+        diffFactor = 1;
+    }
+    else if (diffFactor > 10)
+    {
+        diffFactor = 10;
+    }
+
+    uint32 const rawXp = diffFactor * baseExp / 10;
+    return RoundQuestXP(rawXp);
+}
+
 uint32 Quest::XPValue(uint8 playerLevel, bool levelScaling) const
 {
     int32 const baseLevel = LocalLevelScaling::GetEffectiveQuestBaseLevel(this);
@@ -208,33 +241,7 @@ uint32 Quest::XPValue(uint8 playerLevel, bool levelScaling) const
         return 0;
     }
 
-    int32 diffFactor = 2 * (quest_level - playerLevel) + 20;
-    if (diffFactor < 1)
-    {
-        diffFactor = 1;
-    }
-    else if (diffFactor > 10)
-    {
-        diffFactor = 10;
-    }
-
-    uint32 xp = diffFactor * xpentry->Exp[RewardXPDifficulty] / 10;
-    if (xp <= 100)
-    {
-        xp = 5 * ((xp + 2) / 5);
-    }
-    else if (xp <= 500)
-    {
-        xp = 10 * ((xp + 5) / 10);
-    }
-    else if (xp <= 1000)
-    {
-        xp = 25 * ((xp + 12) / 25);
-    }
-    else
-    {
-        xp = 50 * ((xp + 25) / 50);
-    }
+    uint32 xp = CalculateQuestXP(xpentry->Exp[RewardXPDifficulty], quest_level, playerLevel);
 
     // Optional discount on experience, off by default: levelling through content far below the
     // character is what the scaling system exists to allow. See QuestXpKeepSharePercent.

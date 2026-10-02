@@ -220,6 +220,11 @@ public:
     /// it is only consulted while the realm-wide quest scaling is on.
     [[nodiscard]] uint32 XPValue(uint8 playerLevel = 0, bool levelScaling = true) const;
 
+    /// Calculates scaled and rounded quest XP from DBC baseExp, questLevel, and playerLevel.
+    /// Pure reusable helper that clamps diffFactor to 10 and applies standard Blizzard rounding.
+    static uint32 CalculateQuestXP(uint32 baseExp, int32 questLevel, uint8 playerLevel);
+    static uint32 RoundQuestXP(uint32 rawXp);
+
     [[nodiscard]] bool HasFlag(uint32 flag) const { return (Flags & flag) != 0; }
     void SetFlag(uint32 flag) { Flags |= flag; }
 
