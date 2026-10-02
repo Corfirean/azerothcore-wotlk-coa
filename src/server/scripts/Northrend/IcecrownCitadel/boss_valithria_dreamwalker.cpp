@@ -763,8 +763,7 @@ public:
                     if (Creature* valithria = ObjectAccessor::GetCreature(*me, _instance->GetGuidData(DATA_VALITHRIA_DREAMWALKER)))
                     {
                         uint32 heal = (valithria->GetMaxHealth() * healPct) / 100;
-                        valithria->ModifyHealth(heal);
-                        valithria->AI()->HealReceived(me, heal);
+                        Unit::DealHeal(me, valithria, heal);
                     }
                 }
             }
@@ -989,8 +988,7 @@ public:
                     if (Creature* valithria = ObjectAccessor::GetCreature(*me, _instance->GetGuidData(DATA_VALITHRIA_DREAMWALKER)))
                     {
                         uint32 heal = (valithria->GetMaxHealth() * healPct) / 100;
-                        valithria->ModifyHealth(heal);
-                        valithria->AI()->HealReceived(me, heal);
+                        Unit::DealHeal(me, valithria, heal);
                     }
                 }
             }

@@ -266,6 +266,7 @@ enum Events
     EVENT_MOVE_TO_DROP_POS,
     EVENT_MOVE_TO_SIPHON_POS,
     EVENT_LIFE_SIPHON,
+    EVENT_SOLO_SAFE_RELEASE,
 
     // Strangulate Vehicle (Harvest Soul)
     EVENT_TELEPORT,
@@ -2494,6 +2495,10 @@ public:
                                         _destPoint.Relocate(triggers.front());
                                         _events.Reset();
                                         _events.ScheduleEvent(EVENT_MOVE_TO_DROP_POS, 1s);
+
+                                        uint32 const safeReleaseMs = _instance ? _instance->ResolveEncounterMechanic(DATA_THE_LICH_KING, 2 /*TIMER_MS*/, 9 /*TIMER_MS*/, 0) : 0;
+                                        if (safeReleaseMs > 0)
+                                            _events.ScheduleEvent(EVENT_SOLO_SAFE_RELEASE, Milliseconds(safeReleaseMs));
                                     }
                                 }
                         if (!valid)
@@ -2601,6 +2606,20 @@ public:
                         if (target)
                             me->CastSpell(target, SPELL_LIFE_SIPHON, false);
                         _events.ScheduleEvent(EVENT_LIFE_SIPHON, 2500ms);
+                    }
+                    break;
+                case EVENT_SOLO_SAFE_RELEASE:
+                    if (!didbelow50pct && !dropped)
+                    {
+                        dropped = true;
+                        _events.Reset();
+                        me->GetMotionMaster()->Clear();
+                        me->StopMovingOnCurrentPos();
+                        me->CastSpell((Unit*)nullptr, SPELL_EJECT_ALL_PASSENGERS, false);
+                        if (IsHeroic())
+                            GoSiphon();
+                        else
+                            me->DespawnOrUnsummon(1s);
                     }
                     break;
                 default:

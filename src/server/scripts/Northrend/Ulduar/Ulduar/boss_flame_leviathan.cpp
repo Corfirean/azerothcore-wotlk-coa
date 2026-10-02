@@ -390,7 +390,13 @@ struct boss_flame_leviathan : public BossAI
                 events.RescheduleEvent(EVENT_PURSUE, 31s);
                 return;
             case EVENT_SPEED:
-                me->CastSpell(me, SPELL_GATHERING_SPEED, false);
+                {
+                    uint32 const authoredCap = 20;
+                    uint32 const maxSpeedStacks = instance ? instance->ResolveEncounterMechanic(BOSS_LEVIATHAN, 2 /*STACK_THRESHOLD*/, 7 /*STACK_THRESHOLD*/, authoredCap) : authoredCap;
+                    Aura const* speedAura = me->GetAura(SPELL_GATHERING_SPEED);
+                    if (!speedAura || speedAura->GetStackAmount() < maxSpeedStacks)
+                        me->CastSpell(me, SPELL_GATHERING_SPEED, false);
+                }
                 events.Repeat(15s);
                 return;
             case EVENT_MISSILE:
