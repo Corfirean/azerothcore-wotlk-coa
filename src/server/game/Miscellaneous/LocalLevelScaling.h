@@ -20,6 +20,8 @@ class Unit;
 
 namespace LocalLevelScaling
 {
+inline std::atomic<std::uint8_t> FlightUnlockLevel{60};
+
 using QuestBaseLevelResolver = std::int32_t (*)(Quest const*);
 inline std::atomic<QuestBaseLevelResolver> QuestBaseLevelOwner{nullptr};
 
