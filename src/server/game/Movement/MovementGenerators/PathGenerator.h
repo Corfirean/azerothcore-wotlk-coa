@@ -108,6 +108,7 @@ class PathGenerator
         [[nodiscard]] Movement::PointsArray const& GetPath() const { return _pathPoints; }
 
         [[nodiscard]] PathType GetPathType() const { return _type; }
+        [[nodiscard]] bool IsBot() const { return _isBot; }
 
         // shortens the path until the destination is the specified distance from the target point
         void ShortenPathUntilDist(G3D::Vector3 const& point, float dist);
@@ -157,6 +158,7 @@ class PathGenerator
         bool _slopeCheck;       // when set, it skips paths with too high slopes (doesn't work with _useStraightPath)
         uint32 _pointPathLimit; // limit point path size; min(this, MAX_POINT_PATH_LENGTH)
         bool _useRaycast;       // use raycast if true for a straight line path
+        bool _isBot;            // true if source is a socketless bot player
 
         G3D::Vector3 _startPosition;        // {x, y, z} of current location
         G3D::Vector3 _endPosition;          // {x, y, z} of the destination

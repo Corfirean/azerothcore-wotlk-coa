@@ -23,10 +23,7 @@
 #include "MMapMgr.h"
 #include "Map.h"
 #include "Metric.h"
-#ifdef MOD_PLAYERBOTS
 #include "Player.h"
-#include "WorldSession.h"
-#endif
 
 // Blades Edge Arena Ropes normalization
 namespace
@@ -130,10 +127,16 @@ namespace
 PathGenerator::PathGenerator(WorldObject const* owner) :
     _polyLength(0), _type(PATHFIND_BLANK), _useStraightPath(false), _forceDestination(false),
     _slopeCheck(false), _pointPathLimit(MAX_POINT_PATH_LENGTH), _useRaycast(false),
-    _endPosition(G3D::Vector3::zero()), _source(owner), _navMesh(nullptr),
+    _isBot(false), _endPosition(G3D::Vector3::zero()), _source(owner), _navMesh(nullptr),
     _navMeshQuery(nullptr)
 {
     memset(_pathPolyRefs, 0, sizeof(_pathPolyRefs));
+
+    if (_source)
+    {
+        Player const* player = _source->ToPlayer();
+        _isBot = player && player->IsBot();
+    }
 
     //if (sDisableMgr->IsPathfindingEnabled(_sourceUnit->FindMap()))
     {
@@ -177,6 +180,21 @@ bool PathGenerator::CalculatePath(float x, float y, float z, float destX, float 
     if (!_navMesh || !_navMeshQuery || (_sourceUnit && _sourceUnit->HasUnitState(UNIT_STATE_IGNORE_PATHFINDING)) ||
         !HaveTile(start) || !HaveTile(dest))
     {
+        if (_isBot)
+        {
+            Player const* player = _source->ToPlayer();
+            if (player && player->CanFly())
+            {
+                BuildShortcut();
+                _type = PathType(PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH);
+                return true;
+            }
+
+            Clear();
+            _type = PATHFIND_NOPATH;
+            return false;
+        }
+
         BuildShortcut();
         _type = PathType(PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH);
         return true;
@@ -185,6 +203,17 @@ bool PathGenerator::CalculatePath(float x, float y, float z, float destX, float 
     UpdateFilter();
 
     BuildPolyPath(start, dest);
+
+    if (_isBot && (_type & (PATHFIND_NOPATH | PATHFIND_NOT_USING_PATH)))
+    {
+        Player const* player = _source->ToPlayer();
+        if (!player || !player->CanFly())
+        {
+            _pathPoints.clear();
+            return false;
+        }
+    }
+
     return true;
 }
 
@@ -272,12 +301,30 @@ void PathGenerator::BuildPolyPath(G3D::Vector3 const& startPos, G3D::Vector3 con
     _type = PathType(PATHFIND_NORMAL);
 
     Creature const* creature = _source->ToCreature();
+    Player const* player = _source->ToPlayer();
 
     // we have a hole in our mesh
     // make shortcut path and mark it as NOPATH ( with flying and swimming exception )
     // its up to caller how he will use this info
     if (startPoly == INVALID_POLYREF || endPoly == INVALID_POLYREF)
     {
+        if (_isBot)
+        {
+            bool canFly = player && player->CanFly();
+            bool canSwim = player && player->CanSwim();
+            bool waterPath = IsWaterPath(_pathPoints);
+            if (canFly || (waterPath && canSwim))
+            {
+                BuildShortcut();
+                _type = PathType(PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH);
+                return;
+            }
+
+            Clear();
+            _type = PATHFIND_NOPATH;
+            return;
+        }
+
         BuildShortcut();
 
         bool canSwim = creature ? creature->CanSwim() : true;
@@ -320,7 +367,25 @@ void PathGenerator::BuildPolyPath(G3D::Vector3 const& startPos, G3D::Vector3 con
         bool waterPath = startUnderWaterEndInWater || startInWaterEndUnderWater;
         Unit const* _sourceUnit = _source->ToUnit();
 
-        if (_sourceUnit)
+        if (_isBot)
+        {
+            bool canFly = player && player->CanFly();
+            bool canSwim = player && player->CanSwim();
+            bool isWater = (canSwim && waterPath);
+
+            if (isWater || canFly || (player && player->IsFalling() && endPos.z < startPos.z))
+            {
+                buildShortcut = true;
+            }
+
+            if (!buildShortcut && startFarFromPoly)
+            {
+                Clear();
+                _type = PATHFIND_NOPATH;
+                return;
+            }
+        }
+        else if (_sourceUnit)
         {
             bool isWater = (_sourceUnit->CanSwim() && waterPath);
 
@@ -682,12 +747,26 @@ void PathGenerator::BuildPointPath(float const* startPoint, float const* endPoin
         // only happens if pass bad data to findStraightPath or navmesh is broken
         // single point paths can be generated here
         /// @todo check the exact cases
+        if (_isBot)
+        {
+            Clear();
+            _type = PATHFIND_NOPATH;
+            return;
+        }
+
         BuildShortcut();
         _type = PathType(_type | PATHFIND_NOPATH);
         return;
     }
     else if (pointCount >= _pointPathLimit)
     {
+        if (_isBot)
+        {
+            Clear();
+            _type = PATHFIND_NOPATH;
+            return;
+        }
+
         BuildShortcut();
         _type = PathType(_type | PATHFIND_SHORT);
         return;
@@ -706,19 +785,37 @@ void PathGenerator::BuildPointPath(float const* startPoint, float const* endPoin
     if (_forceDestination &&
         (!(_type & PATHFIND_NORMAL) || !InRange(GetEndPosition(), GetActualEndPosition(), 1.0f, 1.0f)))
     {
-        // we may want to keep partial subpath
-        if (Dist3DSqr(GetActualEndPosition(), GetEndPosition()) < 0.3f * Dist3DSqr(GetStartPosition(), GetEndPosition()))
+        if (_isBot)
         {
-            SetActualEndPosition(GetEndPosition());
-            _pathPoints[_pathPoints.size() - 1] = GetEndPosition();
+            // Strict bot navigation policy: never force a straight-line segment through geometry!
+            // If the path reached a valid navmesh end position, keep it as partial progress (INCOMPLETE)
+            // so the bot stops at ActualEndPosition on the navmesh instead of clipping through walls.
+            if ((_type & PATHFIND_NORMAL) && !_pathPoints.empty())
+            {
+                _type = PathType((_type & ~PATHFIND_NORMAL) | PATHFIND_INCOMPLETE);
+            }
+            else
+            {
+                Clear();
+                _type = PATHFIND_NOPATH;
+            }
         }
         else
         {
-            SetActualEndPosition(GetEndPosition());
-            BuildShortcut();
-        }
+            // we may want to keep partial subpath
+            if (Dist3DSqr(GetActualEndPosition(), GetEndPosition()) < 0.3f * Dist3DSqr(GetStartPosition(), GetEndPosition()))
+            {
+                SetActualEndPosition(GetEndPosition());
+                _pathPoints[_pathPoints.size() - 1] = GetEndPosition();
+            }
+            else
+            {
+                SetActualEndPosition(GetEndPosition());
+                BuildShortcut();
+            }
 
-        _type = PathType(PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH);
+            _type = PathType(PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH);
+        }
     }
 }
 

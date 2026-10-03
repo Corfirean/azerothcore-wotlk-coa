@@ -41,6 +41,7 @@
 #include "Common.h"
 #include "ConditionMgr.h"
 #include "Config.h"
+#include "Creature.h"
 #include "CreatureAI.h"
 #include "DatabaseEnv.h"
 #include "DisableMgr.h"
@@ -61,6 +62,7 @@
 #include "LocalLevelScaling.h"
 #include "Log.h"
 #include "LootItemStorage.h"
+#include "LootMgr.h"
 #include "MapMgr.h"
 #include "MiscPackets.h"
 #include "ObjectAccessor.h"
@@ -17396,4 +17398,9 @@ std::string Player::GetDebugInfo() const
 void Player::SendSystemMessage(std::string_view msg, bool escapeCharacters)
 {
     ChatHandler(GetSession()).SendSysMessage(msg, escapeCharacters);
+}
+
+bool Player::IsBot() const
+{
+    return m_session && m_session->IsBot();
 }

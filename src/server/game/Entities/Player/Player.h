@@ -2066,6 +2066,7 @@ public:
     void RemovedInsignia(Player* looterPlr);
 
     [[nodiscard]] WorldSession* GetSession() const { return m_session; }
+    [[nodiscard]] bool IsBot() const;
     void SetSession(WorldSession* sess) { m_session = sess; }
 
     void BuildCreateUpdateBlockForPlayer(UpdateData* data, Player* target) override;

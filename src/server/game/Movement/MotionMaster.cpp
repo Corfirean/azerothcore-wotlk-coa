@@ -491,8 +491,13 @@ void MotionMaster::MovePoint(uint32 id, float x, float y, float z, ForcedMovemen
 
     if (_owner->IsPlayer())
     {
+        bool forceDest = forceDestination;
+        Player const* player = _owner->ToPlayer();
+        if (player && player->IsBot() && id != EVENT_CHARGE && id != EVENT_CHARGE_PREPATH)
+            forceDest = false;
+
         LOG_DEBUG("movement.motionmaster", "Player ({}) targeted point (Id: {} X: {} Y: {} Z: {})", _owner->GetGUID().ToString(), id, x, y, z);
-        Mutate(new PointMovementGenerator<Player>(id, x, y, z, forcedMovement, speed, orientation, nullptr, generatePath, forceDestination, animTier), slot);
+        Mutate(new PointMovementGenerator<Player>(id, x, y, z, forcedMovement, speed, orientation, nullptr, generatePath, forceDest, animTier), slot);
     }
     else
     {
@@ -988,8 +993,13 @@ void MotionMaster::MovePointBackwards(uint32 id, float x, float y, float z, bool
 
     if (_owner->IsPlayer())
     {
+        bool forceDest = forceDestination;
+        Player const* player = _owner->ToPlayer();
+        if (player && player->IsBot() && id != EVENT_CHARGE && id != EVENT_CHARGE_PREPATH)
+            forceDest = false;
+
         LOG_DEBUG("movement.motionmaster", "Player ({}) targeted point (Id: {} X: {} Y: {} Z: {})", _owner->GetGUID().ToString(), id, x, y, z);
-        Mutate(new PointMovementGenerator<Player>(id, x, y, z, FORCED_MOVEMENT_NONE, 0.0f, orientation, nullptr, generatePath, forceDestination, std::nullopt, ObjectGuid::Empty, true), slot);
+        Mutate(new PointMovementGenerator<Player>(id, x, y, z, FORCED_MOVEMENT_NONE, 0.0f, orientation, nullptr, generatePath, forceDest, std::nullopt, ObjectGuid::Empty, true), slot);
     }
     else
     {
