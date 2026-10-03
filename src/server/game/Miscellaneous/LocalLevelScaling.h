@@ -30,10 +30,10 @@ inline std::atomic<QuestMinLevelResolver> QuestMinLevelOwner{nullptr};
 
 std::uint32_t GetEffectiveQuestMinLevel(Quest const* quest);
 
-using QuestMoneyMaxLevelResolver = std::uint32_t (*)(Quest const*, uint32 /*defaultRewardMoney*/);
+using QuestMoneyMaxLevelResolver = std::uint32_t (*)(Quest const*, std::uint32_t /*defaultRewardMoney*/);
 inline std::atomic<QuestMoneyMaxLevelResolver> QuestMoneyMaxLevelOwner{nullptr};
 
-std::uint32_t GetEffectiveQuestMoneyMaxLevel(Quest const* quest, uint32 defaultRewardMoney);
+std::uint32_t GetEffectiveQuestMoneyMaxLevel(Quest const* quest, std::uint32_t defaultRewardMoney);
 
 using KillContentLevelResolver = std::uint8_t (*)(Player const*, Unit const*, std::uint8_t /*defaultContentLevel*/);
 inline std::atomic<KillContentLevelResolver> KillContentLevelOwner{nullptr};
