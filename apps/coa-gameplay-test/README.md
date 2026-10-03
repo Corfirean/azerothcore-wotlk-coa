@@ -127,6 +127,8 @@ For behavior, choose the existing scenario that observes the changed mechanic an
 - **Cleanup:** `primalist-protectors-hand` verifies armor returns after removing all sources;
   `primalist-sharpened-claws` covers expiry and unlearning. Runner/cache tests separately cover database ownership,
   collisions, leases, failed audits and unstopped processes; infrastructure cleanup is part of combined verification.
+- **Damage-based healing:** `reaper-siphon-anima` confirms a Reaper hit on a separate target and checks the
+  resulting health gain against the five-percent Siphon Anima aura.
 - **Chance-limited procs:** `reaper-beyond-death-reliquary` counts the ordinary Soul Bolts and the additional
   helper casts and damage hits across 90 trials. Its 8% chance still leaves about a 0.055% chance of no proc.
 
@@ -422,6 +424,10 @@ assert stable maximums and final levels when testing damage coefficients.
 | `group` | `actor`, `target`, optional `loot_method` (0-4): fixture party; creates the actor's group if needed, adds an ungrouped player and sets the loot method. |
 | `lfg_dungeon` | `actor`, LFGDungeons.dbc `dungeon`: fixture Dungeon Finder group; converts the actor's ordinary group to an LFG group assigned to that dungeon, as a completed proposal does. |
 | `lfg_teleport` | Player `actor`, optional boolean `out` (default false): native `CMSG_LFG_TELEPORT` request into or out of the group's dungeon. |
+| `lfg_join` | Player `actor`, LFGDungeons.dbc `dungeons` list, `roles` mask (1 leader, 2 tank, 4 healer, 8 damage): native `CMSG_LFG_JOIN` queue request, as the Dungeon Finder button sends it. A group leader starts the role check. |
+| `lfg_set_roles` | Player `actor` in a group, `roles` mask: native `CMSG_LFG_SET_ROLES` answer to the group role check. |
+| `lfg_accept` | Player `actor`: native `CMSG_LFG_PROPOSAL_RESULT` acceptance of the last Dungeon Finder proposal the actor received. |
+| `lfg_final_credit` | Player `actor` in a Dungeon Finder dungeon: credits the final encounter of the group's assigned dungeon, as `encounter_credit` does for that boss, when the proposal chose the dungeon. |
 | `encounter_credit` | Player `actor` in a dungeon, creature `entry`: credits that dungeon boss kill to the actor's map through the native encounter update, as a boss death does, including the Dungeon Finder completion it triggers. |
 | `leave_group` | Player `actor`: native `CMSG_GROUP_DISBAND` leave request; fails if the player stays grouped. |
 | `die` | Player `actor`: fixture death through self damage equal to current health; the body stays unreleased. |
@@ -476,9 +482,10 @@ Metrics: `health`, `max_health`, `creature_type`, `power`, `max_power`, `alive`,
 `cooldown_ms`, `item_count`, `carried_item_count`, `bank_bag_slots`, `aura`, `aura_stacks`, `aura_charges`,
 `aura_duration_ms`, `aura_amount`, `pet_entry`, `pet_aura_stacks`, `owned_creature_count`,
 `charm_entry`, `charm_aura_stacks`, `controls_self`, `private_instance`, `dynamic_object`,
-`dynamic_object_duration_ms`, `distance`, `spell_proc_count`, `spell_cast_count`, `temporary_spell_replacement`,
+`dynamic_object_duration_ms`, `distance`, `spell_proc_count`, `spell_proc_chance`, `aura_proc_rate`,
+`spell_cast_count`, `temporary_spell_replacement`,
 `bank_shows`, `system_messages`, `cast_failure`, `pet_is_banker`, `pet_display`, `pet_scale`,
-`pet_knows_spell`.
+`pet_knows_spell`, `pet_distance`.
 `free_inventory_slots` is how many bag slots the player could still fill, so `fill_bags` plus
 `free_inventory_slots` `equals: 0` is how a scenario states "the bags are full". `mail_count` is the
 number of mails the player holds and `mail_item_count` the items inside them, which is how a reward
@@ -589,6 +596,14 @@ that the false-failure probability is acceptable, and assert a `min` on the coun
 `spell_cast_count` requires `spell` and counts the casts of that exact spell the actor completed since the scenario
 started, triggered casts included. Use it where a script casts the effect directly, so no aura is named as the trigger
 and `spell_proc_count` reads zero.
+`spell_proc_chance` requires `spell` and reads the loaded `spell_proc` Chance, after a zero is replaced by the DBC
+ProcChance. `aura_proc_rate` requires `spell` (an aura on the actor), `target` and `type_mask` (proc flags), and runs
+the aura's full proc decision, database filters, conditions, script CheckProc and the native chance roll, `trials`
+times (default 40000) on one synthetic event. It reports the percentage that would proc, without running the proc.
+The event deals 1000 damage, or 1000 effective healing with `heal`, from the actor to `target`, or from `target` to
+the actor with `incoming`. `trigger_spell` names the event's spell; `hit_mask` (default 1, normal),
+`spell_type_mask` (default damage, or heal) and `phase_mask` (default 2, hit) set the remaining event masks. Assert
+a window around the expected chance; 40000 trials put six standard deviations inside 1.5 points.
 Spell queries require `spell` and submit nothing: `spell_modifier` applies the player's native spell modifiers for
 `op` (`SpellModOp`) to the number `base`; `spell_effect_value` (optional `effect`) returns the effect's value as the
 player would cast it, including module base-value hooks; `spell_cast_time_ms`, `spell_max_range` and
@@ -631,6 +646,13 @@ creature's remaining death-time respawn timer in seconds; summoned fixtures stil
 as fixture setup. `reward_quest` takes the same fields and optional zero-based `choice` (default 0); it checks normal
 reward eligibility and invokes native reward delivery. These actions do not test quest-giver interaction or objectives.
 `restore_quest_spells` takes `actor` and invokes the native restoration of spells from rewarded quests.
+`action_button_packed` takes `button` and reads the complete action word, including its type.
+`server_packet_u32` takes `opcode` and optional zero-based `index`, and decodes a word from the last
+packet payload. It returns -1 when no such word was sent. These observe server state and packet contents.
+
+`relog` takes `actor`, commits the character through the native save path, logs it out, and reloads it
+through the native character-login handler. It preserves saved character state and the scenario phase.
+
 `login_hooks` takes `actor` and replays registered player-login hooks on the current character; it does not reconnect
 or reload the character from the database. Use it to exercise a repair against deliberately seeded fixture state.
 Hooks read character rows synchronously, so the step first waits for a marker query queued behind every character
@@ -645,7 +667,7 @@ client draws.
 `bank_bag_slots` measures the player's unlocked standard bank bag slots (0..7).
 `pet_entry` measures the player's current guardian pet entry, or the entry of the companion it summoned
 (a minipet, which never occupies the guardian slot), or zero if absent; `pet_display`, `pet_scale`
-and `pet_is_banker` read the same unit.
+and `pet_is_banker` read the same unit, and `pet_distance` is its 2D distance from the player in yards.
 `pet_knows_spell` requires `spell` and is 1 when that unit is a pet whose spellbook holds it.
 `bank_shows` counts the native bank windows the actor's session has been sent, which is what a
 banker click is answered with. `system_messages` counts the chat lines the session has been sent.
@@ -723,6 +745,10 @@ returns 1 when the `disables` table locks that dungeon's map and difficulty out 
 last creature query response delivered to that session, or -1 before one arrives.
 `quest_level` and `quest_xp` take a player `actor` and `quest`
 and query the native quest level and XP calculations without awarding a reward.
+`quest_log_sent_level` and `quest_log_sent_xp` take the same arguments and return the last level or reward XP
+sent for that quest's log slot in `SMSG_UPDATE_OBJECT_ADDON` (fields 61 and 36 + slot), or -1 before one arrives.
+`quest_query_scaled` takes the same arguments and returns 1 when the last quest query response for that quest
+carried the client's scaled-quest flag `0x01000000`, 0 when it did not, or -1 before one arrives.
 
 ## Evidence boundaries
 
