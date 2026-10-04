@@ -16,6 +16,7 @@
  */
 
 #include "Player.h"
+#include "AscensionSpellCopy.h"
 #include "AscensionIncarnation.h"
 #include "AccountMgr.h"
 #include "AchievementMgr.h"
@@ -4264,19 +4265,28 @@ void Player::DestroyForPlayer(Player* target, bool onDeath) const
 bool Player::HasSpell(uint32 spell) const
 {
     PlayerSpellMap::const_iterator itr = m_spells.find(spell);
-    return (itr != m_spells.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->IsInSpec(m_activeSpec));
+    if (itr != m_spells.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->IsInSpec(m_activeSpec))
+        return true;
+    uint32 copy = GetAscensionSpellCopy(spell); // Bronzebeard copy (vanilla classes)
+    return copy && HasSpell(copy);
 }
 
 bool Player::HasTalent(uint32 spell, uint8 spec) const
 {
     PlayerTalentMap::const_iterator itr = m_talents.find(spell);
-    return (itr != m_talents.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->IsInSpec(spec));
+    if (itr != m_talents.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->IsInSpec(spec))
+        return true;
+    uint32 copy = GetAscensionSpellCopy(spell); // Bronzebeard copy (vanilla classes)
+    return copy && HasTalent(copy, spec);
 }
 
 bool Player::HasActiveSpell(uint32 spell) const
 {
     PlayerSpellMap::const_iterator itr = m_spells.find(spell);
-    return (itr != m_spells.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->Active && itr->second->IsInSpec(m_activeSpec));
+    if (itr != m_spells.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->Active && itr->second->IsInSpec(m_activeSpec))
+        return true;
+    uint32 copy = GetAscensionSpellCopy(spell); // Bronzebeard copy (vanilla classes)
+    return copy && HasActiveSpell(copy);
 }
 
 /**
