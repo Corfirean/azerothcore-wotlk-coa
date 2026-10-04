@@ -4935,7 +4935,13 @@ public:
     // AscensionIncarnation: Wardrobe categories that dress a shapeshift form or a pet.
     static bool IsIncarnationCategory(uint32 category)
     {
-        return (category >= 17 && category <= 31) || (category >= 65 && category <= 68);
+        return (category >= 17 && category <= 31) || IsClassPetCategory(category) || (category >= 65 && category <= 68);
+    }
+
+    // Call Pet / Summon Demon / Raise Undead / Call Dragonkin / Raise Elemental: the look is a creature.
+    static bool IsClassPetCategory(uint32 category)
+    {
+        return category >= 33 && category <= 37;
     }
 
     uint32 GetIncarnationDisplay(Player const* player, uint32 category)
@@ -4946,8 +4952,17 @@ public:
         if (!state)
             return 0;
         uint32 const appearanceId = state->ActiveAppearances[category];
+        if (!appearanceId)
+            return 0;
         auto const itr = _incarnationDisplays.find(appearanceId);
-        return appearanceId && itr != _incarnationDisplays.end() ? itr->second : 0;
+        if (itr != _incarnationDisplays.end())
+            return itr->second;
+        auto const creature = _incarnationCreatures.find(appearanceId);
+        if (creature != _incarnationCreatures.end())
+            if (CreatureTemplate const* creatureTemplate = sObjectMgr->GetCreatureTemplate(creature->second))
+                if (CreatureModel const* model = creatureTemplate->GetFirstValidModel())
+                    return model->CreatureDisplayID;
+        return 0;
     }
 
     static bool IsCosmeticCategory(uint32 category)
@@ -5001,6 +5016,7 @@ public:
   bool LoadClientData() {
     _appearances.clear();
     _incarnationDisplays.clear();
+    _incarnationCreatures.clear();
     _itemAppearances.clear();
     _itemSetItems.clear();
     _vanityItems.clear();
@@ -5020,7 +5036,9 @@ public:
 
       uint32 displayId = record.GetUInt32(3);
       // AscensionIncarnation: creature-type incarnations carry their model in field 8.
-      if (IsIncarnationCategory(record.GetUInt32(5)) &&
+      if (IsClassPetCategory(record.GetUInt32(5)))
+        _incarnationCreatures[appearanceId] = record.GetUInt32(3); // creature whose look is collected
+      else if (IsIncarnationCategory(record.GetUInt32(5)) &&
           sCreatureDisplayInfoStore.LookupEntry(record.GetUInt32(8)))
         _incarnationDisplays[appearanceId] = record.GetUInt32(8);
       _appearances[appearanceId] =
@@ -6764,6 +6782,7 @@ private:
   bool _clientDataLoaded = false;
   std::unordered_map<uint32, AppearanceInfo> _appearances;
   std::unordered_map<uint32, uint32> _incarnationDisplays; // AscensionIncarnation: appearance -> model
+  std::unordered_map<uint32, uint32> _incarnationCreatures; // class pet incarnations: appearance -> creature
   std::unordered_map<uint32, uint32> _itemAppearances;
   std::unordered_map<uint32, std::vector<uint32>> _itemSetItems;
   std::unordered_map<uint32, VanityInfo> _vanityItems;
@@ -9523,20 +9542,52 @@ static uint32 IncarnationCategoryForCreature(uint32 entry)
     }
 }
 
+// Class pet slot (Wardrobe categories 33-37) worn by a vanilla class's own pets and guardians.
+static uint32 ClassPetCategoryForCreature(Creature const* creature)
+{
+    if (Pet const* pet = creature->ToPet())
+        if (pet->getPetType() == HUNTER_PET)
+            return 33;                                   // Call Pet
+    uint32 entry = creature->GetEntry();
+    if (entry > 1100000)
+        entry -= 1100000;                                // Bronzebeard copies
+    switch (entry)
+    {
+        case 416: case 1860: case 1863: case 417: case 17252:
+        case 89: case 11859:     return 34;              // Summon Demon (warlock demons, Infernal, Doomguard)
+        case 26125: case 27829:  return 35;              // Raise Undead (ghoul, gargoyle)
+        case 510:                return 36;              // Call Dragonkin (Water Elemental)
+        case 15438: case 15352:
+        case 29264:              return 37;              // Raise Elemental (Fire/Earth Elemental, Spirit Wolf)
+        default:                 return 0;
+    }
+}
+
 void ApplyAscensionCreatureIncarnation(Creature* creature)
 {
     if (!creature || !ascensionCompatConfig.GetConfigValue<bool>(AscensionCompatConfig::ENABLED))
         return;
 
     uint32 const category = IncarnationCategoryForCreature(creature->GetEntry());
-    if (!category)
+    uint32 const classPetCategory = ClassPetCategoryForCreature(creature);
+    if (!category && !classPetCategory)
         return;
 
     Player* owner = creature->GetCharmerOrOwnerPlayerOrPlayerItself();
     if (!owner)
         return;
 
-    if (uint32 model = AscensionCollectionService::Instance().GetIncarnationDisplay(owner, category))
+    AscensionCollectionService& collection = AscensionCollectionService::Instance();
+    uint32 model = category ? collection.GetIncarnationDisplay(owner, category) : 0;
+    if (!model && classPetCategory)
+        model = collection.GetIncarnationDisplay(owner, classPetCategory);
+    Pet* pet = creature->ToPet();
+    if (pet && pet->getPetType() == HUNTER_PET)
+    {
+        creature->SetDisplayId(model ? model : creature->GetNativeDisplayId());
+        return;
+    }
+    if (model)
     {
         creature->SetNativeDisplayId(model);
         creature->SetDisplayId(model);
