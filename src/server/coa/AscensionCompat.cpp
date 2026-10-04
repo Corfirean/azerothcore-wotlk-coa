@@ -9543,9 +9543,9 @@ static uint32 IncarnationCategoryForCreature(uint32 entry)
 }
 
 // Class pet slot (Wardrobe categories 33-37) worn by a vanilla class's own pets and guardians.
-static uint32 ClassPetCategoryForCreature(Creature const* creature)
+static uint32 ClassPetCategoryForCreature(Creature* creature)
 {
-    if (Pet const* pet = creature->ToPet())
+    if (Pet* pet = creature->ToPet())
         if (pet->getPetType() == HUNTER_PET)
             return 33;                                   // Call Pet
     uint32 entry = creature->GetEntry();
