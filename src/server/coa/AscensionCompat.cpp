@@ -9501,10 +9501,13 @@ static uint32 IncarnationCategoryFor(uint32 form, uint32 spellId)
         case 520307: return 19; // Venomwing Form   -> Travel Form
         case 803212: return 20; // Sea Serpent Form -> Aquatic Form
         case 800912: return 22; // Vizier Form      -> Moonkin Form
-        case 562572: return 18; // Bloodmage Accursed Form -> Cat Form
-        case 800157:            // Bloodmage Eternal Curse (tank form) -> Metamorphosis
+        case 562572:            // Bloodmage Accursed Form -> Metamorphosis (else Cat Form, see below)
+        case 800157:            // Bloodmage Eternal Curse (tank form)
         case 804518:            // Bloodmage Eternal Curse (shapeshift)
         case 804216: return 31; // Bloodmage Inner Demon   -> Metamorphosis
+        case 800797: return 24; // Reaper Underwalk (travel form) -> Ghost Wolf
+        case 803054:            // Starcaller Celestial Form -> Moonkin Form
+        case 804287: return 22; // Starcaller Warden of the Moon
         default: break;
     }
 
@@ -9524,6 +9527,16 @@ static uint32 IncarnationCategoryFor(uint32 form, uint32 spellId)
         case 55:                 return 66; // Pyromancer Draconic Form
         case 50:                 return 67; // Necromancer Lich Form (CoA)
         default:                 return 0;
+    }
+}
+
+// Second choice when no look is chosen in the first slot: the Bloodmage forms wear Metamorphosis, else Cat Form.
+static uint32 IncarnationFallbackCategoryFor(uint32 spellId)
+{
+    switch (spellId)
+    {
+        case 562572: case 800157: case 804518: return 18;
+        default: return 0;
     }
 }
 
@@ -9619,8 +9632,13 @@ uint32 GetAscensionIncarnationDisplay(Player const* player, uint32 form, uint32 
     if (!player || !ascensionCompatConfig.GetConfigValue<bool>(AscensionCompatConfig::ENABLED))
         return 0;
 
+    AscensionCollectionService& collection = AscensionCollectionService::Instance();
     uint32 const category = IncarnationCategoryFor(form, spellId);
-    return category ? AscensionCollectionService::Instance().GetIncarnationDisplay(player, category) : 0;
+    uint32 display = category ? collection.GetIncarnationDisplay(player, category) : 0;
+    if (!display)
+        if (uint32 const fallback = IncarnationFallbackCategoryFor(spellId))
+            display = collection.GetIncarnationDisplay(player, fallback);
+    return display;
 }
 
 void RefreshAscensionIncarnationDisplay(Player* player)
