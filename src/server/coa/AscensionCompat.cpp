@@ -9530,12 +9530,14 @@ static uint32 IncarnationCategoryFor(uint32 form, uint32 spellId)
     }
 }
 
-// Second choice when no look is chosen in the first slot: the Bloodmage forms wear Metamorphosis, else Cat Form.
+// Second choice when no look is chosen in the first slot: the Bloodmage forms wear Metamorphosis, else Cat Form;
+// Reaper Underwalk wears Ghost Wolf, else Travel Form.
 static uint32 IncarnationFallbackCategoryFor(uint32 spellId)
 {
     switch (spellId)
     {
         case 562572: case 800157: case 804518: return 18;
+        case 800797:                           return 19;
         default: return 0;
     }
 }
