@@ -738,6 +738,8 @@ void AuctionHouseBot::PopulateItemCandidatesAndProportions()
 {
     // Clear old list and rebuild it
     ItemCandidatesByItemClassAndQuality.clear();
+    ActiveListMultipleItemID = 0;
+    RemainingListMultipleCount = 0;
 
     // Item include exceptions
     set<uint32> includeItemIDExecptions;
@@ -754,10 +756,29 @@ void AuctionHouseBot::PopulateItemCandidatesAndProportions()
     ItemIDsProducedByRecipes.clear();
     ItemIDsProducedByRecipes = GetItemIDsProducedByRecipes();
 
+    std::unordered_set<uint32> obtainableItems;
+    bool coaSourcesOnly = sConfigMgr->GetOption<bool>("AuctionHouseBot.CoA.ObtainableItemsOnly", true);
+    if (coaSourcesOnly)
+    {
+        obtainableItems = ItemIDsProducedByRecipes;
+        PreparedQueryResult sources = WorldDatabase.Query(
+            WorldDatabase.GetPreparedStatement(WORLD_SEL_AUCTION_BOT_ITEM_SOURCES));
+        if (sources)
+            do
+            {
+                obtainableItems.insert(sources->Fetch()[0].Get<uint32>());
+            } while (sources->NextRow());
+        else
+            LOG_ERROR("module", "AuctionHouseBot: No CoA item sources loaded; only profession items are eligible");
+    }
+
     // Fill candidate item templates
     ItemTemplateContainer const* its = sObjectMgr->GetItemTemplateStore();
     for (ItemTemplateContainer::const_iterator itr = its->begin(); itr != its->end(); ++itr)
     {
+        if (coaSourcesOnly && !obtainableItems.count(itr->second.ItemId))
+            continue;
+
         // Never store curBlock zero
         if (itr->second.ItemId == 0)
             continue;
@@ -967,6 +988,13 @@ void AuctionHouseBot::PopulateItemCandidatesAndProportions()
         // Store the item ID
         ItemCandidatesByItemClassAndQuality[itr->second.Class][itr->second.Quality].push_back(itr->second.ItemId);
     }
+
+    std::size_t candidateCount = 0;
+    for (auto const& classCandidates : ItemCandidatesByItemClassAndQuality)
+        for (auto const& qualityCandidates : classCandidates.second)
+            candidateCount += qualityCandidates.second.size();
+    LOG_INFO("module", "AuctionHouseBot: {} eligible item templates (CoA source filter: {})",
+        candidateCount, coaSourcesOnly);
 
     // Show any debugging information
     if (debug_Out)
@@ -1887,6 +1915,10 @@ void AuctionHouseBot::Update()
     AHBPlayers.reserve(AHCharacters.size());
     for (uint32 botIndex = 0; botIndex < AHCharacters.size(); ++botIndex)
     {
+        if (ObjectAccessor::FindConnectedPlayer(
+            ObjectGuid::Create<HighGuid::Player>(AHCharacters[botIndex].CharacterGUID)))
+            continue;
+
         CurrentBotCharGUID = AHCharacters[botIndex].CharacterGUID;
         std::string accountName = "AuctionHouseBot" + std::to_string(AHCharacters[botIndex].AccountID);
 
@@ -1900,6 +1932,9 @@ void AuctionHouseBot::Update()
         ObjectAccessor::AddObject(player.get());
         AHBPlayers.emplace_back(std::move(player), std::move(session));
     }
+
+    if (AHBPlayers.empty())
+        return;
 
     // Create a vector of Player* for passing to methods
     std::vector<Player*> playersPointerVector;
@@ -1936,6 +1971,8 @@ void AuctionHouseBot::Update()
 
 bool AuctionHouseBot::IsModuleEnabled()
 {
+    if (!sConfigMgr->GetOption<bool>("AuctionHouseBot.Enable", true))
+        return false;
     bool sellerEnabled = sConfigMgr->GetOption<bool>("AuctionHouseBot.EnableSeller", false);
     bool buyerEnabled = sConfigMgr->GetOption<bool>("AuctionHouseBot.Buyer.Enabled", false);
     if (sellerEnabled == false && buyerEnabled == false)
@@ -1954,8 +1991,16 @@ void AuctionHouseBot::InitializeConfiguration()
     debug_Out = sConfigMgr->GetOption<bool>("AuctionHouseBot.DEBUG", false);
     debug_Out_Filters = sConfigMgr->GetOption<bool>("AuctionHouseBot.DEBUG_FILTERS", false);
 
-    SellingBotEnabled = sConfigMgr->GetOption<bool>("AuctionHouseBot.EnableSeller", false);
-    BuyingBotEnabled = sConfigMgr->GetOption<bool>("AuctionHouseBot.Buyer.Enabled", false);
+    bool enabled = sConfigMgr->GetOption<bool>("AuctionHouseBot.Enable", true);
+    SellingBotEnabled = enabled && sConfigMgr->GetOption<bool>("AuctionHouseBot.EnableSeller", false);
+    BuyingBotEnabled = enabled && sConfigMgr->GetOption<bool>("AuctionHouseBot.Buyer.Enabled", false);
+
+    if (!IsModuleEnabled())
+    {
+        SellingBotEnabled = false;
+        BuyingBotEnabled = false;
+        return;
+    }
 
     string charString = sConfigMgr->GetOption<std::string>("AuctionHouseBot.GUIDs", "0");
     AddCharacters(charString);
