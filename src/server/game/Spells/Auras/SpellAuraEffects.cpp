@@ -2411,7 +2411,10 @@ void AuraEffect::HandleAuraTransform(AuraApplication const* aurApp, uint8 mode, 
     if (apply)
     {
         // update active transform spell only when transform or shapeshift not set or not overwriting negative by positive case
-        if (GetSpellInfo()->HasAttribute(SPELL_ATTR0_NO_IMMUNITIES) || !target->GetModelForForm(target->GetShapeshiftForm(), GetId()) || !GetSpellInfo()->IsPositive())
+        // (AscensionIncarnation: GetModelForForm also answers for a transform spell's incarnation, so only ask it
+        //  about a real shapeshift form - otherwise a transform form with an incarnation was never applied)
+        if (GetSpellInfo()->HasAttribute(SPELL_ATTR0_NO_IMMUNITIES) || target->GetShapeshiftForm() == FORM_NONE ||
+            !target->GetModelForForm(target->GetShapeshiftForm(), GetId()) || !GetSpellInfo()->IsPositive())
         {
             // special case (spell specific functionality)
             if (GetMiscValue() == 0)
@@ -2940,7 +2943,10 @@ void AuraEffect::HandleAuraTransform(AuraApplication const* aurApp, uint8 mode, 
             else
             {
                 CreatureTemplate const* ci = sObjectMgr->GetCreatureTemplate(GetMiscValue());
-                if (!ci)
+                uint32 const incarnation = target->IsPlayer() ? GetAscensionIncarnationDisplay(target->ToPlayer(), FORM_NONE, GetId()) : 0;
+                if (!ci && incarnation)
+                    target->SetDisplayId(incarnation);   // AscensionIncarnation: form whose creature is missing
+                else if (!ci)
                 {
                     target->SetDisplayId(16358);              // pig pink ^_^
                     LOG_ERROR("spells.aura.effect", "Auras: unknown creature id = {} (only need its modelid) From Spell Aura Transform in Spell ID = {}", GetMiscValue(), GetId());

@@ -96,7 +96,7 @@ inline constexpr std::array<RacialSkill, 37> Skills =
     {27, SKILL_RACIAL_DWARVEN}, // extra race
     {28, SKILL_RACIAL_TROLL}, // extra race
     {29, SKILL_RACIAL_TAUREN}, // extra race
-    {30, SKILL_RACIAL_GNOME}, // extra race
+    {30, SKILL_RACIAL_UNDED}, // extra race
     {31, SKILL_RACIAL_UNDED}, // extra race
     {RACE_HUMAN, SKILL_RACIAL_HUMAN},
     {RACE_ORC, SKILL_ORC_RACIAL},

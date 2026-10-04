@@ -15,4 +15,7 @@ void RefreshAscensionIncarnationDisplay(Player* player);
 /// NPC look a player of a custom race wears in game (custom_race_display, chosen by skin colour), or 0.
 uint32 GetAscensionCustomRaceDisplay(Player const* player);
 
+/// Whether a race / gender wears custom_race_display looks in game.
+bool HasAscensionCustomRaceDisplay(uint8 race, uint8 gender);
+
 #endif

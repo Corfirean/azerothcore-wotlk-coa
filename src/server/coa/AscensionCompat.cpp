@@ -9673,6 +9673,12 @@ static void LoadCustomRaceDisplays()
     LOG_INFO("server.loading", ">> Loaded {} custom race looks", count);
 }
 
+bool HasAscensionCustomRaceDisplay(uint8 race, uint8 gender)
+{
+    auto const itr = CustomRaceDisplays.find((uint32(race) << 8) | gender);
+    return itr != CustomRaceDisplays.end() && !itr->second.empty();
+}
+
 uint32 GetAscensionCustomRaceDisplay(Player const* player)
 {
     if (!player)

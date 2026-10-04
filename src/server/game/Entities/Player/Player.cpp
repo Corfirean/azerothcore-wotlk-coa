@@ -1351,6 +1351,9 @@ bool Player::BuildEnumData(PreparedQueryResult result, WorldPacket* data)
     *data << uint32(petFamily);
 
     std::vector<std::string_view> equipment = Acore::Tokenize(fields[22].Get<std::string_view>(), ' ', false);
+    // Custom races that wear an NPC look in game (Murloc): the character screen paints armor with the human body
+    // layout on their model, so only their weapons are listed.
+    bool const weaponsOnly = HasAscensionCustomRaceDisplay(plrRace, gender);
     for (uint8 slot = 0; slot < INVENTORY_SLOT_BAG_END; ++slot)
     {
         uint32 const visualBase = slot * 2;
@@ -1359,6 +1362,8 @@ bool Player::BuildEnumData(PreparedQueryResult result, WorldPacket* data)
         if (visualBase < equipment.size())
         {
             itemId = Acore::StringTo<uint32>(equipment[visualBase]);
+            if (weaponsOnly && slot != EQUIPMENT_SLOT_MAINHAND && slot != EQUIPMENT_SLOT_OFFHAND && slot != EQUIPMENT_SLOT_RANGED)
+                itemId = 0u;                      // shown empty, no warning
         }
 
         ItemTemplate const* proto = nullptr;
