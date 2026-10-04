@@ -12,4 +12,7 @@ uint32 GetAscensionIncarnationDisplay(Player const* player, uint32 form, uint32 
 /// Re-applies the incarnation model when the player changes it while shapeshifted.
 void RefreshAscensionIncarnationDisplay(Player* player);
 
+/// NPC look a player of a custom race wears in game (custom_race_display, chosen by skin colour), or 0.
+uint32 GetAscensionCustomRaceDisplay(Player const* player);
+
 #endif

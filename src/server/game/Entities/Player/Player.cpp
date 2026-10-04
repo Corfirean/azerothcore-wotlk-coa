@@ -16,6 +16,7 @@
  */
 
 #include "Player.h"
+#include "AscensionIncarnation.h"
 #include "AccountMgr.h"
 #include "AchievementMgr.h"
 #include "AreaDefines.h"
@@ -11288,6 +11289,13 @@ void Player::InitDisplayIds()
         default:
             LOG_ERROR("entities.player", "Invalid gender {} for player", gender);
             return;
+    }
+
+    // Custom races without a dressable player model wear an NPC look picked by skin colour.
+    if (uint32 customDisplay = GetAscensionCustomRaceDisplay(this))
+    {
+        SetDisplayId(customDisplay);
+        SetNativeDisplayId(customDisplay);
     }
 }
 
