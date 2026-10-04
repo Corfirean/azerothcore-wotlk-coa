@@ -9501,9 +9501,9 @@ static uint32 IncarnationCategoryFor(uint32 form, uint32 spellId)
         case 520307: return 19; // Venomwing Form   -> Travel Form
         case 803212: return 20; // Sea Serpent Form -> Aquatic Form
         case 800912: return 22; // Vizier Form      -> Moonkin Form
-        case 562572:            // Bloodmage Accursed Form -> Cat Form
-        case 800157:            // Bloodmage Eternal Curse
-        case 804518: return 18; // Bloodmage Eternal Curse (shapeshift)
+        case 562572: return 18; // Bloodmage Accursed Form -> Cat Form
+        case 800157:            // Bloodmage Eternal Curse (tank form) -> Metamorphosis
+        case 804518:            // Bloodmage Eternal Curse (shapeshift)
         case 804216: return 31; // Bloodmage Inner Demon   -> Metamorphosis
         default: break;
     }
