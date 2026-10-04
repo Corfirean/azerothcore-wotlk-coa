@@ -96,6 +96,7 @@
 #include "Log.h"
 #include "Map.h"
 #include "ObjectMgr.h"
+#include "Trainer.h"
 #include "Opcodes.h"
 #include "Player.h"
 #include "QuestDef.h"
@@ -9501,11 +9502,12 @@ static uint32 IncarnationCategoryFor(uint32 form, uint32 spellId)
         case 520307: return 19; // Venomwing Form   -> Travel Form
         case 803212: return 20; // Sea Serpent Form -> Aquatic Form
         case 800912: return 22; // Vizier Form      -> Moonkin Form
-        case 562572:            // Bloodmage Accursed Form -> Metamorphosis (else Cat Form, see below)
-        case 800157:            // Bloodmage Eternal Curse (tank form)
-        case 804518:            // Bloodmage Eternal Curse (shapeshift)
+        case 800157:            // Bloodmage Eternal Curse (tank form) -> Cat Form
+        case 804518: return 18; // Bloodmage Eternal Curse (shapeshift)
+        case 562572:            // Bloodmage Accursed Form -> Metamorphosis
         case 804216: return 31; // Bloodmage Inner Demon   -> Metamorphosis
-        case 800797: return 24; // Reaper Underwalk (travel form) -> Ghost Wolf
+        case 800797: return 24; // Reaper Underwalk -> Ghost Wolf
+        case 561083: return 19; // Reaper Ghost Form -> Travel Form
         case 803054:            // Starcaller Celestial Form -> Moonkin Form
         case 804287: return 22; // Starcaller Warden of the Moon
         default: break;
@@ -9527,18 +9529,6 @@ static uint32 IncarnationCategoryFor(uint32 form, uint32 spellId)
         case 55:                 return 66; // Pyromancer Draconic Form
         case 50:                 return 67; // Necromancer Lich Form (CoA)
         default:                 return 0;
-    }
-}
-
-// Second choice when no look is chosen in the first slot: the Bloodmage forms wear Metamorphosis, else Cat Form;
-// Reaper Underwalk wears Ghost Wolf, else Travel Form.
-static uint32 IncarnationFallbackCategoryFor(uint32 spellId)
-{
-    switch (spellId)
-    {
-        case 562572: case 800157: case 804518: return 18;
-        case 800797:                           return 19;
-        default: return 0;
     }
 }
 
@@ -9634,13 +9624,8 @@ uint32 GetAscensionIncarnationDisplay(Player const* player, uint32 form, uint32 
     if (!player || !ascensionCompatConfig.GetConfigValue<bool>(AscensionCompatConfig::ENABLED))
         return 0;
 
-    AscensionCollectionService& collection = AscensionCollectionService::Instance();
     uint32 const category = IncarnationCategoryFor(form, spellId);
-    uint32 display = category ? collection.GetIncarnationDisplay(player, category) : 0;
-    if (!display)
-        if (uint32 const fallback = IncarnationFallbackCategoryFor(spellId))
-            display = collection.GetIncarnationDisplay(player, fallback);
-    return display;
+    return category ? AscensionCollectionService::Instance().GetIncarnationDisplay(player, category) : 0;
 }
 
 void RefreshAscensionIncarnationDisplay(Player* player)
@@ -9708,6 +9693,63 @@ public:
     void OnStartup() override { LoadCustomRaceDisplays(); }
 };
 
+// Vanilla classes: Book of Ascension spells learned automatically ------------------------------------
+// The Book (trainer 900100) is the vanilla classes' trainer. Every Book spell a vanilla class qualifies for (class,
+// level, skill, previous rank or talent) is taught at login and on level-up, so the Book is not needed for them.
+static constexpr uint32 VANILLA_BOOK_TRAINER = 900100;
+
+static Trainer::Trainer const* VanillaBookTrainer()
+{
+    static Trainer::Trainer const* trainer = nullptr;
+    static bool looked = false;
+    if (!looked)
+    {
+        looked = true;
+        if (QueryResult result = WorldDatabase.Query("SELECT CreatureId FROM creature_default_trainer WHERE TrainerId = {} LIMIT 1", VANILLA_BOOK_TRAINER))
+            trainer = sObjectMgr->GetTrainer(result->Fetch()[0].Get<uint32>());
+    }
+    return trainer;
+}
+
+static void TeachVanillaBookSpells(Player* player)
+{
+    if (!player || !player->GetSession() || player->GetSession()->IsBot())
+        return;                                       // bots use the stock spells of the class trainers
+    uint8 const playerClass = player->getClass();
+    if (playerClass == 0 || playerClass > 11 || playerClass == 10)
+        return;                                       // CoA classes and Hero learn through Character Advancement
+    Trainer::Trainer const* trainer = VanillaBookTrainer();
+    if (!trainer)
+        return;
+
+    for (uint8 pass = 0; pass < 8; ++pass)            // a learned rank can make the next one available
+    {
+        bool learned = false;
+        for (Trainer::Spell const& spell : trainer->GetSpells())
+        {
+            if (spell.ReqLevel > player->GetLevel() || !trainer->CanTeachSpell(player, &spell))
+                continue;
+            if (spell.IsCastable())
+                player->CastSpell(player, spell.SpellId, true);
+            else
+                player->learnSpell(spell.SpellId);
+            learned = true;
+        }
+        if (!learned)
+            break;
+    }
+}
+
+class AscensionVanillaBookPlayerScript : public PlayerScript
+{
+public:
+    AscensionVanillaBookPlayerScript() : PlayerScript("AscensionVanillaBookPlayerScript",
+        { PLAYERHOOK_ON_LOGIN, PLAYERHOOK_ON_LEVEL_CHANGED }) { }
+
+    void OnPlayerLogin(Player* player) override { TeachVanillaBookSpells(player); }
+    void OnPlayerLevelChanged(Player* player, uint8 /*oldLevel*/) override { TeachVanillaBookSpells(player); }
+};
+
 void AddAscensionCompatScripts() {
   Ascension::ClientItemPatches::Instance().Register(ITEM_HEARTWOOD_KEY);
   RegisterAscensionClientConfig([](AscensionClientConfig& config) {
@@ -9740,4 +9782,5 @@ void AddAscensionCompatScripts() {
   new AscensionIncarnationPetScript();
   new AscensionIncarnationCreatureScript();
   new AscensionCustomRaceDisplayWorldScript();
+  new AscensionVanillaBookPlayerScript();
 }

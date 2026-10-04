@@ -1,5 +1,4 @@
 /* Copyright (C) 2016+ AzerothCore, GNU AGPL v3. */
-#include "Config.h"
 #include "Item.h"
 #include "ItemScript.h"
 #include "Player.h"
@@ -98,34 +97,10 @@ public:
         return false;
     }
 };
-
-// Local server: the client only lets a character over the free-reset level (10) swap Character Advancement
-// entries when it holds enough Runes of Ascension or gold for the swap. The server never charges for a swap, so
-// characters are topped up at login to CoA.TalentSwapRunes runes (0 = off), which makes swaps free.
-class ascension_talent_swap_runes : public PlayerScript
-{
-public:
-    ascension_talent_swap_runes() : PlayerScript("ascension_talent_swap_runes", {PLAYERHOOK_ON_LOGIN}) { }
-
-    void OnPlayerLogin(Player* player) override
-    {
-        uint32 const target = sConfigMgr->GetOption<uint32>("CoA.TalentSwapRunes", 0);
-        uint32 const held = player->GetItemCount(RuneOfAscensionItem, false);
-        if (!target || held >= target)
-            return;
-
-        ItemPosCountVec dest;
-        if (player->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, RuneOfAscensionItem, target - held) != EQUIP_ERR_OK)
-            return;
-        if (Item* runes = player->StoreNewItem(dest, RuneOfAscensionItem, true))
-            player->SendNewItem(runes, target - held, true, false);
-    }
-};
 }
 
 void AddSC_AscensionRunePouches()
 {
     new item_ascension_rune_pouch();
     new ascension_rune_pouch_open();
-    new ascension_talent_swap_runes();
 }
