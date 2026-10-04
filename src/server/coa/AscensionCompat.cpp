@@ -35,6 +35,7 @@
 #include "AscensionRunemasterEchoes.h"
 #include "AscensionCollectionModelData.h"
 #include "AscensionWitchHunterCompletion.h"
+#include "AscensionIncarnation.h"
 #include "AscensionAmmunitionData.h"
 #include "AscensionPersonalBank.h"
 #include "AscensionCollectibleSpellData.h"
@@ -4929,6 +4930,24 @@ private:
 
 class AscensionCollectionService {
 public:
+    // AscensionIncarnation: Wardrobe categories that dress a shapeshift form or a pet.
+    static bool IsIncarnationCategory(uint32 category)
+    {
+        return (category >= 17 && category <= 31) || (category >= 65 && category <= 68);
+    }
+
+    uint32 GetIncarnationDisplay(Player const* player, uint32 category)
+    {
+        if (category >= APPEARANCE_CATEGORY_COUNT)
+            return 0;
+        std::shared_ptr<PlayerCollectionState> state = GetState(player);
+        if (!state)
+            return 0;
+        uint32 const appearanceId = state->ActiveAppearances[category];
+        auto const itr = _incarnationDisplays.find(appearanceId);
+        return appearanceId && itr != _incarnationDisplays.end() ? itr->second : 0;
+    }
+
     static bool IsCosmeticCategory(uint32 category)
     {
         return category >= 56 && category <= 58;
@@ -4979,6 +4998,7 @@ public:
 
   bool LoadClientData() {
     _appearances.clear();
+    _incarnationDisplays.clear();
     _itemAppearances.clear();
     _itemSetItems.clear();
     _vanityItems.clear();
@@ -4997,6 +5017,10 @@ public:
         continue;
 
       uint32 displayId = record.GetUInt32(3);
+      // AscensionIncarnation: creature-type incarnations carry their model in field 8.
+      if (IsIncarnationCategory(record.GetUInt32(5)) &&
+          sCreatureDisplayInfoStore.LookupEntry(record.GetUInt32(8)))
+        _incarnationDisplays[appearanceId] = record.GetUInt32(8);
       _appearances[appearanceId] =
           AppearanceInfo{displayId, record.GetUInt32(5), record.GetUInt32(6),
                          record.GetUInt32(7), displayId};
@@ -5181,6 +5205,7 @@ public:
       std::lock_guard lock(_stateMutex);
       _playerStates[player->GetGUID().GetCounter()] = state;
     }
+    RefreshAscensionIncarnationDisplay(player);
 
     if (ascensionCompatConfig.GetConfigValue<bool>(
             AscensionCompatConfig::AUTO_COLLECT_APPEARANCES))
@@ -6317,6 +6342,7 @@ private:
 
     state->ActiveAppearances = requested;
     SaveActiveAppearances(player, *state);
+    RefreshAscensionIncarnationDisplay(player);
     RefreshCosmetics(player, *state);
     RefreshVisibleItems(player);
     SendApplyResult(player, "APPLY_APPEARANCES_OK");
@@ -6735,6 +6761,7 @@ private:
 
   bool _clientDataLoaded = false;
   std::unordered_map<uint32, AppearanceInfo> _appearances;
+  std::unordered_map<uint32, uint32> _incarnationDisplays; // AscensionIncarnation: appearance -> model
   std::unordered_map<uint32, uint32> _itemAppearances;
   std::unordered_map<uint32, std::vector<uint32>> _itemSetItems;
   std::unordered_map<uint32, VanityInfo> _vanityItems;
@@ -9440,6 +9467,66 @@ void AppendConfiguredClientConfigs(AscensionClientConfig& config) {
   AppendAscensionClientConfigList(ascensionCompatConfig.GetConfigValue<std::string>(
                                       AscensionCompatConfig::CLIENT_INTEGER_CONFIGS),
                                   config.Integers);
+}
+
+// AscensionIncarnation ---------------------------------------------------------------------
+// Wardrobe category a form wears. The Venomancer's forms borrow the druid ones.
+static uint32 IncarnationCategoryFor(uint32 form, uint32 spellId)
+{
+    switch (spellId)
+    {
+        case 800841: return 18; // Spider Form      -> Cat Form
+        case 803183: return 17; // Beetle Form      -> Bear Form
+        case 520307: return 19; // Venomwing Form   -> Travel Form
+        case 803212: return 20; // Sea Serpent Form -> Aquatic Form
+        case 800912: return 22; // Vizier Form      -> Moonkin Form
+        default: break;
+    }
+
+    switch (form)
+    {
+        case FORM_BEAR:
+        case FORM_DIREBEAR:      return 17;
+        case FORM_CAT:           return 18;
+        case FORM_TRAVEL:        return 19;
+        case FORM_AQUA:          return 20;
+        case FORM_FLIGHT:
+        case FORM_FLIGHT_EPIC:   return 21;
+        case FORM_MOONKIN:       return 22;
+        case FORM_TREE:          return 23;
+        case FORM_GHOSTWOLF:     return 24;
+        case FORM_METAMORPHOSIS: return 31;
+        default:                 return 0;
+    }
+}
+
+uint32 GetAscensionIncarnationDisplay(Player const* player, uint32 form, uint32 spellId)
+{
+    if (!player || !ascensionCompatConfig.GetConfigValue<bool>(AscensionCompatConfig::ENABLED))
+        return 0;
+
+    uint32 const category = IncarnationCategoryFor(form, spellId);
+    return category ? AscensionCollectionService::Instance().GetIncarnationDisplay(player, category) : 0;
+}
+
+void RefreshAscensionIncarnationDisplay(Player* player)
+{
+    if (!player || !player->IsInWorld())
+        return;
+
+    // Shapeshift forms
+    Unit::AuraEffectList const& shapeshifts = player->GetAuraEffectsByType(SPELL_AURA_MOD_SHAPESHIFT);
+    if (!shapeshifts.empty() && !player->getTransForm())
+    {
+        if (uint32 model = player->GetModelForForm(player->GetShapeshiftForm(), shapeshifts.front()->GetId()))
+            player->SetDisplayId(model);
+        return;
+    }
+
+    // Forms that are a transform (Sea Serpent Form)
+    if (uint32 transform = player->getTransForm())
+        if (uint32 model = GetAscensionIncarnationDisplay(player, FORM_NONE, transform))
+            player->SetDisplayId(model);
 }
 
 void AddAscensionCompatScripts() {

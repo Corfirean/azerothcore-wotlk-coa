@@ -16,6 +16,7 @@
  */
 
 #include "Unit.h"
+#include "AscensionIncarnation.h"
 #include "AbstractFollower.h"
 #include "AreaDefines.h"
 #include "ArenaSpectator.h"
@@ -16557,6 +16558,10 @@ uint32 Unit::GetModelForForm(ShapeshiftForm form, uint32 spellId)
 
     if (IsPlayer())
     {
+        // AscensionIncarnation: the Wardrobe incarnation replaces the form's model.
+        if (uint32 incarnation = GetAscensionIncarnationDisplay(ToPlayer(), form, spellId))
+            return incarnation;
+
         if (uint32 ModelId = sObjectMgr->GetModelForShapeshift(form, ToPlayer()))
             return ModelId;
     }

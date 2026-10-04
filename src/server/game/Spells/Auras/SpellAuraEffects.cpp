@@ -16,6 +16,7 @@
  */
 
 #include "SpellAuraEffects.h"
+#include "AscensionIncarnation.h"
 #include "AreaDefines.h"
 #include "BattlefieldMgr.h"
 #include "Battleground.h"
@@ -2950,6 +2951,11 @@ void AuraEffect::HandleAuraTransform(AuraApplication const* aurApp, uint8 mode, 
 
                     if (uint32 modelid = ObjectMgr::ChooseDisplayId(ci)->CreatureDisplayID)
                         model_id = modelid;                     // Will use the default model here
+
+                    // AscensionIncarnation: a form that is a transform wears its Wardrobe incarnation.
+                    if (Player* player = target->ToPlayer())
+                        if (uint32 incarnation = GetAscensionIncarnationDisplay(player, FORM_NONE, GetId()))
+                            model_id = incarnation;
 
                     // Polymorph (sheep)
                     if (GetSpellInfo()->SpellFamilyName == SPELLFAMILY_MAGE && GetSpellInfo()->SpellIconID == 82 && GetSpellInfo()->SpellVisual[0] == 12978)
