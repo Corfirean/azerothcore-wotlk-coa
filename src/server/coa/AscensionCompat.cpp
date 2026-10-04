@@ -9713,9 +9713,10 @@ public:
     void OnStartup() override { LoadCustomRaceDisplays(); }
 };
 
-// Vanilla classes: Book of Ascension spells learned automatically ------------------------------------
-// The Book (trainer 900100) is the vanilla classes' trainer. Every Book spell a vanilla class qualifies for (class,
-// level, skill, previous rank or talent) is taught at login and on level-up, so the Book is not needed for them.
+// Vanilla classes: starting spells ---------------------------------------------------------------------
+// The Book (trainer 900100) is the vanilla classes' trainer. A new vanilla character is taught the Book spells of
+// level 1 (its class's starting spells) on its first login; everything else is bought in the Book, like the CoA
+// classes do.
 static constexpr uint32 VANILLA_BOOK_TRAINER = 900100;
 
 static Trainer::Trainer const* VanillaBookTrainer()
@@ -9747,8 +9748,11 @@ static void TeachVanillaBookSpells(Player* player)
         bool learned = false;
         for (Trainer::Spell const& spell : trainer->GetSpells())
         {
-            if (spell.ReqLevel > player->GetLevel() || !trainer->CanTeachSpell(player, &spell))
+            if (spell.ReqLevel > 1 || !trainer->CanTeachSpell(player, &spell))
                 continue;
+            uint32 const stockId = spell.SpellId >= 1100000 ? spell.SpellId - 1100000 : spell.SpellId;
+            if (GetTalentSpellPos(stockId) || GetTalentSpellPos(spell.SpellId))
+                continue;                             // talent spells (e.g. Devastate) come from the talent tree
             if (spell.IsCastable())
                 player->CastSpell(player, spell.SpellId, true);
             else
@@ -9763,11 +9767,9 @@ static void TeachVanillaBookSpells(Player* player)
 class AscensionVanillaBookPlayerScript : public PlayerScript
 {
 public:
-    AscensionVanillaBookPlayerScript() : PlayerScript("AscensionVanillaBookPlayerScript",
-        { PLAYERHOOK_ON_LOGIN, PLAYERHOOK_ON_LEVEL_CHANGED }) { }
+    AscensionVanillaBookPlayerScript() : PlayerScript("AscensionVanillaBookPlayerScript", { PLAYERHOOK_ON_FIRST_LOGIN }) { }
 
-    void OnPlayerLogin(Player* player) override { TeachVanillaBookSpells(player); }
-    void OnPlayerLevelChanged(Player* player, uint8 /*oldLevel*/) override { TeachVanillaBookSpells(player); }
+    void OnPlayerFirstLogin(Player* player) override { TeachVanillaBookSpells(player); }
 };
 
 void AddAscensionCompatScripts() {

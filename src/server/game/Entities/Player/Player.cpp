@@ -11306,11 +11306,15 @@ void Player::InitDisplayIds()
             return;
     }
 
+    // SetDisplayId takes the gender of the model's creature_model_info row; a player keeps its own.
+    SetByteValue(UNIT_FIELD_BYTES_0, 2, gender);
+
     // Custom races without a dressable player model wear an NPC look picked by skin colour.
     if (uint32 customDisplay = GetAscensionCustomRaceDisplay(this))
     {
         SetDisplayId(customDisplay);
         SetNativeDisplayId(customDisplay);
+        SetByteValue(UNIT_FIELD_BYTES_0, 2, gender);
     }
 }
 
