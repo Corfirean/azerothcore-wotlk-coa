@@ -9654,12 +9654,12 @@ void RefreshAscensionIncarnationDisplay(Player* player)
 }
 
 // Custom race looks ---------------------------------------------------------------------------
-static std::unordered_map<uint32, std::vector<uint32>> CustomRaceDisplays; // (race << 8 | gender) -> looks
+static std::unordered_map<uint32, std::map<uint32, uint32>> CustomRaceDisplays; // (race << 8 | gender) -> idx -> look
 
 static void LoadCustomRaceDisplays()
 {
     CustomRaceDisplays.clear();
-    QueryResult result = WorldDatabase.Query("SELECT race, gender, displayId FROM custom_race_display ORDER BY race, gender, idx");
+    QueryResult result = WorldDatabase.Query("SELECT race, gender, idx, displayId FROM custom_race_display");
     if (!result)
         return;
 
@@ -9667,7 +9667,7 @@ static void LoadCustomRaceDisplays()
     do
     {
         Field* fields = result->Fetch();
-        CustomRaceDisplays[(fields[0].Get<uint32>() << 8) | fields[1].Get<uint32>()].push_back(fields[2].Get<uint32>());
+        CustomRaceDisplays[(fields[0].Get<uint32>() << 8) | fields[1].Get<uint32>()][fields[2].Get<uint32>()] = fields[3].Get<uint32>();
         ++count;
     } while (result->NextRow());
     LOG_INFO("server.loading", ">> Loaded {} custom race looks", count);
@@ -9688,7 +9688,21 @@ uint32 GetAscensionCustomRaceDisplay(Player const* player)
     if (itr == CustomRaceDisplays.end() || itr->second.empty())
         return 0;
 
-    return itr->second[player->GetByteValue(PLAYER_BYTES, 0) % itr->second.size()];
+    // idx = hair style * 32 + skin colour (Whim murloc: armor x body); else the skin colour picks a look
+    std::map<uint32, uint32> const& looks = itr->second;
+    uint32 const skin = player->GetByteValue(PLAYER_BYTES, 0);
+    uint32 const hairStyle = player->GetByteValue(PLAYER_BYTES, 2);
+    uint32 display = 0;
+    if (auto const look = looks.find(hairStyle * 32 + skin); look != looks.end())
+        display = look->second;
+    else if (auto const bySkin = looks.find(skin); bySkin != looks.end())
+        display = bySkin->second;
+    else
+        display = std::next(looks.begin(), skin % looks.size())->second;
+
+    LOG_INFO("coa", "Custom race look for {}: race {} gender {} skin {} hair style {} -> display {}",
+        player->GetName(), player->getRace(true), player->getGender(), skin, hairStyle, display);
+    return display;
 }
 
 class AscensionCustomRaceDisplayWorldScript : public WorldScript
