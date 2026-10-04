@@ -36,6 +36,7 @@
 #include "AscensionCollectionModelData.h"
 #include "AscensionWitchHunterCompletion.h"
 #include "AscensionIncarnation.h"
+#include "SpellAuraEffects.h"
 #include "AscensionAmmunitionData.h"
 #include "AscensionPersonalBank.h"
 #include "AscensionCollectibleSpellData.h"
