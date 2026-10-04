@@ -1,3 +1,15 @@
+> ## CoA Custom: extra races, vanilla classes, more incarnations
+> This fork is an add-on for the Jealous-Sound CoA repack (main-20260930-df4dea11) with CoA Bots 1.6: 21 extra
+> playable races including Murloc, every race x every class, the classic classes next to the CoA classes, and more
+> Wardrobe incarnations.
+>
+> - **Download:** [latest release](https://github.com/ilusixn/azerothcore-wotlk-coa/releases/latest)
+> - **Install guide, known problems, rebuilding:** [apps/coa-custom/README.md](../apps/coa-custom/README.md)
+> - **Bugs:** [open an issue](https://github.com/ilusixn/azerothcore-wotlk-coa/issues), with race, class, gender, what
+>   you did and a screenshot.
+>
+> The original project README follows.
+
 # ![logo](https://raw.githubusercontent.com/azerothcore/azerothcore.github.io/master/images/logo-github.png) AzerothCore
 
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
