@@ -37,6 +37,7 @@
 #include "AscensionWitchHunterCompletion.h"
 #include "AscensionIncarnation.h"
 #include "SpellAuraEffects.h"
+#include "Pet.h"
 #include "AscensionAmmunitionData.h"
 #include "AscensionPersonalBank.h"
 #include "AscensionCollectibleSpellData.h"
@@ -9497,9 +9498,66 @@ static uint32 IncarnationCategoryFor(uint32 form, uint32 spellId)
         case FORM_TREE:          return 23;
         case FORM_GHOSTWOLF:     return 24;
         case FORM_METAMORPHOSIS: return 31;
+        case 55:                 return 66; // Pyromancer Draconic Form
+        case 50:                 return 67; // Necromancer Lich Form (CoA)
         default:                 return 0;
     }
 }
+
+// Wardrobe category a summoned creature wears (normal and Bronzebeard summons).
+static uint32 IncarnationCategoryForCreature(uint32 entry)
+{
+    switch (entry)
+    {
+        case 416:   case 1100416: return 25; // Imp
+        case 1860:  case 1101860: return 26; // Voidwalker
+        case 1863:  case 1101863: return 27; // Succubus
+        case 417:   case 1100417: return 28; // Felhunter
+        case 17252: case 1117252: return 29; // Felguard
+        case 1793:                return 68; // Shadowhound
+        default:                  return 0;
+    }
+}
+
+void ApplyAscensionCreatureIncarnation(Creature* creature)
+{
+    if (!creature || !ascensionCompatConfig.GetConfigValue<bool>(AscensionCompatConfig::ENABLED))
+        return;
+
+    uint32 const category = IncarnationCategoryForCreature(creature->GetEntry());
+    if (!category)
+        return;
+
+    Player* owner = creature->GetCharmerOrOwnerPlayerOrPlayerItself();
+    if (!owner)
+        return;
+
+    if (uint32 model = AscensionCollectionService::Instance().GetIncarnationDisplay(owner, category))
+    {
+        creature->SetNativeDisplayId(model);
+        creature->SetDisplayId(model);
+    }
+}
+
+class AscensionIncarnationPetScript : public PetScript
+{
+public:
+    AscensionIncarnationPetScript() : PetScript("AscensionIncarnationPetScript", { PETHOOK_ON_PET_ADD_TO_WORLD }) { }
+
+    void OnPetAddToWorld(Pet* pet) override { ApplyAscensionCreatureIncarnation(pet); }
+};
+
+class AscensionIncarnationCreatureScript : public AllCreatureScript
+{
+public:
+    AscensionIncarnationCreatureScript() : AllCreatureScript("AscensionIncarnationCreatureScript") { }
+
+    void OnCreatureAddWorld(Creature* creature) override
+    {
+        if (creature->IsSummon())
+            ApplyAscensionCreatureIncarnation(creature);
+    }
+};
 
 uint32 GetAscensionIncarnationDisplay(Player const* player, uint32 form, uint32 spellId)
 {
@@ -9514,6 +9572,11 @@ void RefreshAscensionIncarnationDisplay(Player* player)
 {
     if (!player || !player->IsInWorld())
         return;
+
+    // Summoned pet
+    if (Pet* pet = player->GetPet())
+        if (pet->IsInWorld())
+            ApplyAscensionCreatureIncarnation(pet);
 
     // Shapeshift forms
     Unit::AuraEffectList const& shapeshifts = player->GetAuraEffectsByType(SPELL_AURA_MOD_SHAPESHIFT);
@@ -9559,4 +9622,6 @@ void AddAscensionCompatScripts() {
   new AscensionCompatChangelogScript();
   new AscensionCompatWorldScript();
   new AscensionCompatAllCreatureScript();
+  new AscensionIncarnationPetScript();
+  new AscensionIncarnationCreatureScript();
 }
