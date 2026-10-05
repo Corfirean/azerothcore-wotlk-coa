@@ -94,6 +94,6 @@ Most of this work was done with an AI coding assistant, then tested in game.
 ## Credits
 
 - Jealous-Sound for the CoA core and repack.
-- The CoA Bots authors and Zyth45/mod-playerbots.
+- The CoA Bots Squid authors and Zyth45/mod-playerbots.
 - AzerothCore.
 - The race models, textures and client data come from the Project Ascension client.
