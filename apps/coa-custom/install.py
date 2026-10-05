@@ -7,7 +7,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 FILES = HERE / 'files'
-BACKUP = HERE / 'backup'
+MANIFEST_PRE = json.loads((HERE / 'manifest.json').read_text(encoding='utf-8'))
+BACKUP = HERE / ('backup-' + MANIFEST_PRE['repackRevision'])   # one per repack release: a 1.6-era backup must not
+                                                               # be put back on a repack updated to CoA Bots 1.8
 STATE = HERE / 'installed.json'
 MANIFEST = json.loads((HERE / 'manifest.json').read_text(encoding='utf-8'))
 SETTINGS = {                                        # template file -> {key: value}
@@ -155,24 +157,38 @@ def install(root):
         targets['dbc/' + dbc.name] = root / 'Data' / 'dbc' / dbc.name
     for name in SETTINGS:
         targets['settings/' + name] = root / 'Settings' / name
-    if not BACKUP.exists():                          # first install: keep the originals for Uninstall-Custom.bat
+    # the server's copy of the client display table: without it the display patch stream re-sends every display
+    # id >= 652000 with no textures, which turns other players' Murlocs white in the client
+    targets['dbc_clientset/CreatureDisplayInfo.dbc'] = root / 'Data' / 'dbc_clientset' / 'CreatureDisplayInfo.dbc'
+    # Book of Ascension settings missing from the bot server (warning spam); never replaced once it exists
+    targets['bots/spellbook.conf'] = root / 'CoA-Bots' / 'Core' / 'configs' / 'modules' / 'spellbook.conf'
+    created = state.get('created', [])
+    if not BACKUP.exists():                          # first install on this repack release: keep the originals
+        created = [key for key, target in targets.items() if not target.exists()]
         say('Backing up the original files and world tables to %s ...' % BACKUP)
-        for key, target in targets.items():
-            if target.exists():
+        older = HERE / 'backup'                      # a 1.0 / 1.1 install's backup still holds the true originals of
+        for key, target in targets.items():          # the files the CoA Bots update does not replace (DBCs, patch)
+            source = older / key if key != 'worldserver.exe' and (older / key).exists() else target
+            if source.exists():
                 (BACKUP / key).parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(target, BACKUP / key)
+                shutil.copy2(source, BACKUP / key)
         dump_tables(root, BACKUP / 'world_tables.sql')
     say('Copying files...')
     shutil.copy2(FILES / 'worldserver.exe', targets['worldserver.exe'])
     shutil.copy2(FILES / 'client' / 'patch-T.MPQ', targets['patch-T.MPQ'])
     for dbc in sorted((FILES / 'dbc').glob('*.dbc')):
         shutil.copy2(dbc, targets['dbc/' + dbc.name])
+    targets['dbc_clientset/CreatureDisplayInfo.dbc'].parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(FILES / 'dbc_clientset' / 'CreatureDisplayInfo.dbc', targets['dbc_clientset/CreatureDisplayInfo.dbc'])
+    if not targets['bots/spellbook.conf'].exists():
+        shutil.copy2(FILES / 'bots' / 'spellbook.conf', targets['bots/spellbook.conf'])
     set_settings(root)
     say('Applying the database changes...')
     for sql in sorted((FILES / 'sql').glob('*.sql')):
         say('  ' + sql.name)
         mysql_file(root, sql)
     STATE.write_text(json.dumps({'version': MANIFEST['version'], 'repack': str(root), 'client': str(client),
+                                 'created': created,
                                  'installed': datetime.datetime.now().isoformat(timespec='seconds')}, indent=1),
                      encoding='utf-8')
     start_servers(root)
@@ -195,11 +211,13 @@ def uninstall(root):
         restore['dbc/' + item.name] = root / 'Data' / 'dbc' / item.name
     for item in (BACKUP / 'settings').glob('*') if (BACKUP / 'settings').exists() else []:
         restore['settings/' + item.name] = root / 'Settings' / item.name
+    restore['dbc_clientset/CreatureDisplayInfo.dbc'] = root / 'Data' / 'dbc_clientset' / 'CreatureDisplayInfo.dbc'
+    restore['bots/spellbook.conf'] = root / 'CoA-Bots' / 'Core' / 'configs' / 'modules' / 'spellbook.conf'
     for key, target in restore.items():
         if (BACKUP / key).exists():
             shutil.copy2(BACKUP / key, target)
-    if not (BACKUP / 'patch-T.MPQ').exists() and (client / 'Data' / 'patch-T.MPQ').exists():
-        (client / 'Data' / 'patch-T.MPQ').unlink()
+        elif key in state.get('created', []) and target.exists():
+            target.unlink()                          # the install added it: take it away again
     say('Restoring the world tables...')
     mysql_file(root, BACKUP / 'world_tables.sql')
     for table in MANIFEST['newWorldTables']:
