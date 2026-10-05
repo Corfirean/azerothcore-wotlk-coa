@@ -20,10 +20,9 @@ public:
 
     void OnAfterConfigLoad(bool /*reload*/) override
     {
+        auctionbot->InitializeConfiguration();
         if (!auctionbot->IsModuleEnabled())
             return;
-
-        auctionbot->InitializeConfiguration();
         if (HasPerformedStartup == true)
         {
             LOG_INFO("server.loading", "AuctionHouseBot: (Re)populating item candidate lists ...");
@@ -39,6 +38,7 @@ public:
 
     void OnStartup() override
     {
+        HasPerformedStartup = true;
         if (!auctionbot->IsModuleEnabled())
             return;
 

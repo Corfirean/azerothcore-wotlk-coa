@@ -37,7 +37,7 @@
 #
 #    AuctionHouseBot.EnableSeller
 #        Enable/Disable the part of AHBot that puts items up for auction
-#    Default: false (disabled)
+#    Default: true (requires the master switch and GUIDs)
 #
 #    AuctionHouseBot.ReturnExpiredAuctionItemsToBot
 #        If enabled (true), returns expired auction items to the AH Bot(s) via
@@ -70,11 +70,18 @@
 #		 Note: Do not set lower than 15 minutes (900) or higher than 48 hours (172800)
 ###############################################################################
 
+# Master switch; seller/buyer and valid character GUIDs are also required.
+AuctionHouseBot.Enable = false
+
+# CoA: only list items found in world loot, vendors or profession crafting.
+# Existing binding, quality, name and level filters still apply.
+AuctionHouseBot.CoA.ObtainableItemsOnly = true
+
 AuctionHouseBot.DEBUG = false
 AuctionHouseBot.DEBUG_FILTERS = false
 AuctionHouseBot.MinutesBetweenBuyCycle = 1
 AuctionHouseBot.MinutesBetweenSellCycle = 1
-AuctionHouseBot.EnableSeller = false
+AuctionHouseBot.EnableSeller = true
 AuctionHouseBot.ReturnExpiredAuctionItemsToBot = false
 AuctionHouseBot.GUIDs = 0
 AuctionHouseBot.ItemsPerCycle = 150
@@ -224,15 +231,15 @@ AuctionHouseBot.BuyoutBelowVendorVariationAddPercent = 0.25
 #    Note: If you have AllowTwoSide.Interaction.Auction enabled in your AzerothCore's
 #        worldserver.conf, then only the Neutral AH will appear to fill in the
 #        database. Auctions will still appear in non-Neutral AH.
-#    Default: 15000 for both
+#    Default: 2000 for both
 ###############################################################################
 
-AuctionHouseBot.Alliance.MinItems = 15000
-AuctionHouseBot.Alliance.MaxItems = 15000
-AuctionHouseBot.Horde.MinItems = 15000
-AuctionHouseBot.Horde.MaxItems = 15000
-AuctionHouseBot.Neutral.MinItems = 15000
-AuctionHouseBot.Neutral.MaxItems = 15000
+AuctionHouseBot.Alliance.MinItems = 2000
+AuctionHouseBot.Alliance.MaxItems = 2000
+AuctionHouseBot.Horde.MinItems = 2000
+AuctionHouseBot.Horde.MaxItems = 2000
+AuctionHouseBot.Neutral.MinItems = 2000
+AuctionHouseBot.Neutral.MaxItems = 2000
 
 ###############################################################################
 # BUYER PROPERTIES
