@@ -2,7 +2,7 @@
 # that already runs CoA Bots. Run through Install-Custom.bat (uses the repack's own Python).
 #   install.py [--repack <folder>] [--client <Ascension folder>] [--uninstall] [--check] [--yes]
 #   --check: report what would be done, change nothing
-import json, os, re, shutil, subprocess, sys, datetime
+import json, os, re, shutil, subprocess, sys, datetime, gzip
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -88,6 +88,25 @@ def dump_tables(root, target):
         fail('could not back up the world tables:\n' + result.stderr.decode('utf-8', 'replace'))
 
 
+def backup_characters(root):
+    """accounts + characters, before anything changes: CoA-Custom/character-backups (kept on uninstall)"""
+    folder = HERE / 'character-backups'
+    folder.mkdir(exist_ok=True)
+    target = folder / ('characters_%s.sql.gz' % datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+    say('Backing up accounts and characters to %s ...' % target)
+    dump = subprocess.Popen([str(root / 'mysql' / 'bin' / 'mysqldump.exe'),
+                             '--defaults-file=' + str(root / 'mysql' / 'admin-client.ini'), '--single-transaction',
+                             '--routines', '--no-tablespaces', '--add-drop-database',
+                             '--databases', 'acore_auth', 'acore_characters'], stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE)
+    with gzip.open(target, 'wb', compresslevel=6) as out:
+        shutil.copyfileobj(dump.stdout, out, 1 << 20)
+    error = dump.stderr.read().decode('utf-8', 'replace')
+    if dump.wait() != 0:
+        target.unlink(missing_ok=True)
+        fail('the character backup failed, nothing was changed:\n' + error)
+
+
 def check_release(root):
     release = json.loads((root / 'RELEASE.json').read_text(encoding='utf-8')) if (root / 'RELEASE.json').exists() else {}
     if not str(release.get('mainRevision', '')).startswith(MANIFEST['repackRevision']):
@@ -127,6 +146,7 @@ def install(root):
     client = find_client(state.get('client'))
     stop_servers(root)
     python(root, root / 'Scripts' / 'manage.py', 'start-mysql')
+    backup_characters(root)
     targets = {
         'worldserver.exe': root / 'CoA-Bots' / 'Core' / 'worldserver.exe',
         'patch-T.MPQ': client / 'Data' / 'patch-T.MPQ',
@@ -167,6 +187,7 @@ def uninstall(root):
     client = Path(state['client'])
     stop_servers(root)
     python(root, root / 'Scripts' / 'manage.py', 'start-mysql')
+    backup_characters(root)
     say('Restoring the original files...')
     restore = {'worldserver.exe': root / 'CoA-Bots' / 'Core' / 'worldserver.exe',
                'patch-T.MPQ': client / 'Data' / 'patch-T.MPQ'}

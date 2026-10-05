@@ -111,7 +111,13 @@ class DBC:
         print('%-36s %6d records' % (name, len(self.raw)))
 
 
-def copy_race_rows(name, race_field, idfield=0):
+# (race, sex) that wears another race's body instead of its own: the Earthen female's own model is the old
+# pre-HD Dwarf female (4891 vertices), which the HD textures don't fit; she becomes the HD Dwarf female, with the
+# Dwarf female's display, sections, HD sections and hair (the Earthen male already has the HD Dwarf model).
+SEX_FROM = {(27, 1): 3}
+
+
+def copy_race_rows(name, race_field, idfield=0, sex_field=None):
     """Copy every row of a source race to the new race id (renumbered races only)."""
     t = DBC(D + name)
     recs = t.recs()
@@ -127,6 +133,16 @@ def copy_race_rows(name, race_field, idfield=0):
                 nr[idfield] = next_id
                 next_id += 1
             recs.append(nr)
+    if sex_field is not None:
+        for (race, sex), src in SEX_FROM.items():
+            recs = [r for r in recs if not (r[race_field] == race and r[sex_field] == sex)]
+            for r in [r for r in recs if r[race_field] == src and r[sex_field] == sex]:
+                nr = list(r)
+                nr[race_field] = race
+                if idfield is not None:
+                    nr[idfield] = next_id
+                    next_id += 1
+                recs.append(nr)
     t.set_recs(recs)
     t.save(name)
 
@@ -284,6 +300,9 @@ for display, group, value in MURLOC_GEOSETS:
     next_geo += 1
 t_geo.set_recs(geo)
 t_geo.save('CreatureDisplayInfoGeosetData.dbc')
+for (race, sex), src in SEX_FROM.items():                 # body borrowed from another race (see SEX_FROM)
+    source_row = next(r for r in recs if r[0] == src)
+    next(r for r in recs if r[0] == race)[4 + sex] = source_row[4 + sex]
 for row in recs:
     if RACES.get(row[0], (0, 0, None))[2] == 'Murloc':
         row[4], row[5] = MURLOC_GLUE[0], MURLOC_GLUE[1]
@@ -294,12 +313,42 @@ t.save('client_ChrRaces.dbc')                     # same table for the client (b
 print('Murloc: displays %s, character-screen displays %s, geoset rows %d' % ({k: len(v) for k, v in MURLOC_DISPLAYS.items()}, MURLOC_GLUE, len(MURLOC_GEOSETS)))
 
 # ---------------------------------------------------------------- per-race customisation data
-copy_race_rows('CharSections.dbc', 1)
+copy_race_rows('CharSections.dbc', 1, sex_field=2)
 # The sections are copied exactly as Ascension ships them for the source race (no flags, paths or sizes changed:
 # blanking / borrowing / upscaling missing or old textures only broke faces). Ascension draws its HD character
 # models from HDCharSections, which also has rows for the old NPC races under their own ids (Fel Orc 34 ...
 # Ice Troll 43) and the Blood Elf: copied below, without them the renumbered races fell back to the 256 textures.
-copy_race_rows('HDCharSections.dbc', 1)
+copy_race_rows('HDCharSections.dbc', 1, sex_field=2)
+# Earthen (client race 62, "Npc_Earthen") wears copies of the Dwarf textures but has no HD rows: its 256 faces were
+# pasted into the 512 body (a squashed patch on the face). It gets HD rows for its own sections, each taking the
+# Dwarf HD row that paints the same texture (matched by file name).
+HD_TEXTURES_FROM = {27: 3}
+t = DBC(OUT + 'HDCharSections.dbc')
+hd = t.recs()
+own = DBC(OUT + 'CharSections.dbc')
+own_recs, own_name = own.recs(), lambda o: own.sb[o:own.sb.index(b'\0', o)].decode('utf-8', 'replace') if o else ''
+hd_name = lambda o: t.sb[o:t.sb.index(b'\0', o)].decode('utf-8', 'replace') if o else ''
+next_hd = max(r[0] for r in hd) + 1
+for race, src in HD_TEXTURES_FROM.items():
+    have_hd = {(r[2], r[3], r[8], r[9]) for r in hd if r[1] == race}    # e.g. the female copied whole (SEX_FROM)
+    by_file = {}
+    for r in hd:
+        if r[1] == src and r[4]:
+            by_file.setdefault((r[2], r[3], hd_name(r[4]).split(chr(92))[-1].lower()), r)
+    added = 0
+    for r in own_recs:
+        if r[1] != race or not r[4] or (r[2], r[3], r[8], r[9]) in have_hd:
+            continue
+        match = by_file.get((r[2], r[3], own_name(r[4]).split(chr(92))[-1].lower()))
+        if match:
+            nr = list(match)
+            nr[0], nr[1], nr[8], nr[9] = next_hd, race, r[8], r[9]
+            hd.append(nr)
+            next_hd += 1
+            added += 1
+    print('HD rows for race %d from race %d textures: %d' % (race, src, added))
+t.set_recs(hd)
+t.save('HDCharSections.dbc')
 # Murloc skin colours: the Troglodyte rows repeated up to one skin colour per look (every colour keeps its face and
 # underwear rows: a colour without them crashed character creation). The skin rows paint MurlocPlayerSkinNN; face,
 # facial hair, hair and underwear are left blank (the murloc has no human layout to paint them on).
@@ -356,7 +405,7 @@ for race in [r for r, v in RACES.items() if v[2] == 'Murloc']:
         next_section += 1
 t.set_recs(recs)
 t.save('CharSections.dbc')
-copy_race_rows('CharHairGeosets.dbc', 1)
+copy_race_rows('CharHairGeosets.dbc', 1, sex_field=2)
 t = DBC(OUT + 'CharHairGeosets.dbc')                 # fields: ID, race, sex, style, geoset, show scalp
 hair = [r for r in t.recs() if not (RACES.get(r[1], (0, 0, None))[2] == 'Murloc' and r[2] == 0)]
 next_hair = max(r[0] for r in hair) + 1
@@ -368,7 +417,7 @@ for race in [r for r, v in RACES.items() if v[2] == 'Murloc']:
         next_hair += 1
 t.set_recs(hair)
 t.save('CharHairGeosets.dbc')
-copy_race_rows('CharacterFacialHairStyles.dbc', 0, idfield=None)
+copy_race_rows('CharacterFacialHairStyles.dbc', 0, idfield=None, sex_field=1)
 copy_race_rows('NameGen.dbc', 2)
 copy_race_rows('EmotesTextSound.dbc', 2)
 # Wardrobe / dressing-room zoom per (race, sex, gear slot): fields ID, race, sex, slot, camera. Only the 10 stock

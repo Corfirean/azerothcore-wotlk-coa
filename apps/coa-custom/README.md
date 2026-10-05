@@ -1,7 +1,19 @@
-# CoA Custom 1.0: custom races, vanilla classes, more incarnations
+# CoA Custom 1.1: custom races, vanilla classes, more incarnations
 
 An add-on for the **Jealous-Sound CoA repack `main-20260930-df4dea11` with CoA Bots 1.6**. It installs on top of
 them the same way CoA Bots does.
+
+## What's new in 1.1
+
+- **Earthen textures fixed.**
+  - Male: the face was a squashed patch. He now uses the Dwarf HD textures his own were copied from.
+  - Female: her model was the old pre-HD Dwarf female, which the HD textures don't fit. She now uses the HD Dwarf
+    female model, with its faces and hair.
+- **The installer backs up your accounts and characters first** (also when uninstalling), into
+  `CoA-Custom\character-backups\`. It never deletes these backups.
+
+Updating from 1.0: stop the server, extract the 1.1 zip over your `CoA-Custom` folder, and run
+`Install-Custom.bat` again. Your 1.0 backup of the original files is kept for `Uninstall-Custom.bat`.
 
 ## What it adds
 
@@ -32,7 +44,7 @@ them the same way CoA Bots does.
 | **CoA Bots 1.6** installed in it | This package replaces the bot worldserver (it is built with the bots). |
 | The Ascension game client | The package installs its own `Data\patch-T.MPQ` there. |
 
-**Back up first:**
+**Back up first** (the installer also backs up your accounts and characters, but a full copy is safest):
 1. Stop the server with `Stop_All_Server.bat`.
 2. Copy your repack folder somewhere safe.
 3. Copy `Data\patch-T.MPQ` from your game folder (if you have one).
@@ -44,6 +56,7 @@ them the same way CoA Bots does.
 3. Run `CoA-Custom\Install-Custom.bat`. It:
    - checks your repack and CoA Bots versions;
    - asks for your Ascension game folder (the one with `Ascension.exe`);
+   - backs up your accounts and characters into `CoA-Custom\character-backups\`;
    - backs up everything it will replace into `CoA-Custom\backup\`. This includes `worldserver.exe`, 15 server DBC
      files, `patch-T.MPQ`, two settings templates and the 60 world tables it changes;
    - copies the files, applies `files\sql\1_world.sql`, then starts the server with CoA Bots.
