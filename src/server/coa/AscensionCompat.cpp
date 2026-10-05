@@ -1069,6 +1069,7 @@ public:
 
     uint32 learned = 0;
     uint32 removed = 0;
+    std::string changedSpells;
     for (AscensionCompatData::ProficiencyDefinition const &definition :
          AscensionCompatData::ProficiencyDefinitions) {
       bool const allowed = isAllowed(definition.SpellId);
@@ -1103,6 +1104,8 @@ public:
       {
         player->removeSpell(definition.SpellId, SPEC_MASK_ALL, false);
         ++removed;
+        changedSpells += Acore::StringFormat(" -{}{}", definition.SpellId,
+                                             player->HasSpell(definition.SpellId) ? "(still known)" : "");
       }
       if (player->HasSkill(definition.SkillId))
         player->SetSkill(definition.SkillId, 0, 0, 0);
@@ -1125,9 +1128,9 @@ public:
     {
       LOG_INFO("coa",
                "Synchronized proficiencies for {} (class {}, level {}): "
-               "learned {}, removed {}",
+               "learned {}, removed {}{}",
                player->GetName(), uint32(player->getClass()),
-               uint32(player->GetLevel()), learned, removed);
+               uint32(player->GetLevel()), learned, removed, changedSpells);
     }
   }
 
@@ -9671,6 +9674,19 @@ static void LoadCustomRaceDisplays()
         ++count;
     } while (result->NextRow());
     LOG_INFO("server.loading", ">> Loaded {} custom race looks", count);
+}
+
+bool IsAscensionMaleOnlyRace(uint8 race)
+{
+    // Tuskarr, Taunka, Vrykul, Broken, Fel Orc, Forest Troll, Ice Troll, Skeleton: same list as the client's
+    // CHAR_CREATE_MALE_ONLY_RACES (patchlua_races.py). A female of these races has no body in the client.
+    switch (race)
+    {
+        case 15: case 17: case 18: case 22: case 23: case 24: case 25: case 26:
+            return true;
+        default:
+            return false;
+    }
 }
 
 bool HasAscensionCustomRaceDisplay(uint8 race, uint8 gender)

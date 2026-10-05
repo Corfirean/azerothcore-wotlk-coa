@@ -18,4 +18,7 @@ uint32 GetAscensionCustomRaceDisplay(Player const* player);
 /// Whether a race / gender wears custom_race_display looks in game.
 bool HasAscensionCustomRaceDisplay(uint8 race, uint8 gender);
 
+/// Extra races whose client model exists only as a male (the creation screen hides their Female button).
+bool IsAscensionMaleOnlyRace(uint8 race);
+
 #endif
