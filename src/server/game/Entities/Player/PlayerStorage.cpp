@@ -23,6 +23,7 @@
 #include "Battleground.h"
 #include "BattlegroundMgr.h"
 #include "CharacterDatabaseCleaner.h"
+#include "CoAPortableSession.h"
 #include "Chat.h"
 #include "Common.h"
 #include "Config.h"
@@ -7300,6 +7301,9 @@ void Player::SaveToDB(CharacterDatabaseTransaction trans, bool create, bool logo
     // save pet (hunter pet level and experience and all type pets health/mana).
     if (Pet* pet = GetPet())
         pet->SavePetToDB(PET_SAVE_AS_CURRENT);
+
+    if (!create)
+        CoAPortableSession::AppendSaveMarker(this, trans, logout);
 }
 
 // flag data to be saved by UpdateAdditionalSaves a moment after an important change,
