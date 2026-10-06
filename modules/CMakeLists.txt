@@ -176,8 +176,13 @@ function(ConfigureScriptLoader SCRIPTLOADER_NAME LOADER_OUT IS_DYNAMIC_SCRIPTLOA
     set(ACORE_SCRIPTS_FORWARD_DECL
       "${ACORE_SCRIPTS_FORWARD_DECL}void ${LOADER_FUNCTION};\n")
 
-    set(ACORE_SCRIPTS_INVOKE
-      "${ACORE_SCRIPTS_INVOKE}    ${LOADER_FUNCTION};\n")
+    if(LOCALE_SCRIPT_MODULE STREQUAL "mod_playerbots")
+      set(ACORE_SCRIPTS_INVOKE
+        "${ACORE_SCRIPTS_INVOKE}    if (sConfigMgr->GetOption<bool>(\"AiPlayerbot.Enabled\", true))\n        ${LOADER_FUNCTION};\n")
+    else()
+      set(ACORE_SCRIPTS_INVOKE
+        "${ACORE_SCRIPTS_INVOKE}    ${LOADER_FUNCTION};\n")
+    endif()
   endforeach()
 
   set(GENERATED_LOADER ${CMAKE_CURRENT_BINARY_DIR}/gen_scriptloader/${SCRIPTLOADER_NAME}/ModulesLoader.cpp)
