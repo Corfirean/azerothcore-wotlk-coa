@@ -18,8 +18,10 @@ private:
 public:
     AHBot_WorldScript() : WorldScript("AHBot_WorldScript"), HasPerformedStartup(false) { }
 
-    void OnAfterConfigLoad(bool /*reload*/) override
+    void OnAfterConfigLoad(bool reload) override
     {
+        if (reload)
+            auctionbot->EnsureAutoCharacter();
         auctionbot->InitializeConfiguration();
         if (!auctionbot->IsModuleEnabled())
             return;
@@ -41,6 +43,9 @@ public:
         HasPerformedStartup = true;
         if (!auctionbot->IsModuleEnabled())
             return;
+
+        if (auctionbot->EnsureAutoCharacter())
+            auctionbot->InitializeConfiguration();
 
         LOG_INFO("server.loading", "AuctionHouseBot: (Re)populating item candidate lists ...");
         auctionbot->PopulateItemCandidatesAndProportions();
@@ -210,6 +215,7 @@ public:
 
         // Reload config file with isReload = true
         sConfigMgr->LoadModulesConfigs(true, false);
+        AuctionHouseBot::instance()->EnsureAutoCharacter();
         AuctionHouseBot::instance()->InitializeConfiguration();
         AuctionHouseBot::instance()->PopulateItemCandidatesAndProportions();
 

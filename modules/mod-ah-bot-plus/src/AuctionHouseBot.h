@@ -346,6 +346,9 @@ public:
 
     void Update();
     bool IsModuleEnabled();
+    bool UsesAutoCharacter();
+    uint32 FindAutoCharacter();
+    bool EnsureAutoCharacter();
     void InitializeConfiguration();
     void EmptyAuctionHouses();
     uint32 GetRandomStackValue(std::string configKeyString, uint32 defaultValue);

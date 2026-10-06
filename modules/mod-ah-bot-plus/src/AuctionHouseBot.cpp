@@ -22,12 +22,16 @@
 #include "AuctionHouseMgr.h"
 #include "AuctionHouseBot.h"
 #include "AuctionHouseSearcher.h"
+#include "AccountMgr.h"
 #include "Config.h"
+#include "CryptoRandom.h"
 #include "Player.h"
 #include "WorldSession.h"
 #include "DatabaseEnv.h"
 #include "ItemTemplate.h"
 #include "SharedDefines.h"
+#include "SRP6.h"
+#include "World.h"
 #include "SpellMgr.h"
 #include <cmath>
 
@@ -1978,11 +1982,86 @@ bool AuctionHouseBot::IsModuleEnabled()
     if (sellerEnabled == false && buyerEnabled == false)
         return false;
     string charString = sConfigMgr->GetOption<std::string>("AuctionHouseBot.GUIDs", "0");
-    if (charString == "0" || charString.empty())
+    if ((charString == "0" || charString.empty()) && !UsesAutoCharacter())
     {
-        LOG_INFO("module", "AuctionHouseBot: AuctionHouseBot.GUIDs is not configured so this module will be disabled");
+        LOG_INFO("module", "AuctionHouseBot: AuctionHouseBot.GUIDs is not configured and AuctionHouseBot.AutoCharacter is off so this module will be disabled");
         return false;
     }
+    return true;
+}
+
+namespace
+{
+    constexpr char const* AutoAccountName = "AHBOT";
+    constexpr char const* AutoCharacterNames[] = { "Auctioneer", "Auctionbot", "Marketkeeper", "Tradewarden" };
+}
+
+bool AuctionHouseBot::UsesAutoCharacter()
+{
+    string charString = sConfigMgr->GetOption<std::string>("AuctionHouseBot.GUIDs", "0");
+    if (charString != "0" && !charString.empty())
+        return false;
+    return sConfigMgr->GetOption<bool>("AuctionHouseBot.AutoCharacter", true);
+}
+
+uint32 AuctionHouseBot::FindAutoCharacter()
+{
+    uint32 accountId = AccountMgr::GetId(AutoAccountName);
+    if (!accountId)
+        return 0;
+
+    QueryResult result = CharacterDatabase.Query("SELECT `guid` FROM `characters` WHERE `account` = {} ORDER BY `guid` LIMIT 1", accountId);
+    return result ? (*result)[0].Get<uint32>() : 0;
+}
+
+bool AuctionHouseBot::EnsureAutoCharacter()
+{
+    if (!UsesAutoCharacter() || FindAutoCharacter())
+        return false;
+
+    uint32 accountId = AccountMgr::GetId(AutoAccountName);
+    if (!accountId)
+    {
+        std::array<uint8, 16> randomBytes = Acore::Crypto::GetRandomBytes<16>();
+        std::string password;
+        for (uint8 value : randomBytes)
+            password += "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[value % 32];
+
+        auto [salt, verifier] = Acore::Crypto::SRP6::MakeRegistrationData(AutoAccountName, password);
+        LoginDatabase.DirectExecute("INSERT INTO `account` (`username`, `salt`, `verifier`, `expansion`, `reg_mail`, `email`, `joindate`, `locked`) "
+            "VALUES ('{}', 0x{}, 0x{}, {}, '', '', NOW(), 1)", AutoAccountName, ByteArrayToHexStr(salt), ByteArrayToHexStr(verifier),
+            uint32(sWorld->getIntConfig(CONFIG_EXPANSION)));
+        LoginDatabase.DirectExecute("INSERT INTO `realmcharacters` (`realmid`, `acctid`, `numchars`) SELECT `realmlist`.`id`, `account`.`id`, 0 "
+            "FROM `realmlist`, `account` LEFT JOIN `realmcharacters` ON `acctid` = `account`.`id` WHERE `acctid` IS NULL");
+
+        accountId = AccountMgr::GetId(AutoAccountName);
+        if (!accountId)
+        {
+            LOG_ERROR("module", "AuctionHouseBot: Could not create the auction account '{}'", AutoAccountName);
+            return false;
+        }
+    }
+
+    std::string name;
+    for (char const* candidate : AutoCharacterNames)
+    {
+        if (!CharacterDatabase.Query("SELECT 1 FROM `characters` WHERE `name` = '{}'", candidate))
+        {
+            name = candidate;
+            break;
+        }
+    }
+    if (name.empty())
+    {
+        LOG_ERROR("module", "AuctionHouseBot: All default auction character names are taken, set AuctionHouseBot.GUIDs manually");
+        return false;
+    }
+
+    ObjectGuid::LowType guid = sObjectMgr->GetGenerator<HighGuid::Player>().Generate();
+    CharacterDatabase.DirectExecute("INSERT INTO `characters` (`guid`, `account`, `name`, `race`, `class`, `gender`, `level`, `taximask`, "
+        "`innTriggerId`, `map`, `zone`, `position_x`, `position_y`, `position_z`, `health`) "
+        "VALUES ({}, {}, '{}', 1, 1, 0, 80, '', 0, 0, 12, -8949.95, -132.493, 83.5312, 100)", guid, accountId, name);
+    LOG_INFO("module", "AuctionHouseBot: Created auction character '{}' (guid {}) on account '{}'", name, guid, AutoAccountName);
     return true;
 }
 
@@ -2003,7 +2082,21 @@ void AuctionHouseBot::InitializeConfiguration()
     }
 
     string charString = sConfigMgr->GetOption<std::string>("AuctionHouseBot.GUIDs", "0");
-    AddCharacters(charString);
+    if (UsesAutoCharacter())
+    {
+        uint32 autoGuid = FindAutoCharacter();
+        if (!autoGuid)
+        {
+            AHCharacters.clear();
+            AHCharactersGUIDsForQuery.clear();
+            LOG_INFO("module", "AuctionHouseBot: The auction character will be created when the server has started");
+            charString.clear();
+        }
+        else
+            charString = std::to_string(autoGuid);
+    }
+    if (!charString.empty() && charString != "0")
+        AddCharacters(charString);
 
     // Top level overrides
     CompleteItemValueOverrideEnabled = sConfigMgr->GetOption<bool>("AuctionHouseBot.CompleteItemValueOverride.Enabled", false);

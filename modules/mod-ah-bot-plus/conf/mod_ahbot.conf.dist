@@ -37,7 +37,7 @@
 #
 #    AuctionHouseBot.EnableSeller
 #        Enable/Disable the part of AHBot that puts items up for auction
-#    Default: true (requires the master switch and GUIDs)
+#    Default: true (requires the master switch and an auction character)
 #
 #    AuctionHouseBot.ReturnExpiredAuctionItemsToBot
 #        If enabled (true), returns expired auction items to the AH Bot(s) via
@@ -57,6 +57,14 @@
 #        AuctionHouseBot.GUIDs = 3 <- Only character with GUID 3
 #        AuctionHouseBot.GUIDs = 3,4 <- Both characters with GUID 3 and 4
 #
+#    AuctionHouseBot.AutoCharacter
+#        When AuctionHouseBot.GUIDs is 0 and this is true, the module uses the
+#        character of the account AHBOT and creates that account and a character
+#        named Auctioneer the first time the server starts with the module
+#        enabled. The account cannot be used to log in. One character lists in
+#        the Alliance, Horde and Neutral auction houses.
+#    Default: true
+#
 #    AuctionHouseBot.ItemsPerCycle
 #        How many items to post on the auction house every house update.
 #        Items in a cycle will be posted by a randomly selected bot.
@@ -70,7 +78,7 @@
 #		 Note: Do not set lower than 15 minutes (900) or higher than 48 hours (172800)
 ###############################################################################
 
-# Master switch; seller/buyer and valid character GUIDs are also required.
+# Master switch; the seller or buyer and an auction character (GUIDs or AutoCharacter) are also required.
 AuctionHouseBot.Enable = false
 
 # CoA: only list items found in world loot, vendors or profession crafting.
@@ -84,6 +92,7 @@ AuctionHouseBot.MinutesBetweenSellCycle = 1
 AuctionHouseBot.EnableSeller = true
 AuctionHouseBot.ReturnExpiredAuctionItemsToBot = false
 AuctionHouseBot.GUIDs = 0
+AuctionHouseBot.AutoCharacter = true
 AuctionHouseBot.ItemsPerCycle = 150
 AuctionHouseBot.ListingExpireTimeInSecondsMin = 900
 AuctionHouseBot.ListingExpireTimeInSecondsMax = 86400
