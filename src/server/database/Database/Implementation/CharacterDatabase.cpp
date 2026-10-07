@@ -726,6 +726,9 @@ void CharacterDatabaseConnection::DoPrepareStatements()
     PrepareStatement(CHAR_INS_PORTABLE_PET_DECLINED, "INSERT INTO character_pet_declinedname (id, owner, genitive, dative, accusative, instrumental, prepositional) VALUES (?, ?, ?, ?, ?, ?, ?)", CONNECTION_BOTH);
     PrepareStatement(CHAR_INS_PORTABLE_SETTING, "INSERT INTO character_settings (guid, `source`, `data`) VALUES (?, ?, ?)", CONNECTION_BOTH);
     PrepareStatement(CHAR_INS_PORTABLE_ACCOUNT_DATA, "INSERT INTO character_account_data (guid, `type`, `time`, `data`) VALUES (?, ?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_APPEARANCE, "INSERT INTO character_appearance (guid, category_id, appearance_id) VALUES (?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_APPEARANCE_SETTINGS, "INSERT INTO character_appearance_settings (guid, can_see_item, can_see_spell) VALUES (?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_APPEARANCE_OUTFIT, "INSERT INTO character_appearance_outfit (guid, `name`, appearances) VALUES (?, ?, ?)", CONNECTION_BOTH);
     PrepareStatement(CHAR_INS_PORTABLE_HOMEBIND, "INSERT INTO character_homebind (guid, mapId, zoneId, posX, posY, posZ) VALUES (?, ?, ?, ?, ?, ?)", CONNECTION_BOTH);
     PrepareStatement(CHAR_INS_PORTABLE_SESSION, "INSERT INTO coa_portable_session (guid, session_id, character_id, imported_revision, baseline_generation, `state`, checkpoint_seq, save_seq, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", CONNECTION_BOTH);
     PrepareStatement(CHAR_SEL_PORTABLE_IMPORT_MARKER, "SELECT guid FROM character_settings WHERE source = 'coa.portable.import' AND data = ?", CONNECTION_SYNCH);

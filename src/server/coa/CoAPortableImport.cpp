@@ -12,6 +12,7 @@
 #include "ObjectMgr.h"
 #include "Player.h"
 #include "SpellMgr.h"
+#include "StringConvert.h"
 #include "StringFormat.h"
 #include "Util.h"
 #include "World.h"
@@ -220,6 +221,10 @@ namespace CoAPortableImport
             std::vector<ActionRow> Actions;
             std::vector<PetRow> Pets;
             std::vector<SettingRow> Settings;
+            std::vector<std::pair<uint32, uint32>> Appearances;
+            std::vector<std::pair<std::string, std::string>> Outfits;
+            bool CanSeeItem = true;
+            bool CanSeeSpell = true;
             bool HasMacros = false;
             uint32 MacrosTime = 0;
             std::string Macros;
@@ -349,6 +354,8 @@ namespace CoAPortableImport
             }
             return out.size() <= maximum;
         }
+
+        bool DecodeWardrobe(Value const& wardrobe, Model& m, std::string& error);
 
         bool DecodeModel(Value const& root, Model& m, std::string& error)
         {
@@ -708,6 +715,12 @@ namespace CoAPortableImport
                     m.Settings.push_back({ source, Numbers(numbers) });
                 }
             }
+            if (root.Find("wardrobe"))
+            {
+                Value const* wardrobe = top.Object("wardrobe");
+                if (wardrobe && !DecodeWardrobe(*wardrobe, m, error))
+                    return false;
+            }
             if (Value const* blobs = top.Object("client_data"))
             {
                 if (blobs->Members.size() > 8)
@@ -744,6 +757,81 @@ namespace CoAPortableImport
             {
                 error = top.Error();
                 return false;
+            }
+            return true;
+        }
+
+        bool DecodeWardrobe(Value const& wardrobe, Model& m, std::string& error)
+        {
+            constexpr uint64 MaxCategory = 68;
+            constexpr std::size_t MaxOutfits = 100;
+            for (auto const& [key, value] : wardrobe.Members)
+            {
+                if (key == "active")
+                {
+                    if (value.Kind != CoAPortableJson::Type::Object || value.Members.size() > MaxCategory)
+                    {
+                        error = "the wardrobe selection is not valid";
+                        return false;
+                    }
+                    for (auto const& [category, appearance] : value.Members)
+                    {
+                        Optional<uint32> const number = Acore::StringTo<uint32>(category);
+                        if (!number || *number < 1 || *number > MaxCategory || category != std::to_string(*number))
+                        {
+                            error = "a wardrobe category is out of range";
+                            return false;
+                        }
+                        if (appearance.Kind != CoAPortableJson::Type::Integer || appearance.Negative || appearance.Magnitude == 0 || appearance.Magnitude > 0xFFFFFFFFull)
+                        {
+                            error = "a selected appearance is out of range";
+                            return false;
+                        }
+                        m.Appearances.emplace_back(*number, uint32(appearance.Magnitude));
+                    }
+                }
+                else if (key == "can_see_item" || key == "can_see_spell")
+                {
+                    if (value.Kind != CoAPortableJson::Type::Bool)
+                    {
+                        error = "a wardrobe switch is not valid";
+                        return false;
+                    }
+                    (key == "can_see_item" ? m.CanSeeItem : m.CanSeeSpell) = value.Boolean;
+                }
+                else if (key == "outfits")
+                {
+                    if (value.Kind != CoAPortableJson::Type::Object || value.Members.size() > MaxOutfits)
+                    {
+                        error = "the saved outfits are not valid";
+                        return false;
+                    }
+                    for (auto const& [name, ids] : value.Members)
+                    {
+                        if (name.empty() || name.size() > 64 || std::any_of(name.begin(), name.end(), [](char c) { return uint8(c) < 0x20; })
+                            || ids.Kind != CoAPortableJson::Type::Array || ids.Items.size() > MaxCategory + 1)
+                        {
+                            error = "a saved outfit is not valid";
+                            return false;
+                        }
+                        std::string text;
+                        for (Value const& id : ids.Items)
+                        {
+                            if (id.Kind != CoAPortableJson::Type::Integer || id.Negative || id.Magnitude > 0xFFFFFFFFull)
+                            {
+                                error = "an outfit appearance is out of range";
+                                return false;
+                            }
+                            text += (text.empty() ? "" : " ") + std::to_string(id.Magnitude);
+                        }
+                        m.Outfits.emplace_back(name, std::move(text));
+                    }
+                }
+                else
+                {
+                    error = "the wardrobe has an unknown field";
+                    return false;
+                }
             }
             return true;
         }
@@ -1199,6 +1287,24 @@ namespace CoAPortableImport
             b.Next(guid).Next(uint8(5)).Next(model.MacrosTime).Next(model.Macros);
             trans->Append(b.Stmt);
         }
+        for (auto const& [category, appearance] : model.Appearances)
+        {
+            Bind b(CharacterDatabase.GetPreparedStatement(CHAR_INS_PORTABLE_APPEARANCE));
+            b.Next(guid).Next(uint8(category)).Next(appearance);
+            trans->Append(b.Stmt);
+        }
+        if (!model.CanSeeItem || !model.CanSeeSpell)
+        {
+            Bind b(CharacterDatabase.GetPreparedStatement(CHAR_INS_PORTABLE_APPEARANCE_SETTINGS));
+            b.Next(guid).Next(uint8(model.CanSeeItem ? 1 : 0)).Next(uint8(model.CanSeeSpell ? 1 : 0));
+            trans->Append(b.Stmt);
+        }
+        for (auto const& [name, appearances] : model.Outfits)
+        {
+            Bind b(CharacterDatabase.GetPreparedStatement(CHAR_INS_PORTABLE_APPEARANCE_OUTFIT));
+            b.Next(guid).Next(name).Next(appearances);
+            trans->Append(b.Stmt);
+        }
         if (header.HasSession)
         {
             Bind b(CharacterDatabase.GetPreparedStatement(CHAR_INS_PORTABLE_SESSION));
@@ -1227,8 +1333,9 @@ namespace CoAPortableImport
             notAppliedJson += Acore::StringFormat("{}\"{}\"", notAppliedJson.empty() ? "" : ",", JsonEscape(n));
         LOG_INFO("coa.portable", "import {} created character {} ({}) with {} items and {} pets", jobId, guid, finalName, model.Items.size(), model.Pets.size());
         return finish(
-            Acore::StringFormat("{{\"status\":\"ok\",\"local_guid\":{},\"item_base\":{},\"pet_base\":{},\"renamed\":{},\"final_name\":\"{}\",\"items\":{},\"pets\":{},\"talents\":{},\"settings\":{},\"not_applied\":[{}]}}",
-                guid, itemBase, petBase, rename ? "true" : "false", JsonEscape(finalName), model.Items.size(), model.Pets.size(), talentsWritten, settingsWritten, notAppliedJson),
+            Acore::StringFormat("{{\"status\":\"ok\",\"local_guid\":{},\"item_base\":{},\"pet_base\":{},\"renamed\":{},\"final_name\":\"{}\",\"items\":{},\"pets\":{},\"talents\":{},\"settings\":{},\"wardrobe\":{},\"not_applied\":[{}]}}",
+                guid, itemBase, petBase, rename ? "true" : "false", JsonEscape(finalName), model.Items.size(), model.Pets.size(), talentsWritten, settingsWritten,
+                model.Appearances.size() + model.Outfits.size() + (model.CanSeeItem && model.CanSeeSpell ? 0 : 1), notAppliedJson),
             Acore::StringFormat("OK {}", jobId));
     }
 }
