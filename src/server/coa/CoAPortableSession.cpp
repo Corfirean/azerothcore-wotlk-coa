@@ -13,7 +13,9 @@
 #include "ObjectAccessor.h"
 #include "Player.h"
 #include "ScriptMgr.h"
+#include "StringConvert.h"
 #include "StringFormat.h"
+#include "Tokenize.h"
 #include "Util.h"
 #include "WorldSession.h"
 #include <atomic>
@@ -413,14 +415,15 @@ namespace CoAPortableSession
             return;
         }
 
-        if (PlayerSettingVector const* pin = player->FindPlayerSettings("coa.portable.pin"))
+        if (QueryResult pin = CharacterDatabase.Query(Acore::StringFormat("SELECT `data` FROM `character_settings` WHERE `guid` = {} AND `source` = 'coa.portable.pin'", guid)))
         {
             std::vector<uint32> words;
-            for (auto const& setting : *pin)
-                words.push_back(setting.value);
+            for (std::string_view word : Acore::Tokenize(pin->Fetch()[0].Get<std::string_view>(), ' ', false))
+                if (Optional<uint32> value = Acore::StringTo<uint32>(word))
+                    words.push_back(*value);
             if (!CoAPortableProjection::PinMatches(words))
             {
-                LOG_ERROR("coa.portable", "character {} of session {} was projected for another progression profile; it is not let in", guid, entry.SessionId);
+                LOG_ERROR("coa.portable", "character {} of session {} was prepared for another progression profile; it is not let in", guid, entry.SessionId);
                 player->GetSession()->KickPlayer("This character was prepared for another progression profile of the realm; the Manager must update it first");
                 return;
             }
