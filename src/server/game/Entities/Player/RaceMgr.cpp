@@ -65,7 +65,7 @@ void RaceMgr::LoadRaces()
         if (GetMaxRaces() <= raceId)
             SetMaxRaces(raceId + 1);
 
-        uint32 raceBit = (1 << (raceId - 1));
+        uint32 raceBit = (1u << ((raceId - 1) & 31)); // races above 32 share a mask bit (CoA Custom)
 
         _playableRaceMask |= raceBit;
 
