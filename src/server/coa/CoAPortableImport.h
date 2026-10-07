@@ -6,6 +6,9 @@
 
 namespace CoAPortableImport
 {
+    inline constexpr uint32 JobFormat = 2;
+    inline constexpr uint32 CharacterFormat = 2;
+
     bool ValidJobId(std::string const& text);
     std::string Run(std::string const& jobId);
 }

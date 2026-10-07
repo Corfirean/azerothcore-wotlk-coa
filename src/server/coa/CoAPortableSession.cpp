@@ -3,14 +3,22 @@
 #include "Chat.h"
 #include "CommandScript.h"
 #include "Config.h"
+#include "CryptoHash.h"
+#include "DBCStores.h"
+#include "GitRevision.h"
 #include "DatabaseEnv.h"
 #include "GameTime.h"
 #include "Log.h"
 #include "ObjectAccessor.h"
 #include "Player.h"
 #include "ScriptMgr.h"
+#include "StringFormat.h"
+#include "Util.h"
 #include "WorldSession.h"
 #include <atomic>
+#include <cstring>
+#include <fstream>
+#include <iterator>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -114,6 +122,51 @@ namespace
         --RegisteredCount;
     }
 
+    std::string Printable(std::string_view text)
+    {
+        std::string out(text);
+        for (char& c : out)
+            if (!std::isalnum(static_cast<unsigned char>(c)) && std::string_view("._/+:- ").find(c) == std::string_view::npos)
+                c = '_';
+        return out;
+    }
+
+    std::string CatalogEntry(char const* name)
+    {
+        std::ifstream in(GetClientDBCPath(name), std::ios::binary);
+        if (!in)
+            return Acore::StringFormat("\"{}\":null", name);
+        std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        uint32 records = 0;
+        if (bytes.size() >= 20 && std::memcmp(bytes.data(), "WDBC", 4) == 0)
+            std::memcpy(&records, bytes.data() + 4, sizeof(records));
+        auto const digest = Acore::Crypto::SHA256::GetDigestOf(std::string_view(bytes));
+        std::string hex = Acore::Impl::ByteArrayToHexStr(digest.data(), digest.size(), false);
+        std::transform(hex.begin(), hex.end(), hex.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+        return Acore::StringFormat("\"{}\":{{\"sha256\":\"{}\",\"records\":{}}}", name, hex, records);
+    }
+
+    std::string CapabilitiesJson()
+    {
+        static std::mutex lock;
+        static std::string catalog;
+        {
+            std::lock_guard<std::mutex> guard(lock);
+            if (catalog.empty())
+                catalog = Acore::StringFormat("{{{},{},{},{}}}", CatalogEntry("Appearances.dbc"), CatalogEntry("ItemAppearances.dbc"), CatalogEntry("VanityCollection.dbc"), CatalogEntry("ItemSet.dbc"));
+        }
+        std::string features = "\"wardrobe\"";
+        if (CoAPortableSession::Enabled())
+            features = "\"runtime_sessions\"," + features;
+        std::lock_guard<std::mutex> guard(lock);
+        return Acore::StringFormat(
+            "{{\"report_version\":1,\"ruleset\":\"coa\",\"core\":{{\"commit\":\"{}\",\"branch\":\"{}\",\"date\":\"{}\"}},"
+            "\"portable\":{{\"job_formats\":[{}],\"character_formats\":[{}],\"session_marker_version\":1,\"features\":[{}]}},"
+            "\"extension_namespaces\":[],\"client_data\":{}}}",
+            Printable(GitRevision::GetHash()), Printable(GitRevision::GetBranch()), Printable(GitRevision::GetDate()),
+            CoAPortableImport::JobFormat, CoAPortableImport::CharacterFormat, features, catalog);
+    }
+
     class CoAPortableSessionWorld final : public WorldScript
     {
     public:
@@ -162,6 +215,7 @@ namespace
                 { "release", HandleRelease, SEC_ADMINISTRATOR, Console::Yes },
                 { "status", HandleStatus, SEC_ADMINISTRATOR, Console::Yes },
                 { "import", HandleImport, SEC_ADMINISTRATOR, Console::Yes },
+                { "capabilities", HandleCapabilities, SEC_ADMINISTRATOR, Console::Yes },
             };
             static ChatCommandTable const commands = {
                 { "portable", portableCommands },
@@ -269,6 +323,14 @@ namespace
             if (handler->GetSession())
                 return Refuse(handler, "console only");
             handler->SendSysMessage(CoAPortableImport::Run(jobId));
+            return true;
+        }
+
+        static bool HandleCapabilities(ChatHandler* handler)
+        {
+            if (handler->GetSession())
+                return Refuse(handler, "console only");
+            handler->SendSysMessage(CapabilitiesJson());
             return true;
         }
 

@@ -360,7 +360,8 @@ namespace CoAPortableImport
         bool DecodeModel(Value const& root, Model& m, std::string& error)
         {
             Reader top(root, "snapshot");
-            top.U64("format_version", 1);
+            if (top.U64("format_version", 0xFFFFFFFFull) != CharacterFormat)
+                top.Fail(Acore::StringFormat("is not character format {}", CharacterFormat));
             m.CharacterId = top.Str("character_id", 36);
             if (top.Str("ruleset", 16) != "coa" || !top.Valid())
             {
@@ -839,6 +840,7 @@ namespace CoAPortableImport
         bool DecodeHeader(Value const& root, Header& h, std::string& error)
         {
             Reader r(root, "job");
+            r.U64("job_format", 0xFFFFFFFFull);
             h.JobId = r.Str("job_id", 36);
             Value const* nonce = r.Array("nonce", 4);
             if (nonce && nonce->Items.size() == 4)
@@ -999,6 +1001,15 @@ namespace CoAPortableImport
         CoAPortableJson::Parsed headerParsed = CoAPortableJson::Parse(headerText);
         Header header;
         std::string error;
+        if (headerParsed.Ok)
+        {
+            Value const* declared = headerParsed.Root.Find("job_format");
+            if (!declared || declared->Kind != CoAPortableJson::Type::Integer || declared->Negative || declared->Magnitude != JobFormat)
+            {
+                LOG_ERROR("coa.portable", "import {} refused: unsupported job format", jobId);
+                return finish(Acore::StringFormat("{{\"status\":\"refused\",\"supported_job_formats\":[{}],\"problems\":[{{\"code\":\"unsupported_job_format\",\"detail\":\"this realm reads job format {} only\"}}]}}", JobFormat, JobFormat), "ERR unsupported_job_format");
+            }
+        }
         if (!headerParsed.Ok || !DecodeHeader(headerParsed.Root, header, error))
             return finish(Failure(jobId, "job_header", headerParsed.Ok ? error : headerParsed.Error), "ERR job_header");
         if (header.JobId != jobId)
