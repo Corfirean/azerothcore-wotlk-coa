@@ -3,6 +3,7 @@
 #include "Base64.h"
 #include "CharacterCache.h"
 #include "CoAPortableJson.h"
+#include "CoAPortableProjection.h"
 #include "CoAPortableSession.h"
 #include "Config.h"
 #include "GameTime.h"
@@ -14,6 +15,7 @@
 #include "SpellMgr.h"
 #include "StringConvert.h"
 #include "StringFormat.h"
+#include "Tokenize.h"
 #include "Util.h"
 #include "World.h"
 #include <algorithm>
@@ -242,6 +244,11 @@ namespace CoAPortableImport
             std::string SessionId;
             std::string CharacterId;
             uint32 Generation = 1;
+            bool HasProjection = false;
+            bool ProjectionActive = false;
+            uint32 ProjectionLevel = 0;
+            uint32 ProjectionPolicy = 0;
+            std::string ProjectionSignature;
         };
 
         std::string JsonEscape(std::string_view text)
@@ -868,6 +875,18 @@ namespace CoAPortableImport
                     r.Fail(k.Error());
                 h.HasSession = true;
             }
+            if (Value const* projection = r.Raw("projection"); projection && projection->Kind == CoAPortableJson::Type::Object)
+            {
+                Reader k(*projection, "projection");
+                h.ProjectionActive = k.Bool("active");
+                h.ProjectionLevel = uint32(k.U64("level", 255));
+                h.ProjectionPolicy = uint32(k.U64("policy_version", 0xFFFFFFFFull));
+                h.ProjectionSignature = k.Str("progression_signature", 64);
+                k.Finish();
+                if (!k.Valid())
+                    r.Fail(k.Error());
+                h.HasProjection = true;
+            }
             r.Finish();
             if (!r.Valid())
             {
@@ -875,6 +894,29 @@ namespace CoAPortableImport
                 return false;
             }
             return true;
+        }
+
+        CoAPortableProjection::Input ProjectionInput(Model const& m)
+        {
+            CoAPortableProjection::Input input;
+            input.Class = m.Class;
+            input.Level = m.Level;
+            for (ItemRow const& item : m.Items)
+                input.Items.push_back({ item.Id, item.HasContainer, item.Container, item.Slot, item.Entry });
+            for (auto const& [spell, mask] : m.Spells)
+                input.Spells.push_back(spell);
+            for (ActionRow const& action : m.Actions)
+                input.Actions.push_back({ action.Spec, action.Button, action.Action, action.Type });
+            for (SettingRow const& setting : m.Settings)
+            {
+                CoAPortableProjection::SettingIn in;
+                in.Source = setting.Source;
+                for (std::string_view word : Acore::Tokenize(setting.Data, ' ', false))
+                    if (Optional<uint32> value = Acore::StringTo<uint32>(word))
+                        in.Values.push_back(*value);
+                input.Settings.push_back(std::move(in));
+            }
+            return input;
         }
 
         std::set<std::string> ExistingTables()
@@ -965,6 +1007,79 @@ namespace CoAPortableImport
         return CoAPortableSession::ValidSessionId(text);
     }
 
+    std::string Project(std::string const& jobId)
+    {
+        namespace fs = std::filesystem;
+        if (!ValidJobId(jobId))
+            return "ERR bad_job_id";
+        fs::path const dir = sConfigMgr->GetOption<std::string>("PortableImport.JobDir", "PortableImport");
+        fs::path const jobFile = dir / (jobId + ".job");
+        fs::path const resultFile = dir / (jobId + ".result");
+        auto finish = [&](std::string const& result, std::string const& reply)
+        {
+            if (!WriteAtomically(resultFile, result))
+                return std::string("ERR result_not_written");
+            return reply;
+        };
+
+        std::error_code ec;
+        std::uintmax_t const size = fs::file_size(jobFile, ec);
+        if (ec || size == 0 || size > MaxJobBytes)
+            return finish(Refused("job_file", "the job file cannot be read"), "ERR job_file");
+        std::string text(size, '\0');
+        {
+            std::ifstream in(jobFile, std::ios::binary);
+            if (!in || !in.read(text.data(), std::streamsize(size)))
+                return finish(Refused("job_file", "the job file cannot be read"), "ERR job_file");
+        }
+        std::size_t const split = text.find('\n');
+        if (split == std::string::npos)
+            return finish(Refused("job_format", "the job file has no snapshot line"), "ERR job_format");
+        std::string_view const headerText(text.data(), split);
+        std::string_view snapshotText(text.data() + split + 1, text.size() - split - 1);
+        while (!snapshotText.empty() && (snapshotText.back() == '\n' || snapshotText.back() == '\r'))
+            snapshotText.remove_suffix(1);
+
+        CoAPortableJson::Parsed headerParsed = CoAPortableJson::Parse(headerText);
+        if (!headerParsed.Ok)
+            return finish(Failure(jobId, "job_header", headerParsed.Error), "ERR job_header");
+        std::string error;
+        std::string headerSha;
+        {
+            Reader r(headerParsed.Root, "job");
+            if (r.U64("job_format", 0xFFFFFFFFull) != JobFormat)
+                r.Fail("is not a job format this realm reads");
+            if (r.Str("job_id", 36) != jobId)
+                r.Fail("names another job");
+            if (r.Str("query", 16) != "project")
+                r.Fail("is not a projection query");
+            headerSha = r.Str("snapshot_sha256", 64);
+            r.Finish();
+            if (!r.Valid())
+                return finish(Failure(jobId, "job_header", r.Error()), "ERR job_header");
+        }
+        auto const digestBytes = Acore::Crypto::SHA256::GetDigestOf(snapshotText);
+        std::string digest = Acore::Impl::ByteArrayToHexStr(digestBytes.data(), digestBytes.size(), false);
+        std::transform(digest.begin(), digest.end(), digest.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+        if (digest != headerSha)
+            return finish(Failure(jobId, "hash", "the snapshot does not match its recorded SHA-256"), "ERR hash");
+        CoAPortableJson::Parsed snapshot = CoAPortableJson::Parse(snapshotText);
+        Model model;
+        if (!snapshot.Ok || !DecodeModel(snapshot.Root, model, error))
+            return finish(Failure(jobId, "snapshot", snapshot.Ok ? error : snapshot.Error), "ERR snapshot");
+
+        uint32 const cap = CoAPortableProjection::MaxLevel();
+        if (model.Level <= cap)
+            return finish(Acore::StringFormat("{{\"status\":\"ok\",\"projection\":{{\"active\":false,\"protocol\":{},\"policy_version\":{},\"progression_signature\":\"{}\",\"max_player_level\":{},\"canonical_level\":{},\"projected_level\":{}}}}}",
+                CoAPortableProjection::Protocol, CoAPortableProjection::PolicyVersion, CoAPortableProjection::Signature(), cap, model.Level, model.Level), Acore::StringFormat("OK {}", jobId));
+        CoAPortableProjection::Result const result = CoAPortableProjection::Project(ProjectionInput(model), cap);
+        if (!result.Ok)
+            return finish(Failure(jobId, "projection", result.Error), "ERR projection");
+        LOG_INFO("coa.portable", "projection {}: level {} -> {} holds {} items, {} spells, {} actions, {} settings blocked", jobId, model.Level, cap,
+            result.HeldItems.size(), result.HeldSpells.size(), result.HeldActions.size(), result.BlockedSettings.size());
+        return finish(CoAPortableProjection::ManifestJson(result), Acore::StringFormat("OK {}", jobId));
+    }
+
     std::string Run(std::string const& jobId)
     {
         namespace fs = std::filesystem;
@@ -1041,6 +1156,26 @@ namespace CoAPortableImport
             return finish(Failure(jobId, "snapshot", "the header names another character than the snapshot"), "ERR snapshot");
         if (header.HasSession && !ValidJobId(header.SessionId))
             return finish(Failure(jobId, "job_header", "the session id is not a UUIDv7"), "ERR job_header");
+        if (header.HasProjection)
+        {
+            if (header.ProjectionSignature != CoAPortableProjection::Signature() || header.ProjectionPolicy != CoAPortableProjection::PolicyVersion ||
+                header.ProjectionLevel != CoAPortableProjection::MaxLevel())
+                return finish(Failure(jobId, "progression_changed", "this realm has another progression profile than the one the character was projected for"), "ERR progression_changed");
+            if (header.ProjectionActive)
+            {
+                if (model.Level != header.ProjectionLevel)
+                    return finish(Failure(jobId, "projection_level", "a projected character must be at the level cap of the realm"), "ERR projection_level");
+                CoAPortableProjection::Result const check = CoAPortableProjection::Project(ProjectionInput(model), header.ProjectionLevel);
+                if (!check.Ok)
+                    return finish(Failure(jobId, "projection", check.Error), "ERR projection");
+                if (!check.HoldsNothing())
+                    return finish(Failure(jobId, "projection_inconsistent", "the projected character still holds state above the level cap of the realm"), "ERR projection_inconsistent");
+            }
+            else if (model.Level > CoAPortableProjection::MaxLevel())
+                return finish(Failure(jobId, "above_level_cap", Acore::StringFormat("the character is level {} and the cap of this realm is {}: project it first", model.Level, CoAPortableProjection::MaxLevel())), "ERR above_level_cap");
+        }
+        else if (model.Level > CoAPortableProjection::MaxLevel())
+            return finish(Failure(jobId, "above_level_cap", Acore::StringFormat("the character is level {} and the cap of this realm is {}: project it first", model.Level, CoAPortableProjection::MaxLevel())), "ERR above_level_cap");
 
         std::vector<std::string> problems;
         std::string accountName;
@@ -1290,6 +1425,15 @@ namespace CoAPortableImport
         {
             Bind b(CharacterDatabase.GetPreparedStatement(CHAR_INS_PORTABLE_SETTING));
             b.Next(guid).Next(std::string("coa.portable.import")).Next(marker);
+            trans->Append(b.Stmt);
+        }
+        if (header.HasProjection)
+        {
+            std::string pin;
+            for (uint32 word : CoAPortableProjection::PinWords())
+                pin += Acore::StringFormat("{} ", word);
+            Bind b(CharacterDatabase.GetPreparedStatement(CHAR_INS_PORTABLE_SETTING));
+            b.Next(guid).Next(std::string("coa.portable.pin")).Next(pin);
             trans->Append(b.Stmt);
         }
         if (model.HasMacros)

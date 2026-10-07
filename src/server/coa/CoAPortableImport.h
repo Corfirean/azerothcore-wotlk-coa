@@ -11,6 +11,7 @@ namespace CoAPortableImport
 
     bool ValidJobId(std::string const& text);
     std::string Run(std::string const& jobId);
+    std::string Project(std::string const& jobId);
 }
 
 #endif

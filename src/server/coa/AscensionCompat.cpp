@@ -6,6 +6,7 @@
 
 #include "AscensionClassServiceBridge.h"
 #include "AscensionFelsworn.h"
+#include "AscensionFelswornRifts.h"
 #include "AscensionPyromancer.h"
 #include "AscensionCultist.h"
 #include "AscensionVenomancer.h"
@@ -615,18 +616,8 @@ std::vector<uint32> GetAscensionRacialSpells(Player const* player)
     return spells;
 }
 
-struct FelswornRiftGrant
-{
-    uint32 SpellId;
-    uint8 RequiredLevel;
-};
-
-constexpr std::array<FelswornRiftGrant, 3> FelswornHordeCapitalRifts =
-{{
-    {535598, 26},
-    {535599, 30},
-    {535600, 36}
-}};
+using AscensionCompatData::FelswornRiftGrant;
+using AscensionCompatData::FelswornHordeCapitalRifts;
 
 bool CanGrantAscensionRacialSpell(Player const* player, uint32 spellId)
 {

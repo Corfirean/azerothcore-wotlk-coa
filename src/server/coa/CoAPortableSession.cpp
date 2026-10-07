@@ -1,5 +1,6 @@
 #include "CoAPortableSession.h"
 #include "CoAPortableImport.h"
+#include "CoAPortableProjection.h"
 #include "Chat.h"
 #include "CommandScript.h"
 #include "Config.h"
@@ -155,16 +156,16 @@ namespace
             if (catalog.empty())
                 catalog = Acore::StringFormat("{{{},{},{},{}}}", CatalogEntry("Appearances.dbc"), CatalogEntry("ItemAppearances.dbc"), CatalogEntry("VanityCollection.dbc"), CatalogEntry("ItemSet.dbc"));
         }
-        std::string features = "\"wardrobe\"";
+        std::string features = "\"wardrobe\",\"level_projection\"";
         if (CoAPortableSession::Enabled())
             features = "\"runtime_sessions\"," + features;
         std::lock_guard<std::mutex> guard(lock);
         return Acore::StringFormat(
-            "{{\"report_version\":1,\"ruleset\":\"coa\",\"core\":{{\"commit\":\"{}\",\"branch\":\"{}\",\"date\":\"{}\"}},"
+            "{{\"report_version\":2,\"ruleset\":\"coa\",\"core\":{{\"commit\":\"{}\",\"branch\":\"{}\",\"date\":\"{}\"}},"
             "\"portable\":{{\"job_formats\":[{}],\"character_formats\":[{}],\"session_marker_version\":1,\"features\":[{}]}},"
-            "\"extension_namespaces\":[],\"client_data\":{}}}",
+            "\"progression\":{},\"extension_namespaces\":[],\"client_data\":{}}}",
             Printable(GitRevision::GetHash()), Printable(GitRevision::GetBranch()), Printable(GitRevision::GetDate()),
-            CoAPortableImport::JobFormat, CoAPortableImport::CharacterFormat, features, catalog);
+            CoAPortableImport::JobFormat, CoAPortableImport::CharacterFormat, features, CoAPortableProjection::ProgressionJson(), catalog);
     }
 
     class CoAPortableSessionWorld final : public WorldScript
@@ -216,6 +217,7 @@ namespace
                 { "status", HandleStatus, SEC_ADMINISTRATOR, Console::Yes },
                 { "import", HandleImport, SEC_ADMINISTRATOR, Console::Yes },
                 { "capabilities", HandleCapabilities, SEC_ADMINISTRATOR, Console::Yes },
+                { "project", HandleProject, SEC_ADMINISTRATOR, Console::Yes },
             };
             static ChatCommandTable const commands = {
                 { "portable", portableCommands },
@@ -326,6 +328,14 @@ namespace
             return true;
         }
 
+        static bool HandleProject(ChatHandler* handler, std::string jobId)
+        {
+            if (handler->GetSession())
+                return Refuse(handler, "console only");
+            handler->SendSysMessage(CoAPortableImport::Project(jobId));
+            return true;
+        }
+
         static bool HandleCapabilities(ChatHandler* handler)
         {
             if (handler->GetSession())
@@ -401,6 +411,19 @@ namespace CoAPortableSession
             LOG_INFO("coa.portable", "character {} logged in before its session {} was closed by the Manager", guid, entry.SessionId);
             player->GetSession()->KickPlayer("The portable session is still closing, try again in a moment");
             return;
+        }
+
+        if (PlayerSettingVector const* pin = player->FindPlayerSettings("coa.portable.pin"))
+        {
+            std::vector<uint32> words;
+            for (auto const& setting : *pin)
+                words.push_back(setting.value);
+            if (!CoAPortableProjection::PinMatches(words))
+            {
+                LOG_ERROR("coa.portable", "character {} of session {} was projected for another progression profile; it is not let in", guid, entry.SessionId);
+                player->GetSession()->KickPlayer("This character was prepared for another progression profile of the realm; the Manager must update it first");
+                return;
+            }
         }
 
         bool baseline = entry.Phase == State::WaitingBaseline || entry.Phase == State::BaselineReady;
