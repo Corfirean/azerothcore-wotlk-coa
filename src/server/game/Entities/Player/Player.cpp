@@ -596,6 +596,13 @@ bool Player::Create(ObjectGuid::LowType guidlow, CharacterCreateInfo* createInfo
                                     (0x00 << 16) |
                                     (((GetSession()->IsARecruiter() || GetSession()->GetRecruiterId() != 0) ? REST_STATE_RAF_LINKED : REST_STATE_NOT_RAF_LINKED) << 24)));
     SetByteValue(PLAYER_BYTES_3, 0, createInfo->Gender);
+    if (UsesExtendedAppearance(createInfo->Race))         // CoA: Esteria sixth appearance byte
+        SetByteValue(UNIT_FIELD_PADDING, 0, createInfo->OutfitId);
+    else if (UsesHaranirAppearance(createInfo->Race))
+    {
+        SetUInt32Value(UNIT_FIELD_PADDING, uint32(createInfo->HaranirExtra));
+        SetUInt32Value(OBJECT_FIELD_PADDING, uint32(createInfo->HaranirExtra >> 32));
+    }
     SetByteValue(PLAYER_BYTES_3, 3, 0);                     // BattlefieldArenaFaction (0 or 1)
 
     SetUInt32Value(PLAYER_GUILDID, 0);
@@ -12639,7 +12646,9 @@ void Player::LearnDefaultSkill(uint32 skillId, uint16 rank)
         {
             uint16 skillValue = 1;
             uint16 maxValue = GetMaxSkillValueForLevel();
-            if (sWorld->getBoolConfig(CONFIG_ALWAYS_MAXSKILL) && !IsProfessionOrRidingSkill(skillId))
+            SkillLineEntry const* maxLine = sSkillLineStore.LookupEntry(skillId);
+            if (sWorld->getBoolConfig(CONFIG_ALWAYS_MAXSKILL) && !IsProfessionOrRidingSkill(skillId) &&
+                (skillId == SKILL_DEFENSE || (maxLine && maxLine->categoryId == SKILL_CATEGORY_WEAPON)))
             {
                 skillValue = maxValue;
             }
@@ -16018,6 +16027,17 @@ void Player::_SaveCharacter(bool create, CharacterDatabaseTransaction trans)
     }
 
     trans->Append(stmt);
+    if (UsesExtendedAppearance(getRace(true)) || UsesHaranirAppearance(getRace(true)))
+    {
+        // CoA: Esteria appearance extension
+        uint64 extra = GetByteValue(UNIT_FIELD_PADDING, 0);
+        if (UsesHaranirAppearance(getRace(true)))
+            extra = uint64(GetUInt32Value(UNIT_FIELD_PADDING)) | (uint64(GetUInt32Value(OBJECT_FIELD_PADDING)) << 32);
+        stmt = CharacterDatabase.GetPreparedStatement(CHAR_UPD_EXTENDED_APPEARANCE);
+        stmt->SetData(0, extra);
+        stmt->SetData(1, GetGUID().GetCounter());
+        trans->Append(stmt);
+    }
 }
 
 void Player::_LoadGlyphs(PreparedQueryResult result)

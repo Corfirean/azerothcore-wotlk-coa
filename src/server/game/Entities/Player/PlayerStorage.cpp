@@ -5130,6 +5130,13 @@ bool Player::LoadFromDB(ObjectGuid playerGuid, CharacterDatabaseQueryHolder cons
     SetByteValue(PLAYER_BYTES_2, 3, fields[15].Get<uint8>());
     SetByteValue(PLAYER_BYTES_3, 0, fields[5].Get<uint8>());
     SetByteValue(PLAYER_BYTES_3, 1, fields[54].Get<uint8>());
+    if (UsesExtendedAppearance(getRace(true)))           // CoA: Esteria appearance extension
+        SetByteValue(UNIT_FIELD_PADDING, 0, uint8(fields[75].Get<uint64>()));
+    else if (UsesHaranirAppearance(getRace(true)))
+    {
+        SetUInt32Value(UNIT_FIELD_PADDING, uint32(fields[75].Get<uint64>()));
+        SetUInt32Value(OBJECT_FIELD_PADDING, uint32(fields[75].Get<uint64>() >> 32));
+    }
     ReplaceAllPlayerFlags((PlayerFlags)fields[16].Get<uint32>());
 
     RemovePlayerFlag(PLAYER_FLAGS_NO_PLAY_TIME);
