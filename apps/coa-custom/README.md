@@ -80,9 +80,8 @@ any time to change your choice.
 
 It then asks which races the bots use:
 1. **Bots Vanilla race (recommended)**: the original races only, stable.
-2. **Bots Custom race (experimental)**: the added races too. It can crash the game client in busy places; choose it
-   only if you want to help find bugs, and send us the crash logs from your game's `Errors` folder. Kul Tiran,
-   Furbolg, Mechagnome, Thin Human and the Esteria races are never used for bots: their models crash the client.
+2. **Bots Custom race (Experimental, can cause crashes: use only if you want to help find bugs)**: the added races
+   too. If it crashes, send us the crash logs from your game's `Errors` folder.
 
 Existing bots keep their race; `CoA-Bots\Purge-Bots.bat` recreates them all with the new choice.
 

@@ -181,8 +181,7 @@ def choose_bot_races():
         return races
     say('Bot races:')
     say('  1 - Bots Vanilla race (recommended): the original races only, stable')
-    say('  2 - Bots Custom race (experimental): the added races too, can crash the game client in busy places.')
-    say('      Choose it only if you want to help find bugs (send us the crash logs from the Errors folder of the game).')
+    say('  2 - Bots Custom race (Experimental, can cause crashes: use only if you want to help find bugs)')
     while True:
         races = ask('Bot races? (1/2)', '1').lower()
         races = BOT_RACE_ALIASES.get(races, races)
