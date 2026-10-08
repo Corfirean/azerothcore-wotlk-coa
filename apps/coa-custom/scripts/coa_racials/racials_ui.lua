@@ -1,6 +1,6 @@
 -- Local server: CoA racials of the added races
--- CHAR_CREATE_COA_RACIALS (gen_coa_racials.py): race id -> {{active name, icon, text}, {passive name, icon, text}}.
--- The racial list of an added race (12 and up) shows its two CoA racials instead of the borrowed ones.
+-- CHAR_CREATE_COA_RACIALS (gen_coa_racials.py): race id -> { {name, icon, "active"/"passive", text} x4 }.
+-- The racial list of an added race (12 and up) shows its four CoA racials instead of the borrowed ones.
 do
 	local function RacialLines(raceID)
 		local racials = CHAR_CREATE_COA_RACIALS and CHAR_CREATE_COA_RACIALS[raceID or 0]
@@ -8,9 +8,9 @@ do
 			return nil
 		end
 		local text = ""
-		for i, racial in ipairs(racials) do
-			text = text .. "|TInterface\Icons\\" .. racial[2] .. ":24:24:0:0|t |cffffd100" .. racial[1] .. "|r" ..
-				(i == 1 and " (active)" or " (passive)") .. "|n" .. racial[3] .. "|n|n"
+		for _, racial in ipairs(racials) do
+			text = text .. "|TInterface\\Icons\\" .. racial[2] .. ":24:24:0:0|t |cffffd100" .. racial[1] .. "|r |cff9d9d9d(" ..
+				racial[3] .. ")|r|n" .. racial[4] .. "|n|n"
 		end
 		return text
 	end

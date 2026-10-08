@@ -4718,11 +4718,11 @@ void ObjectMgr::LoadPlayerInfo()
             for (CoaCustomRacial const& racial : CoaCustomRacials)
                 for (uint32 classIndex = CLASS_WARRIOR; classIndex < MAX_CLASSES; ++classIndex)
                     if (PlayerInfo* info = racial.RaceId < sRaceMgr->GetMaxRaces() ? _playerInfo[racial.RaceId][classIndex] : nullptr)
-                    {
-                        info->customSpells.push_back(racial.ActiveSpell);
-                        info->customSpells.push_back(racial.PassiveSpell);
-                        count += 2;
-                    }
+                        for (uint32 spell : racial.Spells)
+                        {
+                            info->customSpells.push_back(spell);
+                            ++count;
+                        }
             LOG_INFO("server.loading", ">> Loaded {} Custom Player Create Spells in {} ms", count, GetMSTimeDiffToNow(oldMSTime));
             LOG_INFO("server.loading", " ");
         }

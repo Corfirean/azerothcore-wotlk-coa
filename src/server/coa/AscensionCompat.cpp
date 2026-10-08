@@ -659,10 +659,8 @@ std::vector<uint32> GetAscensionRacialSpells(Player const* player)
 
     // CoA Custom 1.5: the races 12 and up have their own racials instead (CoaCustomRacials.h)
     if (CoaCustomRacial const* custom = GetCoaCustomRacial(player->getRace()))
-    {
-        spells.push_back(custom->ActiveSpell);
-        spells.push_back(custom->PassiveSpell);
-    }
+        for (uint32 spell : custom->Spells)
+            spells.push_back(spell);
 
     std::sort(spells.begin(), spells.end());
     spells.erase(std::unique(spells.begin(), spells.end()), spells.end());
