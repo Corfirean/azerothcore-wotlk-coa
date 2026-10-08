@@ -1,9 +1,9 @@
 {
- "version": "1.2",
- "repackRevision": "b5f1c026",
- "botsVersion": "1.8",
+ "version": "1.4",
+ "repackRevision": "b46a130e",
+ "botsVersion": "1.9.1",
  "coreCommit": "1c544f3f",
- "built": "2026-10-05",
+ "built": "2026-10-07",
  "worldTables": [
   "achievement_criteria_data",
   "achievement_reward",
@@ -116,7 +116,11 @@
   "waypoints"
  ],
  "newWorldTables": [
-  "custom_race_display"
+  "custom_race_display",
+  "mod_auctionhousebot",
+  "mod_auctionhousebot_disabled_items",
+  "auctionhousebot_professionItems",
+  "coa_custom_migrations"
  ],
  "botsModule": "ilusixn/mod-playerbots coa-custom-1.8 (1b75463c)"
 }

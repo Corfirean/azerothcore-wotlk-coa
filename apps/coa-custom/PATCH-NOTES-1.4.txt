@@ -1,0 +1,59 @@
+=====================================================================
+  CoA Custom 1.4 - Retail races, racials for everyone, CoA Bots 1.9.1
+  for the Jealous-Sound CoA repack + CoA Bots 1.9.1 (SquidBots)
+=====================================================================
+
+NEW PLAYABLE RACES (Esteria's retail ports, by Kalibros | Lord of Wen)
+---------------------------------------------------------------------
+  - Highmountain Tauren (66, Horde)
+  - Mechagnome (67, Alliance)
+  - Earthen (68 Alliance / 69 Horde)  - replaces the old Earthen at creation
+  - Haranir (71 Alliance / 70 Horde)
+  - Vulpera (74, Horde)                - replaces the old Vulpera at creation
+  Their full retail customization (extra option rows on the Customize screen) comes
+  from Esteria's EsteriaAppearance.dll. Characters of the old Earthen / Vulpera still log in.
+
+RACES
+---------------------------------------------------------------------
+  - Racials for every race: each added race has its own racial line and a bonus
+    racial (shown on the creation screen).
+  - Starting zones: the added races now start in the zone that fits them, spread over
+    Northshire, Coldridge, Shadowglen, the Valley of Trials, Mulgore and Deathknell.
+  - Fixed: Skeleton hair (checkered squares), Mechagnome creation screen error,
+    duplicate Earthen / Vulpera buttons, Test Race removed.
+
+BOTS
+---------------------------------------------------------------------
+  - Updated to CoA Bots 1.9.1 (core and bot module).
+  - The installer asks how many bots: 100, 200, 500 (recommended), 1000, 2000 or off.
+  - The installer asks which races bots use:
+      normal = the original races (recommended, stable)
+      modded = the added races too - EXPERIMENTAL, it can crash the game client.
+               Choose it only to help find bugs; send us the crash logs from the game's Errors folder.
+    Kul Tiran, Furbolg, Mechagnome, Thin Human and the Esteria races are never used for bots:
+    their models crash the client when bots spawn around you.
+  - Thin Human and Furbolg bots are male only (their female had stretched gear).
+
+INSTALL
+---------------------------------------------------------------------
+  Prerequisites: the Jealous-Sound CoA repack with CoA Bots 1.9.1 by the SquidBots team
+  (https://github.com/Zyth45/azerothcore-wotlk-coa, branch coa-bots-1.9.1).
+  1. Close the game and run Stop_All_Server.bat.
+  2. Extract every CoA-Custom-1.4 zip inside your repack folder (same CoA-Custom folder).
+  3. Run CoA-Custom\Install-Custom.bat (it backs up accounts and characters first, and your
+     original Ascension.exe; Uninstall-Custom.bat puts everything back).
+
+CREDITS - THANK YOU
+---------------------------------------------------------------------
+  - Kalibros | Lord of Wen - Esteria races and the native appearance system.
+      GitHub: https://github.com/STRHercules  - check out his game Wardens of Wen on Steam!
+  - Furioz - wxl-races-patcher, wxl-modern-m2 (https://github.com/Furioz420)
+  - Yami
+  - Corruption and the Eunoia team - the Eunoia races
+  - WXL (WarcraftXL), Dokman - wxl-races-patcher port
+  - Medviten and contributors (Mattiks, Amarion, Baercraft) - mod-worgoblin-high-elf
+  - Project Reforged - Furbolg
+  - Sirus - Naga animations
+  - SquidBots team - CoA Bots (https://github.com/Zyth45)
+  - AzerothCore - mod-ah-bot, mod-playerbots
+  - Jealous-Sound - the CoA repack

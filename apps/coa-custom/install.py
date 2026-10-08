@@ -1,8 +1,10 @@
 # CoA Custom installer: puts the custom races / vanilla classes / incarnation build on a Jealous-Sound CoA repack
 # that already runs CoA Bots. Run through Install-Custom.bat (uses the repack's own Python).
-#   install.py [--repack <folder>] [--client <Ascension folder>] [--uninstall] [--check] [--yes]
+#   install.py [--repack <folder>] [--client <Ascension folder>] [--no-client] [--uninstall] [--check] [--yes]
+#   --no-client: the game runs on another PC; copy files\client\*.MPQ into its Data folder and dinput8.dll next to
+#   Ascension.exe by hand
 #   --check: report what would be done, change nothing
-import json, os, re, shutil, subprocess, sys, datetime, gzip
+import json, os, re, shutil, subprocess, sys, datetime, gzip, filecmp
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -13,7 +15,8 @@ BACKUP = HERE / ('backup-' + MANIFEST_PRE['repackRevision'])   # one per repack 
 STATE = HERE / 'installed.json'
 MANIFEST = json.loads((HERE / 'manifest.json').read_text(encoding='utf-8'))
 SETTINGS = {                                        # template file -> {key: value}
-    'worldserver.conf.template': {'CharactersPerRealm': '120', 'CharactersPerAccount': '120'},
+    'worldserver.conf.template': {'CharactersPerRealm': '120', 'CharactersPerAccount': '120',
+                                  'AlwaysMaxWeaponSkill': '1'},   # weapon skills maxed on level-up, every class
     'coa.conf.template': {'CoA.CharacterSelectionMaxActive': '120'},
 }
 
@@ -51,11 +54,16 @@ def find_repack():
 
 
 def find_client(previous):
+    if '--no-client' in sys.argv:
+        return None
     guesses = [arg('--client'), previous, r'C:\Ascension Local', r'C:\Program Files\Ascension Launcher\resources\client',
                r'C:\Ascension\resources\client']
     default = next((g for g in guesses if g and (Path(g) / 'Data').is_dir() and (Path(g) / 'Ascension.exe').exists()), None)
     while True:
-        folder = ask('Ascension game folder (the one with Ascension.exe)', default)
+        folder = ask('Ascension game folder (the one with Ascension.exe), or "skip" if the game runs on another PC',
+                     default)
+        if folder and folder.lower() in ('skip', 'none', 'no'):
+            return None
         if folder and (Path(folder) / 'Ascension.exe').exists() and (Path(folder) / 'Data').is_dir():
             return Path(folder).resolve()
         say('  Ascension.exe and its Data folder are not in that folder.')
@@ -74,8 +82,9 @@ def python(root, *arguments, cwd=None):
 def mysql_file(root, sql_file):
     exe = root / 'mysql' / 'bin' / 'mysql.exe'
     with open(sql_file, 'rb') as source:
-        result = subprocess.run([str(exe), '--defaults-file=' + str(root / 'mysql' / 'admin-client.ini')], stdin=source,
-                                capture_output=True)
+        # --database: SQL files without their own USE (mod-ah-bot's) failed with "No database selected" (issue #6)
+        result = subprocess.run([str(exe), '--defaults-file=' + str(root / 'mysql' / 'admin-client.ini'),
+                                 '--database=acore_world'], stdin=source, capture_output=True)
     if result.returncode:
         fail('%s failed:\n%s' % (sql_file.name, result.stderr.decode('utf-8', 'replace')))
 
@@ -133,6 +142,78 @@ def set_settings(root):
         path.write_text(text, encoding='utf-8', newline='\n')
 
 
+def set_bot_class_mask(root, value):
+    # CoA Bots 1.8 writes CharacterCreating.Disabled.ClassMask = 2047 into worldserver.conf on every start, which
+    # blocks the classic classes (1 to 11) for players. Its bots keep to the CoA classes through
+    # AiPlayerbot.CoaClassesOnly anyway, so the add-on lifts the mask (and puts it back on uninstall).
+    path = root / 'CoA-Bots' / 'coa_bots.py'
+    if not path.exists():
+        return
+    text = path.read_text(encoding='utf-8')
+    text = re.sub(r'("CharacterCreating\.Disabled\.ClassMask":\s*")\d+(")', r'\g<1>%s\g<2>' % value, text)
+    path.write_text(text, encoding='utf-8')
+
+
+BOT_MODES = {                                   # AiPlayerbot settings of CoA-Bots\Core\configs\modules\playerbots.conf
+    'off': {'AiPlayerbot.Enabled': '0', 'AiPlayerbot.RandomBotAutologin': '0',
+            'AiPlayerbot.MinRandomBots': '0', 'AiPlayerbot.MaxRandomBots': '0'},
+}
+for _count in ('100', '200', '500', '1000', '2000'):
+    BOT_MODES[_count] = {'AiPlayerbot.Enabled': '1', 'AiPlayerbot.RandomBotAutologin': '1',
+                         'AiPlayerbot.MinRandomBots': _count, 'AiPlayerbot.MaxRandomBots': _count}
+BOT_MODES['recommended'] = BOT_MODES['500']
+
+
+HIDDEN_RACES = '19,27,65,72,77'                  # hidden from creation: old Vulpera / Earthen, test race, Skyborne
+BOT_RACES = {
+    'normal': HIDDEN_RACES + ',' + ','.join(str(race) for race in range(32, 128)),   # races 1-31 only
+    'modded': HIDDEN_RACES + ',16,50,67,32,66,68,69,70,71,74',   # not the retail-converted models (crash near bots)
+}
+
+
+def choose_bot_races():
+    races = arg('--bot-races')
+    if races in BOT_RACES:
+        return races
+    say('Bot races: normal  = the original races only (recommended, stable)')
+    say('           modded  = every race, the added ones too: EXPERIMENTAL, can crash the game client.')
+    say('                     Choose it only if you want to help find bugs (send us the crash logs from the Errors folder of the game).')
+    while True:
+        races = ask('Bot races? (normal/modded)', 'normal').lower()
+        if races in BOT_RACES:
+            return races
+
+
+def choose_bots():
+    mode = arg('--bots')
+    if mode in BOT_MODES:
+        return mode
+    say('Bots: how many random bots? 100, 200, 500 (recommended), 1000, 2000 (CoA Bots default: a lot of RAM, and')
+    say('many races in one town can crash the 32-bit game client) or off (no bots, the Auction House still works).')
+    while True:
+        mode = ask('Bots? (100/200/500/1000/2000/off)', '500').lower()
+        if mode in BOT_MODES:
+            return mode
+
+
+def set_bots(root, mode, races='normal'):
+    path = root / 'CoA-Bots' / 'Core' / 'configs' / 'modules' / 'playerbots.conf'
+    if not path.exists():
+        say('No playerbots.conf yet: bots stay as CoA Bots set them.')
+        return
+    text = path.read_text(encoding='utf-8')
+    for key, value in BOT_MODES[mode].items():
+        text = re.sub(r'(?m)^(%s\s*=\s*).*$' % re.escape(key), r'\g<1>' + value, text)
+    line = 'AiPlayerbot.ExcludedBotRaces = "%s"' % BOT_RACES[races]
+    if re.search(r'(?m)^AiPlayerbot\.ExcludedBotRaces\s*=', text):
+        text = re.sub(r'(?m)^AiPlayerbot\.ExcludedBotRaces\s*=.*$', lambda m: line, text)
+    else:
+        text = text.rstrip(chr(10)) + chr(10) + chr(10) + '# CoA Custom: races new random bots never get' + chr(10) + line + chr(10)
+    path.write_text(text, encoding='utf-8', newline=chr(10))
+    say('Bots: %s, %s races' % (mode, races))
+    say(r'New bot races apply to new bots: CoA-Bots\Purge-Bots.bat recreates them all.')
+
+
 def stop_servers(root):
     say('Stopping the servers...')
     python(root, root / 'Scripts' / 'manage.py', 'stop-all')
@@ -143,7 +224,7 @@ def start_servers(root):
     python(root, root / 'CoA-Bots' / 'coa_bots.py', 'start-all', cwd=root / 'CoA-Bots')
 
 
-def install(root):
+def install(root, bots=None, bot_races='normal'):
     state = json.loads(STATE.read_text(encoding='utf-8')) if STATE.exists() else {}
     client = find_client(state.get('client'))
     stop_servers(root)
@@ -151,8 +232,16 @@ def install(root):
     backup_characters(root)
     targets = {
         'worldserver.exe': root / 'CoA-Bots' / 'Core' / 'worldserver.exe',
-        'patch-T.MPQ': client / 'Data' / 'patch-T.MPQ',
     }
+    if client:
+        for mpq in sorted((FILES / 'client').glob('*.MPQ')):      # patch-T + the race archives (patch-Z*)
+            targets['client/' + mpq.name] = client / 'Data' / mpq.name
+        if (FILES / 'client' / 'dinput8.dll').exists():          # 128-race client patch (race ids up to 127)
+            targets['client/dinput8.dll'] = client / 'dinput8.dll'
+        # Esteria's native races (1.4): Ascension.exe with Esteria's appearance section, its EsteriaAppearance.dll and
+        # catalogs next to it. The original Ascension.exe is backed up and put back by Uninstall-Custom.bat.
+        for item in sorted((FILES / 'client_root').glob('*')) if (FILES / 'client_root').exists() else []:
+            targets['client_root/' + item.name] = client / item.name
     for dbc in sorted((FILES / 'dbc').glob('*.dbc')):
         targets['dbc/' + dbc.name] = root / 'Data' / 'dbc' / dbc.name
     for name in SETTINGS:
@@ -162,6 +251,7 @@ def install(root):
     targets['dbc_clientset/CreatureDisplayInfo.dbc'] = root / 'Data' / 'dbc_clientset' / 'CreatureDisplayInfo.dbc'
     # Book of Ascension settings missing from the bot server (warning spam); never replaced once it exists
     targets['bots/spellbook.conf'] = root / 'CoA-Bots' / 'Core' / 'configs' / 'modules' / 'spellbook.conf'
+    targets['bots/mod_ahbot.conf'] = root / 'CoA-Bots' / 'Core' / 'configs' / 'modules' / 'mod_ahbot.conf'
     created = state.get('created', [])
     if not BACKUP.exists():                          # first install on this repack release: keep the originals
         created = [key for key, target in targets.items() if not target.exists()]
@@ -173,24 +263,40 @@ def install(root):
                 (BACKUP / key).parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, BACKUP / key)
         dump_tables(root, BACKUP / 'world_tables.sql')
+    for key, target in targets.items():              # files new in this version (an update over an older install):
+        if not (BACKUP / key).exists() and not target.exists() and key not in created:
+            created.append(key)                      # uninstall removes them again
+        elif key.startswith('client_root/') and not (BACKUP / key).exists() and target.exists() \
+                and not filecmp.cmp(target, FILES / key, shallow=False):
+            (BACKUP / key).parent.mkdir(parents=True, exist_ok=True)   # e.g. the original Ascension.exe
+            shutil.copy2(target, BACKUP / key)
     say('Copying files...')
     shutil.copy2(FILES / 'worldserver.exe', targets['worldserver.exe'])
-    shutil.copy2(FILES / 'client' / 'patch-T.MPQ', targets['patch-T.MPQ'])
+    if client:
+        for key, target in targets.items():
+            if key.startswith(('client/', 'client_root/')):
+                shutil.copy2(FILES / key, target)
     for dbc in sorted((FILES / 'dbc').glob('*.dbc')):
         shutil.copy2(dbc, targets['dbc/' + dbc.name])
     targets['dbc_clientset/CreatureDisplayInfo.dbc'].parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(FILES / 'dbc_clientset' / 'CreatureDisplayInfo.dbc', targets['dbc_clientset/CreatureDisplayInfo.dbc'])
     if not targets['bots/spellbook.conf'].exists():
         shutil.copy2(FILES / 'bots' / 'spellbook.conf', targets['bots/spellbook.conf'])
+    if not targets['bots/mod_ahbot.conf'].exists():
+        shutil.copy2(FILES / 'bots' / 'mod_ahbot.conf', targets['bots/mod_ahbot.conf'])
     set_settings(root)
+    set_bot_class_mask(root, '32')   # Death Knight (class 6) not offered
     say('Applying the database changes...')
     for sql in sorted((FILES / 'sql').glob('*.sql')):
         say('  ' + sql.name)
         mysql_file(root, sql)
-    STATE.write_text(json.dumps({'version': MANIFEST['version'], 'repack': str(root), 'client': str(client),
+    STATE.write_text(json.dumps({'version': MANIFEST['version'], 'repack': str(root),
+                                 'client': str(client) if client else None,
                                  'created': created,
                                  'installed': datetime.datetime.now().isoformat(timespec='seconds')}, indent=1),
                      encoding='utf-8')
+    if bots:
+        set_bots(root, bots, bot_races)
     start_servers(root)
     say()
     say('CoA Custom %s installed. Start the game once the worldserver says it is ready.' % MANIFEST['version'])
@@ -200,19 +306,26 @@ def uninstall(root):
     if not BACKUP.exists() or not STATE.exists():
         fail('nothing to uninstall (no backup in %s).' % BACKUP)
     state = json.loads(STATE.read_text(encoding='utf-8'))
-    client = Path(state['client'])
+    client = Path(state['client']) if state.get('client') else None
     stop_servers(root)
     python(root, root / 'Scripts' / 'manage.py', 'start-mysql')
     backup_characters(root)
     say('Restoring the original files...')
     restore = {'worldserver.exe': root / 'CoA-Bots' / 'Core' / 'worldserver.exe',
-               'patch-T.MPQ': client / 'Data' / 'patch-T.MPQ'}
+               }
+    if client:
+        for mpq in sorted((FILES / 'client').glob('*.MPQ')):
+            restore['client/' + mpq.name] = client / 'Data' / mpq.name
+        restore['client/dinput8.dll'] = client / 'dinput8.dll'
+        for item in sorted((FILES / 'client_root').glob('*')) if (FILES / 'client_root').exists() else []:
+            restore['client_root/' + item.name] = client / item.name
     for item in (BACKUP / 'dbc').glob('*.dbc') if (BACKUP / 'dbc').exists() else []:
         restore['dbc/' + item.name] = root / 'Data' / 'dbc' / item.name
     for item in (BACKUP / 'settings').glob('*') if (BACKUP / 'settings').exists() else []:
         restore['settings/' + item.name] = root / 'Settings' / item.name
     restore['dbc_clientset/CreatureDisplayInfo.dbc'] = root / 'Data' / 'dbc_clientset' / 'CreatureDisplayInfo.dbc'
     restore['bots/spellbook.conf'] = root / 'CoA-Bots' / 'Core' / 'configs' / 'modules' / 'spellbook.conf'
+    restore['bots/mod_ahbot.conf'] = root / 'CoA-Bots' / 'Core' / 'configs' / 'modules' / 'mod_ahbot.conf'
     for key, target in restore.items():
         if (BACKUP / key).exists():
             shutil.copy2(BACKUP / key, target)
@@ -224,6 +337,7 @@ def uninstall(root):
         subprocess.run([str(root / 'mysql' / 'bin' / 'mysql.exe'),
                         '--defaults-file=' + str(root / 'mysql' / 'admin-client.ini'),
                         '-e', 'DROP TABLE IF EXISTS acore_world.`%s`;' % table])
+    set_bot_class_mask(root, '2047')
     shutil.rmtree(BACKUP)
     STATE.unlink()
     start_servers(root)
@@ -245,7 +359,9 @@ def main():
         say('Repack: %s (release and CoA Bots %s OK)' % (root, MANIFEST['botsVersion']))
         say('Client: %s' % client)
         say(r'Would replace: CoA-Bots\Core\worldserver.exe, %d files in Data\dbc, %s'
-            % (len(list((FILES / 'dbc').glob('*.dbc'))), client / 'Data' / 'patch-T.MPQ'))
+            % (len(list((FILES / 'dbc').glob('*.dbc'))),
+               ('%d client files in %s' % (len(list((FILES / 'client').glob('*'))), client)) if client
+               else r'no client (copy files\client\* by hand)'))
         say('Would apply: %s' % ', '.join(p.name for p in sorted((FILES / 'sql').glob('*.sql'))))
         say('Would back up %d world tables first (%s).' % (len(MANIFEST['worldTables']),
                                                           'already done' if BACKUP.exists() else 'first install'))
@@ -253,12 +369,15 @@ def main():
     if '--uninstall' in sys.argv:
         uninstall(root)
     else:
-        say('This replaces the bot worldserver, some server DBC files and the client patch-T.MPQ, and changes the')
+        say('This replaces the bot worldserver, some server DBC files and client files (patch-T, race archives,')
+        say('dinput8.dll), and changes the')
         say('world database. The originals are backed up on the first install (Uninstall-Custom.bat puts them back).')
         say('Back up your repack folder first if you care about your characters.')
         if ask('Continue? (y/n)', 'y').lower() != 'y':
             sys.exit(0)
-        install(root)
+        bots = choose_bots()
+        bot_races = choose_bot_races() if bots != 'off' else 'normal'
+        install(root, bots, bot_races)
 
 
 if __name__ == '__main__':

@@ -61,11 +61,27 @@ come from your 1.1 backup, so `Uninstall-Custom.bat` still puts back the true or
 
 ## Before you start
 
-| You need | Why |
-|---|---|
-| The CoA repack of 30 September **updated to CoA Bots 1.8** (`main-20261004-b5f1c026`), started once and working | This build only matches that release; the installer checks it. The full "CoA Repack Bots 1.8" works too. |
-| **CoA Bots 1.8** installed in it | This package replaces the bot worldserver (it is built with the bots). |
-| The Ascension game client | The package installs its own `Data\patch-T.MPQ` there. |
+### Prerequisites
+
+1. **The Jealous-Sound CoA repack** (Conquest of Azeroth, by Jealous Sound), started once and working.
+2. **CoA Bots 1.9.1** (release `main-20261007-b46a130e`) installed in it, made by the **SquidBots team**:
+   - core source: https://github.com/Zyth45/azerothcore-wotlk-coa (branch `coa-bots-1.9.1`)
+   - bot module: https://github.com/Zyth45/mod-playerbots
+   - companion addon: https://github.com/Zyth45/squidbots-addon
+
+   On CoA Bots 1.8 or 1.9? Run its update (`CoA-Update-1.9.1\Update-1.9.1.bat`) first. This package replaces the
+   CoA Bots worldserver, so CoA Bots must be installed even if you don't want bots (see below).
+3. **The Ascension game client**: the package installs its own client files there.
+
+**Bots:** the installer asks how many random bots you want: `100`, `200`, `500` (**recommended**, the default),
+`1000`, `2000` (the CoA Bots default) or `off` (no bots; the Auction House merchant still works). More bots need more
+RAM, and a busy town with many different races can run the 32-bit game client out of memory. Run the installer again
+any time to change your choice.
+
+It then asks which races the bots use: `normal` (the original races only, **recommended**, the most stable) or
+`modded` (every race, the added ones too: **experimental, it can crash the game client**; choose it only if you want
+to help find bugs, and send us the crash logs from your game's `Errors` folder). Existing bots keep their
+race; `CoA-Bots\Purge-Bots.bat` recreates them all with the new choice.
 
 **Back up first** (the installer also backs up your accounts and characters, but a full copy is safest):
 1. Stop the server with `Stop_All_Server.bat`.
@@ -141,3 +157,32 @@ Most of this work was done with an AI coding assistant, then tested in game.
 - The CoA Bots Squid authors and Zyth45/mod-playerbots.
 - AzerothCore.
 - The race models, textures and client data come from the Project Ascension client.
+- **Eunoia races** (Nightborne, Void Elf, Eredar, Dracthyr, Ogre, Lightforged Draenei, Illidari Night Elf and Blood Elf,
+  Dark Iron Dwarf, and the new Broken and Pandaren): by Furioz, Corruption and Eunoia, used with permission.
+- **64-race client patch** (`dinput8.dll`): based on [wxl-races-patcher](https://github.com/Dokman/wxl-races-patcher)
+  by Dokman, from the original module by Furioz420.
+- **Haranir, Highmountain Tauren and Thin Human**: from Esteria, by **Kalibros**. Want to see more of Kalibros's work?
+  Check out his game **Wardens of Wen** on Steam!
+- **Furbolg**: from Project Reforged (open source).
+- **Naga animations**: from Sirus (open source).
+
+## Credits (1.3)
+
+- **Kalibros | Lord of Wen** - Esteria races (Thin Human) - https://github.com/STRHercules - check out his game **Wardens of Wen** on Steam!
+- **Furioz** ([Furioz420](https://github.com/Furioz420)) - wxl-races-patcher (64 races), [wxl-modern-m2](https://github.com/Furioz420/wxl-modern-m2)
+- **Yami**
+- **Corruption and the Eunoia Team** - the Eunoia races (used with their permission)
+- **WXL** (WarcraftXL)
+- **Dokman** - [wxl-races-patcher](https://github.com/Dokman/wxl-races-patcher)
+- **Medviten** and contributors (Mattiks, Amarion, Baercraft) - [mod-worgoblin-high-elf](https://github.com/Medviten/mod-worgoblin-high-elf) (AGPL-3.0): Mag'har Orc, Ogre, Dark Iron Dwarf
+- **Project Reforged** - Furbolg
+- **Sirus** - Naga animations
+- **AzerothCore** - [mod-ah-bot](https://github.com/azerothcore/mod-ah-bot), mod-playerbots
+- **Jealous-Sound** - the CoA repack
+
+## Auction House bot
+
+After installing, create an account and a character for the merchant (worldserver console: `account create ahbot <password>`,
+then log in once and create a character), then put that account id and character guid in
+`CoA-Bots\Core\configs\modules\mod_ahbot.conf` (`AuctionHouseBot.Account`, `AuctionHouseBot.GUID`) and set
+`AuctionHouseBot.EnableSeller = 1` and `AuctionHouseBot.EnableBuyer = 1`. Restart the servers.
