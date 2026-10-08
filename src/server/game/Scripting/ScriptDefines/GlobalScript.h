@@ -60,6 +60,7 @@ enum GlobalHook
     GLOBALHOOK_ON_LFG_PROPOSAL_MADE_GROUP,
     GLOBALHOOK_ON_INSTANCE_MAP_CREATED,
     GLOBALHOOK_HAS_LFG_AUTO_FILL_PROVIDER,
+    GLOBALHOOK_ON_SPELL_MOD_FAMILY_MASK,
     GLOBALHOOK_END
 };
 
@@ -94,6 +95,9 @@ public:
 
     // Called when checking if an aura spell is affected by a mod
     virtual bool OnIsAffectedBySpellModCheck(SpellInfo const* /*affectSpell*/, SpellInfo const* /*checkSpell*/, SpellModifier const* /*mod*/) { return true; };
+
+    virtual void OnSpellModFamilyMask(SpellInfo const* /*affectSpell*/, SpellInfo const* /*checkSpell*/,
+        SpellModifier const* /*mod*/, bool& /*affected*/) { }
 
     // Called when checking for spell negative healing modifiers
     virtual bool OnSpellHealingBonusTakenNegativeModifiers(Unit const* /*target*/, Unit const* /*caster*/, SpellInfo const* /*spellInfo*/, float& /*val*/) { return false; };

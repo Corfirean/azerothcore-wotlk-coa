@@ -38,6 +38,14 @@ std::uint32_t KnownRank(AscensionCompatData::CoATalentEntry const& entry, HasSpe
 
 std::vector<KnownEntry> KnownEntries(std::uint8_t classId, HasSpell const& hasSpell);
 
+bool CanGrantAutomatic(AscensionCompatData::CoATalentEntry const& entry, std::uint8_t classId, std::uint32_t level,
+    std::uint32_t specId, HasSpell const& hasSpell);
+
+std::vector<KnownEntry> SlotKnownEntries(SpecializationSlot const& slot, std::uint32_t level,
+    HasSpell const& carried);
+
+std::vector<std::uint8_t> InspectSpecsPayload(std::vector<std::vector<KnownEntry>> const& specs);
+
 struct SpentPoints
 {
     std::uint32_t AE = 0;
@@ -59,7 +67,8 @@ struct UploadedSpecialization
 
 UploadedSpecialization SpecializationOf(std::vector<KnownEntry> const& upload);
 
-std::vector<KnownEntry> SpecializationSwitch(std::uint8_t classId, HasSpell const& hasSpell, std::uint32_t specId);
+std::vector<KnownEntry> SpecializationSwitch(std::uint8_t classId, HasSpell const& hasSpell, std::uint32_t specId,
+    std::vector<KnownEntry> const* current = nullptr);
 constexpr std::uint32_t TALENT_PURGE_ITEM = 919291;
 constexpr std::uint32_t MARK_OF_ASCENSION_ITEM = 375250;
 

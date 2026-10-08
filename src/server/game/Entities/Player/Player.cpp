@@ -116,6 +116,31 @@ enum CustomEquipmentSpells : uint32
     SPELL_VALKYR_GRIP = 707072
 };
 
+enum ClientKnownSupersededSpells : uint32
+{
+    SPELL_RANGER_SKULLPIERCER_RANK_1 = 802036
+};
+
+// The Ascension client shows the Ranger Advantage bar only while it knows Skullpiercer rank 1.
+static bool IsKeptInClientSpellbookWhenSuperseded(uint32 spellId)
+{
+    return spellId == SPELL_RANGER_SKULLPIERCER_RANK_1;
+}
+
+static void ReplaceSpellOnActionButtons(Player* player, uint32 from, uint32 to)
+{
+    bool changed = false;
+    for (uint8 slot = 0; slot < MAX_ACTION_BUTTONS; ++slot)
+    {
+        ActionButton const* button = player->GetActionButton(slot);
+        if (button && button->GetType() == ACTION_BUTTON_SPELL && button->GetAction() == from)
+            changed = player->addActionButton(slot, to, ACTION_BUTTON_SPELL) != nullptr || changed;
+    }
+
+    if (changed)
+        player->SendActionButtons(1);
+}
+
 enum CharacterFlags
 {
     CHARACTER_FLAG_NONE                 = 0x00000000,
@@ -2921,7 +2946,8 @@ void Player::SendInitialSpells()
         if (itr->second->State == PLAYERSPELL_REMOVED)
             continue;
 
-        if (!itr->second->Active || !itr->second->IsInSpec(GetActiveSpec()))
+        if ((!itr->second->Active && !IsKeptInClientSpellbookWhenSuperseded(itr->first)) ||
+            !itr->second->IsInSpec(GetActiveSpec()))
             continue;
 
         data << uint32(itr->first);
@@ -3009,7 +3035,8 @@ void Player::SendUnlearnSpells()
 
     for (auto const& itr : m_spells)
     {
-        if (itr.second->State == PLAYERSPELL_REMOVED || itr.second->Active)
+        if (itr.second->State == PLAYERSPELL_REMOVED || itr.second->Active ||
+            IsKeptInClientSpellbookWhenSuperseded(itr.first))
             continue;
 
         auto skillLineAbilities = sSpellMgr->GetSkillLineAbilityMapBounds(itr.first);
@@ -3288,7 +3315,12 @@ bool Player::addSpell(uint32 spellId, uint8 addSpecMask, bool updateActive, bool
                     if (!isBeingLoaded() && IsUnlearnNeededForSpell(spellId))
                         SendUnlearnSpells();
 
-                    if (IsInWorld())
+                    if (IsInWorld() && IsKeptInClientSpellbookWhenSuperseded(nextSpellInfo->Id))
+                    {
+                        SendLearnPacket(spellInfo->Id, true);
+                        ReplaceSpellOnActionButtons(this, nextSpellInfo->Id, spellInfo->Id);
+                    }
+                    else if (IsInWorld())
                     {
                         WorldPacket data(SMSG_SUPERCEDED_SPELL, 4 + 4);
                         data << uint32(nextSpellInfo->Id);
@@ -3510,6 +3542,16 @@ bool Player::IsNeedCastPassiveSpellAtLearn(SpellInfo const* spellInfo) const
 
 void Player::learnSpell(uint32 spellId, bool temporary /*= false*/, bool learnFromSkill /*= false*/)
 {
+    _learnSpell(spellId, temporary, learnFromSkill, true);
+}
+
+void Player::learnSpellWithoutAnnouncement(uint32 spellId, bool temporary /*= true*/)
+{
+    _learnSpell(spellId, temporary, false, false);
+}
+
+void Player::_learnSpell(uint32 spellId, bool temporary, bool learnFromSkill, bool announce)
+{
     if (IsAscensionClass(getClass()))
         if (SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId))
             if (spellInfo->IsDeprecatedForPlayers)
@@ -3524,7 +3566,11 @@ void Player::learnSpell(uint32 spellId, bool temporary /*= false*/, bool learnFr
 
     uint8 const specMask = GetLearnSpellSpecMask(spellId);
 
-    bool const added = addSpell(spellId, specMask, true, temporary, learnFromSkill);
+    // A caller that delivers the spell to the client itself (learnSpellWithoutAnnouncement) asks for
+    // neither announcement site to send it, or the client holds the spell twice: its spellbook is a
+    // list of slots that every announcement appends to, and the highest-rank view it draws over that
+    // list only collapses a spell that has ranks.
+    bool const added = addSpell(spellId, specMask, true, temporary, learnFromSkill || !announce);
     if (added)
     {
         sScriptMgr->OnPlayerLearnSpell(this, spellId);
@@ -3534,7 +3580,7 @@ void Player::learnSpell(uint32 spellId, bool temporary /*= false*/, bool learnFr
         // and Player::removeSpell answers such a grant with a single SMSG_REMOVED_SPELL. Announcing it twice
         // leaves the client one extra copy of the spell per grant/revoke cycle, which both hides the real
         // spellbook entry behind duplicates and keeps the client believing a revoked spell is still known.
-        if (IsInWorld() && (!temporary || learnFromSkill))
+        if (announce && IsInWorld() && (!temporary || learnFromSkill))
             SendLearnPacket(spellId, true);
     }
 
@@ -6908,6 +6954,8 @@ void Player::_ApplyItemMods(Item* item, uint8 slot, bool apply)
 
     ApplyEnchantment(item, apply);
 
+    sScriptMgr->OnPlayerAfterApplyItemMods(this, item, slot, apply);
+
     LOG_DEBUG("entities.player.items", "_ApplyItemMods complete.");
 }
 
@@ -10256,6 +10304,31 @@ bool Player::IsAffectedBySpellmod(SpellInfo const* spellInfo, SpellModifier* mod
     return spellInfo->IsAffectedBySpellMod(mod);
 }
 
+// xinef's Backdraft coupling only makes sense when the same aura also reduces cast
+// time: its gcd half must not fire when its cast-time half was not applied. An aura
+// whose only spell modifier is the gcd reduction (Dark Frenzy's 804845 helper, kept
+// up by AscensionBloodmageTalents.cpp while a Cursed Form is active) has no cast-time
+// half to wait for, so it must reach the gcd calculation itself.
+static bool AuraAlsoModifiesCastingTime(Aura const* aura)
+{
+    if (!aura)
+        return false;
+
+    SpellInfo const* info = aura->GetSpellInfo();
+    if (!info)
+        return false;
+
+    for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+    {
+        SpellEffectInfo const& effect = info->Effects[i];
+        if ((effect.ApplyAuraName == SPELL_AURA_ADD_FLAT_MODIFIER || effect.ApplyAuraName == SPELL_AURA_ADD_PCT_MODIFIER) &&
+            effect.MiscValue == SPELLMOD_CASTING_TIME)
+            return true;
+    }
+
+    return false;
+}
+
 template <class T>
 void Player::ApplySpellMod(uint32 spellId, SpellModOp op, T& basevalue, Spell* spell, bool temporaryPet)
 {
@@ -10306,7 +10379,8 @@ void Player::ApplySpellMod(uint32 spellId, SpellModOp op, T& basevalue, Spell* s
             else if (mod->op == SPELLMOD_CRITICAL_CHANCE && !HasSpellModApplied(mod, spell))
                 return;
             // xinef: special case for backdraft gcd reduce with backlast time reduction, dont affect gcd if cast time was not applied
-            else if (mod->op == SPELLMOD_GLOBAL_COOLDOWN && !HasSpellModApplied(mod, spell))
+            else if (mod->op == SPELLMOD_GLOBAL_COOLDOWN && !HasSpellModApplied(mod, spell) &&
+                AuraAlsoModifiesCastingTime(mod->ownerAura))
                 return;
 
             // xinef: those two mods should be multiplicative (Glyph of Renew)
@@ -11483,6 +11557,10 @@ void Player::AddSpellAndCategoryCooldowns(SpellInfo const* spellInfo, uint32 ite
         cat = spellInfo->GetCategory();
         rec = spellInfo->RecoveryTime;
         catrec = spellInfo->CategoryRecoveryTime;
+
+        // A charged spell recovers through its charges, not through its DBC category cooldown
+        if (spellInfo->MaxCharges)
+            catrec = 0;
     }
 
     time_t catrecTime;
@@ -13866,7 +13944,7 @@ void Player::SetTemporarySpellReplacement(uint32 original, uint32 replacement)
             return;
         m_temporarySpellReplacements[original] = replacement;
     }
-    if (previous != replacement && IsInWorld())
+    if (previous != replacement && IsInWorld() && HasActiveSpell(original))
     {
         WorldPacket packet(SMSG_SUPERCEDED_SPELL, 8);
         packet << previous << replacement;
@@ -14220,10 +14298,11 @@ static RuneType runeSlotTypes[MAX_RUNES] =
 
 void Player::InitRunes()
 {
-    if (!IsClass(CLASS_DEATH_KNIGHT, CLASS_CONTEXT_ABILITY))
+    if (!IsClass(CLASS_DEATH_KNIGHT, CLASS_CONTEXT_ABILITY) && getClass() != CLASS_HERO)
         return;
 
-    m_runes = new Runes;
+    if (!m_runes)
+        m_runes = new Runes;
 
     m_runes->runeState = 0;
     m_runes->lastUsedRune = RUNE_BLOOD;
@@ -16976,6 +17055,7 @@ void Player::SetRestFlag(RestFlag restFlag, uint32 triggerId /*= 0*/)
     {
         _restTime = GameTime::GetGameTime().count();
         SetPlayerFlag(PLAYER_FLAGS_RESTING);
+        UpdateManaRegen();
     }
 
     if (triggerId)
@@ -16991,6 +17071,7 @@ void Player::RemoveRestFlag(RestFlag restFlag)
     {
         _restTime = 0;
         RemovePlayerFlag(PLAYER_FLAGS_RESTING);
+        UpdateManaRegen();
     }
 }
 
