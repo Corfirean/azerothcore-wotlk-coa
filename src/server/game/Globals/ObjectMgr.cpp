@@ -4407,6 +4407,54 @@ void ObjectMgr::PlayerCreateInfoAddItemHelper(uint32 race_, uint32 class_, uint3
             }
         }
     }
+namespace
+{
+// CoA Custom 1.4: the bonus ("signature") racial of the races above 32, by exact race id. The races 1-31 keep
+// theirs in playercreateinfo_spell_custom (a 32-bit race mask, which races above 32 cannot use: they share bits).
+struct CoaBonusRacial
+{
+    uint8 RaceId;
+    uint32 SpellId;
+    uint32 ClassMask;                                   // 0 = every class
+};
+
+inline constexpr std::array<CoaBonusRacial, 34> CoaBonusRacials =
+{{
+    {32, 58984, 0x00000000}, // Shadowmeld
+    {47, 20572, 0x0000002D}, // Blood Fury
+    {47, 33702, 0x00000190}, // Blood Fury
+    {47, 33697, 0xFFFFFC42}, // Blood Fury
+    {48, 20572, 0x0000002D}, // Blood Fury
+    {48, 33702, 0x00000190}, // Blood Fury
+    {48, 33697, 0xFFFFFC42}, // Blood Fury
+    {49, 26297, 0x00000000}, // Berserking
+    {50, 58984, 0x00000000}, // Shadowmeld
+    {51, 20589, 0x00000000}, // Escape Artist
+    {53, 20549, 0x00000000}, // War Stomp
+    {54, 20549, 0x00000000}, // War Stomp
+    {55, 25046, 0x00000008}, // Arcane Torrent
+    {55, 50613, 0x00000020}, // Arcane Torrent
+    {55, 28730, 0xFFFFFDD7}, // Arcane Torrent
+    {56, 20589, 0x00000000}, // Escape Artist
+    {57, 20589, 0x00000000}, // Escape Artist
+    {58, 20549, 0x00000000}, // War Stomp
+    {59, 58984, 0x00000000}, // Shadowmeld
+    {60, 26297, 0x00000000}, // Berserking
+    {61, 25046, 0x00000008}, // Arcane Torrent
+    {61, 50613, 0x00000020}, // Arcane Torrent
+    {61, 28730, 0xFFFFFDD7}, // Arcane Torrent
+    {62, 59752, 0x00000000}, // Every Man for Himself
+    {63, 25046, 0x00000008}, // Arcane Torrent
+    {63, 50613, 0x00000020}, // Arcane Torrent
+    {63, 28730, 0xFFFFFDD7}, // Arcane Torrent
+    {66, 20594, 0x00000000}, // Stoneform
+    {67, 20594, 0x00000000}, // Stoneform
+    {68, 20549, 0x00000000}, // War Stomp
+    {69, 20549, 0x00000000}, // War Stomp
+    {70, 26297, 0x00000000}, // Berserking
+    {71, 26297, 0x00000000}, // Berserking
+    {74, 20589, 0x00000000}, // Escape Artist
+}};
 }
 
 void ObjectMgr::LoadPlayerInfo()
@@ -4626,7 +4674,7 @@ void ObjectMgr::LoadPlayerInfo()
 
                 for (uint32 raceIndex = RACE_HUMAN; raceIndex < sRaceMgr->GetMaxRaces(); ++raceIndex)
                 {
-                    if (raceMask == 0 || ((1 << (raceIndex - 1)) & raceMask))
+                    if (raceMask == 0 || ((1u << ((raceIndex - 1) & 31)) & raceMask))
                     {
                         for (uint32 classIndex = CLASS_WARRIOR; classIndex < MAX_CLASSES; ++classIndex)
                         {
@@ -4687,7 +4735,11 @@ void ObjectMgr::LoadPlayerInfo()
 
                 for (uint32 raceIndex = RACE_HUMAN; raceIndex < sRaceMgr->GetMaxRaces(); ++raceIndex)
                 {
-                    if (raceMask == 0 || ((1 << (raceIndex - 1)) & raceMask))
+                    // CoA Custom: a race above 32 only shares its twin's mask bit; its own bonus racials come
+                    // from CoaBonusRacials (by exact race id)
+                    if (raceMask != 0 && raceIndex > 32)
+                        continue;
+                    if (raceMask == 0 || ((1u << ((raceIndex - 1) & 31)) & raceMask))
                     {
                         for (uint32 classIndex = CLASS_WARRIOR; classIndex < MAX_CLASSES; ++classIndex)
                         {
@@ -4703,6 +4755,18 @@ void ObjectMgr::LoadPlayerInfo()
                     }
                 }
             } while (result->NextRow());
+
+            if (sConfigMgr->GetOption<bool>("CoACustomRaces.Enable", false))
+            {
+                for (CoaBonusRacial const& bonus : CoaBonusRacials)
+                    for (uint32 classIndex = CLASS_WARRIOR; classIndex < MAX_CLASSES; ++classIndex)
+                        if (!bonus.ClassMask || ((uint32(1) << (classIndex - 1)) & bonus.ClassMask))
+                            if (PlayerInfo* info = bonus.RaceId < sRaceMgr->GetMaxRaces() ? _playerInfo[bonus.RaceId][classIndex] : nullptr)
+                            {
+                                info->customSpells.push_back(bonus.SpellId);
+                                ++count;
+                            }
+            }
 
             LOG_INFO("server.loading", ">> Loaded {} Custom Player Create Spells in {} ms", count, GetMSTimeDiffToNow(oldMSTime));
             LOG_INFO("server.loading", " ");
@@ -4745,7 +4809,7 @@ void ObjectMgr::LoadPlayerInfo()
 
                 for (uint32 raceIndex = RACE_HUMAN; raceIndex < sRaceMgr->GetMaxRaces(); ++raceIndex)
                 {
-                    if (raceMask == 0 || ((1 << (raceIndex - 1)) & raceMask))
+                    if (raceMask == 0 || ((1u << ((raceIndex - 1) & 31)) & raceMask))
                     {
                         for (uint32 classIndex = CLASS_WARRIOR; classIndex < MAX_CLASSES; ++classIndex)
                         {
@@ -9813,7 +9877,7 @@ int32 ObjectMgr::GetBaseReputationOf(FactionEntry const* factionEntry, uint8 rac
     if (!factionEntry)
         return 0;
 
-    uint32 raceMask = (1 << (race - 1));
+    uint32 raceMask = (1u << ((race - 1) & 31));
     uint32 classMask = (uint32(1) << (playerClass - 1));
 
     for (int i = 0; i < 4; i++)

@@ -4136,4 +4136,17 @@ namespace Acore::Impl
 
 #define THIS_SERVER_PROCESS (Acore::Impl::CurrentServerProcessHolder::type())
 
+// CoA: Esteria's native races (EsteriaAppearance.dll on the client). Highmountain and Earthen keep a sixth
+// appearance byte (the unused outfit byte of CMSG_CHAR_CREATE), Haranir a uint64 sent after the stock packet.
+// Saved in characters.extraAppearance, carried live in UNIT_FIELD_PADDING (+ OBJECT_FIELD_PADDING for Haranir).
+inline constexpr bool UsesExtendedAppearance(uint32 race)
+{
+    return race == 66 || race == 68 || race == 69;      // Highmountain Tauren, Earthen (Alliance, Horde)
+}
+
+inline constexpr bool UsesHaranirAppearance(uint32 race)
+{
+    return race == 70 || race == 71;                    // Haranir (Horde, Alliance)
+}
+
 #endif
