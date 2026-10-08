@@ -71,62 +71,10 @@ constexpr bool IsClassVariantOutsideDbcMask(uint32 spellId, uint8 classId)
     return false;
 }
 
-inline constexpr std::array<RacialSkill, 66> Skills =
+inline constexpr std::array<RacialSkill, 14> Skills =
 {{
-    {32, SKILL_RACIAL_HUMAN}, // extra race (CoA Custom 1.4)
-    {47, SKILL_RACIAL_NIGHT_ELF}, // extra race (CoA Custom 1.4)
-    {48, SKILL_RACIAL_DWARVEN}, // extra race (CoA Custom 1.4)
-    {49, SKILL_ORC_RACIAL}, // extra race (CoA Custom 1.4)
-    {49, SKILL_ORC_RACIAL_LEGACY}, // extra race (CoA Custom 1.4)
-    {50, SKILL_RACIAL_TAUREN}, // extra race (CoA Custom 1.4)
-    {51, SKILL_RACIAL_UNDED}, // extra race (CoA Custom 1.4)
-    {53, SKILL_ORC_RACIAL}, // extra race (CoA Custom 1.4)
-    {53, SKILL_ORC_RACIAL_LEGACY}, // extra race (CoA Custom 1.4)
-    {54, SKILL_RACIAL_BLOODELF}, // extra race (CoA Custom 1.4)
-    {55, SKILL_RACIAL_DRAENEI}, // extra race (CoA Custom 1.4)
-    {55, SKILL_DRAENEI_RACIAL_COA}, // extra race (CoA Custom 1.4)
-    {56, SKILL_RACIAL_TAUREN}, // extra race (CoA Custom 1.4)
-    {57, SKILL_ORC_RACIAL}, // extra race (CoA Custom 1.4)
-    {57, SKILL_ORC_RACIAL_LEGACY}, // extra race (CoA Custom 1.4)
-    {58, SKILL_RACIAL_BLOODELF}, // extra race (CoA Custom 1.4)
-    {59, SKILL_RACIAL_BLOODELF}, // extra race (CoA Custom 1.4)
-    {60, SKILL_RACIAL_BLOODELF}, // extra race (CoA Custom 1.4)
-    {61, SKILL_RACIAL_NIGHT_ELF}, // extra race (CoA Custom 1.4)
-    {62, SKILL_RACIAL_DRAENEI}, // extra race (CoA Custom 1.4)
-    {62, SKILL_DRAENEI_RACIAL_COA}, // extra race (CoA Custom 1.4)
-    {63, SKILL_RACIAL_NIGHT_ELF}, // extra race (CoA Custom 1.4)
-    {66, SKILL_RACIAL_TAUREN}, // extra race (CoA Custom 1.4)
-    {67, SKILL_RACIAL_GNOME}, // extra race (CoA Custom 1.4)
-    {68, SKILL_RACIAL_DWARVEN}, // extra race (CoA Custom 1.4)
-    {69, SKILL_RACIAL_DWARVEN}, // extra race (CoA Custom 1.4)
-    {70, SKILL_RACIAL_NIGHT_ELF}, // extra race (CoA Custom 1.4)
-    {71, SKILL_RACIAL_NIGHT_ELF}, // extra race (CoA Custom 1.4)
-    {74, SKILL_RACIAL_TROLL}, // extra race (CoA Custom 1.4)
-    {9, SKILL_ORC_RACIAL}, // extra race
+    {9, SKILL_ORC_RACIAL}, // Goblin
     {9, SKILL_ORC_RACIAL_LEGACY}, // extra race
-    {12, SKILL_RACIAL_TROLL}, // extra race
-    {13, SKILL_RACIAL_NIGHT_ELF}, // extra race
-    {14, SKILL_RACIAL_BLOODELF}, // extra race
-    {15, SKILL_RACIAL_DWARVEN}, // extra race
-    {16, SKILL_RACIAL_HUMAN}, // extra race
-    {17, SKILL_RACIAL_TAUREN}, // extra race
-    {18, SKILL_RACIAL_HUMAN}, // extra race
-    {19, SKILL_RACIAL_TROLL}, // extra race
-    {20, SKILL_RACIAL_DRAENEI}, // extra race
-    {20, SKILL_DRAENEI_RACIAL_COA}, // extra race
-    {21, SKILL_RACIAL_UNDED}, // extra race
-    {22, SKILL_RACIAL_DRAENEI}, // extra race
-    {22, SKILL_DRAENEI_RACIAL_COA}, // extra race
-    {23, SKILL_ORC_RACIAL}, // extra race
-    {23, SKILL_ORC_RACIAL_LEGACY}, // extra race
-    {24, SKILL_RACIAL_TROLL}, // extra race
-    {25, SKILL_RACIAL_TROLL}, // extra race
-    {26, SKILL_RACIAL_UNDED}, // extra race
-    {27, SKILL_RACIAL_DWARVEN}, // extra race
-    {28, SKILL_RACIAL_TROLL}, // extra race
-    {29, SKILL_RACIAL_TAUREN}, // extra race
-    {30, SKILL_RACIAL_UNDED}, // extra race
-    {31, SKILL_RACIAL_UNDED}, // extra race
     {RACE_HUMAN, SKILL_RACIAL_HUMAN},
     {RACE_ORC, SKILL_ORC_RACIAL},
     {RACE_ORC, SKILL_ORC_RACIAL_LEGACY},

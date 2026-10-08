@@ -6,6 +6,7 @@
 
 #include "AscensionClassServiceBridge.h"
 #include "AccountMgr.h"
+#include "CoaCustomRacials.h"
 #include "AscensionFelsworn.h"
 #include "AscensionItemScaling.h"
 #include "AscensionPyromancer.h"
@@ -655,6 +656,13 @@ std::vector<uint32> GetAscensionRacialSpells(Player const* player)
             for (SkillLineAbilityEntry const* ability : GetSkillLineAbilitiesBySkillLine(skill.SkillId))
                 if (AscensionRacialAbilities::CanLearn(*ability, player->getRace(), player->getClass()))
                     spells.push_back(ability->Spell);
+
+    // CoA Custom 1.5: the races 12 and up have their own racials instead (CoaCustomRacials.h)
+    if (CoaCustomRacial const* custom = GetCoaCustomRacial(player->getRace()))
+    {
+        spells.push_back(custom->ActiveSpell);
+        spells.push_back(custom->PassiveSpell);
+    }
 
     std::sort(spells.begin(), spells.end());
     spells.erase(std::unique(spells.begin(), spells.end()), spells.end());

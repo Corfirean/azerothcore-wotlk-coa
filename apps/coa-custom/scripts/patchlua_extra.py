@@ -353,3 +353,32 @@ k = src.index('-- Local server: Esteria native appearance controls') if '-- Loca
 src = src[:k].rstrip() + nl + nl + code + nl + src[k:]
 open(p, 'wb').write(src.encode('utf-8'))
 print('bonus racial lines applied')
+
+
+# CoA Custom 1.5: icons of the added races (C:/CoA-Build/coa_racials/race_icons.py) and their CoA racials on the creation
+# screen (out_races/coa_racials.lua from gen_coa_racials.py, C:/CoA-Build/coa_racials/racials_ui.lua). Inserted before
+# the Esteria options block, which stays the last block of the file.
+import sys as _sys
+_sys.path.insert(0, 'C:/CoA-Build/coa_racials')
+from race_icons import RACE_ICONS
+p = 'out/Interface/GlueXML/CharacterCreate.lua'
+src = open(p, 'rb').read().decode('utf-8')
+nl = chr(13) + chr(10) if chr(13) + chr(10) in src else chr(10)
+RKEY = '-- Local server: CoA racials of the added races'
+REND = '-- end CoA racials of the added races'
+if RKEY in src:
+    a = src.index(RKEY)
+    src = src[:a] + src[src.index(REND, a) + len(REND):]
+bs = chr(92) * 2
+block = open('out_races/coa_racials.lua', encoding='utf-8').read() + 'if CHAR_CREATE_EXTRA_RACE_ICONS then' + chr(10)
+for name, icon in sorted(RACE_ICONS.items()):
+    block += chr(9) + 'CHAR_CREATE_EXTRA_RACE_ICONS["%s"] = "Interface%sIcons%s%s"' % (name.replace('"', ''), bs, bs, icon) + chr(10)
+block += 'end' + chr(10)
+ui = open('C:/CoA-Build/coa_racials/racials_ui.lua', encoding='utf-8').read()
+block = ui.replace(chr(10) + 'do' + chr(10), chr(10) + block + 'do' + chr(10), 1)
+block = block.replace(chr(10), nl)
+OKEY2 = '-- Local server: Esteria native appearance controls'
+k = src.index(OKEY2) if OKEY2 in src else len(src)
+src = src[:k].rstrip() + nl + nl + block + nl + src[k:]
+open(p, 'wb').write(src.encode('utf-8'))
+print('CoA racials and race icons applied')
