@@ -4407,6 +4407,8 @@ void ObjectMgr::PlayerCreateInfoAddItemHelper(uint32 race_, uint32 class_, uint3
             }
         }
     }
+}
+
 namespace
 {
 // CoA Custom 1.4: the bonus ("signature") racial of the races above 32, by exact race id. The races 1-31 keep
