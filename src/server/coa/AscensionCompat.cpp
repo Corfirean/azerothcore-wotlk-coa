@@ -9680,10 +9680,11 @@ bool IsAscensionMaleOnlyRace(uint8 race)
 {
     // Tuskarr, Taunka, Vrykul, Fel Orc, Forest Troll, Ice Troll, Skeleton: same list as the client's
     // CHAR_CREATE_MALE_ONLY_RACES (patchlua_races.py). A female of these races has no body in the client.
-    // Broken (22) has one since it is Eunoia's Broken (gen_eunoia.py).
+    // Broken (22) has one since it is Eunoia's Broken (gen_eunoia.py). Thin Human (32) and Furbolg (50) have a single
+    // model for both: female gear on it stretched across the screen (CoA Custom 1.4).
     switch (race)
     {
-        case 15: case 17: case 18: case 23: case 24: case 25: case 26:
+        case 15: case 17: case 18: case 23: case 24: case 25: case 26: case 32: case 50:
             return true;
         default:
             return false;
