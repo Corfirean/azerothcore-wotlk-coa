@@ -11271,7 +11271,7 @@ void Player::InitDisplayIds()
     {
         SetDisplayId(customDisplay);
         SetNativeDisplayId(customDisplay);
-        SetByteValue(UNIT_FIELD_BYTES_0, UNIT_BYTES_0_OFFSET_GENDER, GENDER_MALE);
+        SetByteValue(UNIT_FIELD_BYTES_0, 2, GENDER_MALE);
     }
 }
 
