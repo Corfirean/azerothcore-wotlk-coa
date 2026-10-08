@@ -27,9 +27,9 @@ BOTS
   - Updated to CoA Bots 1.9.1 (core and bot module).
   - The installer asks how many bots: 100, 200, 500 (recommended), 1000, 2000 or off.
   - The installer asks which races bots use:
-      normal = the original races (recommended, stable)
-      modded = the added races too - EXPERIMENTAL, it can crash the game client.
-               Choose it only to help find bugs; send us the crash logs from the game's Errors folder.
+      1 - Bots Vanilla race (recommended): the original races, stable
+      2 - Bots Custom race (experimental): the added races too - it can crash the game client.
+          Choose it only to help find bugs; send us the crash logs from the game's Errors folder.
     Kul Tiran, Furbolg, Mechagnome, Thin Human and the Esteria races are never used for bots:
     their models crash the client when bots spawn around you.
   - Thin Human and Furbolg bots are male only (their female had stretched gear).

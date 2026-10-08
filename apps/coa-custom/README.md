@@ -78,10 +78,13 @@ come from your 1.1 backup, so `Uninstall-Custom.bat` still puts back the true or
 RAM, and a busy town with many different races can run the 32-bit game client out of memory. Run the installer again
 any time to change your choice.
 
-It then asks which races the bots use: `normal` (the original races only, **recommended**, the most stable) or
-`modded` (every race, the added ones too: **experimental, it can crash the game client**; choose it only if you want
-to help find bugs, and send us the crash logs from your game's `Errors` folder). Existing bots keep their
-race; `CoA-Bots\Purge-Bots.bat` recreates them all with the new choice.
+It then asks which races the bots use:
+1. **Bots Vanilla race (recommended)**: the original races only, stable.
+2. **Bots Custom race (experimental)**: the added races too. It can crash the game client in busy places; choose it
+   only if you want to help find bugs, and send us the crash logs from your game's `Errors` folder. Kul Tiran,
+   Furbolg, Mechagnome, Thin Human and the Esteria races are never used for bots: their models crash the client.
+
+Existing bots keep their race; `CoA-Bots\Purge-Bots.bat` recreates them all with the new choice.
 
 **Back up first** (the installer also backs up your accounts and characters, but a full copy is safest):
 1. Stop the server with `Stop_All_Server.bat`.

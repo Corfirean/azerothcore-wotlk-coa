@@ -166,20 +166,26 @@ BOT_MODES['recommended'] = BOT_MODES['500']
 
 HIDDEN_RACES = '19,27,65,72,77'                  # hidden from creation: old Vulpera / Earthen, test race, Skyborne
 BOT_RACES = {
-    'normal': HIDDEN_RACES + ',' + ','.join(str(race) for race in range(32, 128)),   # races 1-31 only
-    'modded': HIDDEN_RACES + ',16,50,67,32,66,68,69,70,71,74',   # not the retail-converted models (crash near bots)
+    'vanilla': HIDDEN_RACES + ',' + ','.join(str(race) for race in range(32, 128)),  # the original races only
+    # every race but the retail-converted models that crash the client when bots spawn around you (Kul Tiran 16,
+    # Furbolg 50, Mechagnome 67, Thin Human 32, Highmountain 66, Earthen 68/69, Haranir 70/71, Vulpera 74)
+    'custom': HIDDEN_RACES + ',16,50,67,32,66,68,69,70,71,74',
 }
+BOT_RACE_ALIASES = {'1': 'vanilla', '2': 'custom', 'normal': 'vanilla', 'modded': 'custom'}
 
 
 def choose_bot_races():
     races = arg('--bot-races')
+    races = BOT_RACE_ALIASES.get(races, races)
     if races in BOT_RACES:
         return races
-    say('Bot races: normal  = the original races only (recommended, stable)')
-    say('           modded  = every race, the added ones too: EXPERIMENTAL, can crash the game client.')
-    say('                     Choose it only if you want to help find bugs (send us the crash logs from the Errors folder of the game).')
+    say('Bot races:')
+    say('  1 - Bots Vanilla race (recommended): the original races only, stable')
+    say('  2 - Bots Custom race (experimental): the added races too, can crash the game client in busy places.')
+    say('      Choose it only if you want to help find bugs (send us the crash logs from the Errors folder of the game).')
     while True:
-        races = ask('Bot races? (normal/modded)', 'normal').lower()
+        races = ask('Bot races? (1/2)', '1').lower()
+        races = BOT_RACE_ALIASES.get(races, races)
         if races in BOT_RACES:
             return races
 
@@ -196,7 +202,7 @@ def choose_bots():
             return mode
 
 
-def set_bots(root, mode, races='normal'):
+def set_bots(root, mode, races='vanilla'):
     path = root / 'CoA-Bots' / 'Core' / 'configs' / 'modules' / 'playerbots.conf'
     if not path.exists():
         say('No playerbots.conf yet: bots stay as CoA Bots set them.')
@@ -224,7 +230,7 @@ def start_servers(root):
     python(root, root / 'CoA-Bots' / 'coa_bots.py', 'start-all', cwd=root / 'CoA-Bots')
 
 
-def install(root, bots=None, bot_races='normal'):
+def install(root, bots=None, bot_races='vanilla'):
     state = json.loads(STATE.read_text(encoding='utf-8')) if STATE.exists() else {}
     client = find_client(state.get('client'))
     stop_servers(root)
@@ -376,7 +382,7 @@ def main():
         if ask('Continue? (y/n)', 'y').lower() != 'y':
             sys.exit(0)
         bots = choose_bots()
-        bot_races = choose_bot_races() if bots != 'off' else 'normal'
+        bot_races = choose_bot_races() if bots != 'off' else 'vanilla'
         install(root, bots, bot_races)
 
 
