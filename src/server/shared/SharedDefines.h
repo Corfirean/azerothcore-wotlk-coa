@@ -104,9 +104,11 @@ inline constexpr bool UsesExtendedAppearance(uint32 race)
 // their creature bodies, so shirt, chest, waist, legs, feet, wrists, hands, back and tabard are never shown on them
 inline constexpr bool IsCoaOutfitBodyHidden(uint32 race, uint8 slot)
 {
-    return (race == 83 || race == 84)
-        && (slot == 3 || slot == 4 || slot == 5 || slot == 6 || slot == 7 || slot == 8 || slot == 9 || slot == 14
-            || slot == 18);
+    // Saberon (84) has a cloak mesh (texture type 2): its cloak shows; Gnoll paints armor on its own skin
+    return (race == 84 && (slot == 3 || slot == 4 || slot == 5 || slot == 6 || slot == 7 || slot == 8 || slot == 9
+            || slot == 18))
+        || (race == 83 && (slot == 3 || slot == 4 || slot == 5 || slot == 6 || slot == 7 || slot == 8 || slot == 9
+            || slot == 14 || slot == 18));
 }
 
 inline constexpr bool UsesHaranirAppearance(uint32 race)
