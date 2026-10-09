@@ -13,7 +13,7 @@ struct CoaCustomRacial
     std::array<uint32, 4> Spells;                       // actives first, then passives
 };
 
-inline constexpr std::array<CoaCustomRacial, 42> CoaCustomRacials =
+inline constexpr std::array<CoaCustomRacial, 43> CoaCustomRacials =
 {{
     {12, {14000121, 14000122, 14000123, 14000124}},
     {13, {14000131, 14000132, 14000133, 14000134}},
@@ -57,6 +57,7 @@ inline constexpr std::array<CoaCustomRacial, 42> CoaCustomRacials =
     {70, {14000701, 14000702, 14000703, 14000704}},
     {71, {14000711, 14000712, 14000713, 14000714}},
     {74, {14000741, 14000742, 14000743, 14000744}},
+    {78, {14000781, 14000782, 14000783, 14000784}},
 }};
 
 inline CoaCustomRacial const* GetCoaCustomRacial(uint8 race)
