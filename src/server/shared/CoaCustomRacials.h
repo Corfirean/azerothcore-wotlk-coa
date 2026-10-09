@@ -62,7 +62,7 @@ inline constexpr std::array<CoaCustomRacial, 48> CoaCustomRacials =
     {81, {14000811, 14000812, 14000813, 14000814}},
     {82, {14000821, 14000822, 14000823, 14000824}},
     {83, {14000831, 14000832, 14000833, 14000834}},
-    {85, {14000851, 14000852, 14000853, 14000854}},
+    {84, {14000841, 14000842, 14000843, 14000844}},
 }};
 
 inline CoaCustomRacial const* GetCoaCustomRacial(uint8 race)

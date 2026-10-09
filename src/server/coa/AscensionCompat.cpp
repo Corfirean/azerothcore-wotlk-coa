@@ -9723,7 +9723,7 @@ bool IsAscensionMaleOnlyRace(uint8 race)
     switch (race)
     {
         case 15: case 17: case 18: case 23: case 24: case 25: case 26: case 32: case 50:
-        case 83: case 85:                                   // Gnoll, Saberon (Esteria, one model)
+        case 83: case 84:                                   // Gnoll, Saberon (Esteria, one model)
             return true;
         default:
             return false;

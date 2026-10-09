@@ -2983,6 +2983,14 @@ void Player::SetVisibleItemSlot(uint8 slot, Item* pItem)
     }
 
     sScriptMgr->OnPlayerAfterSetVisibleItemSlot(this, slot, pItem);
+
+    // CoA Custom 1.5: Gnoll (83) and Saberon (84) are creature bodies whose own outfit (Esteria appearance) dresses
+    // them; body armor drawn on them does not fit, so those slots stay unseen (weapons, shield, shoulders, helmet do)
+    if (IsCoaOutfitBodyHidden(getRace(), slot))
+    {
+        SetUInt32Value(PLAYER_VISIBLE_ITEM_1_ENTRYID + (slot * 2), 0);
+        SetUInt32Value(PLAYER_VISIBLE_ITEM_1_ENCHANTMENT + (slot * 2), 0);
+    }
 }
 
 void Player::VisualizeItem(uint8 slot, Item* pItem)

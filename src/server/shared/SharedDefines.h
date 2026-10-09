@@ -100,6 +100,15 @@ inline constexpr bool UsesExtendedAppearance(uint32 race)
     return race == 66 || race == 68 || race == 69;      // Highmountain Tauren, Earthen (Alliance, Horde)
 }
 
+// CoA Custom 1.5: Gnoll (83) and Saberon (84) wear their own outfit (Esteria appearance); body armor does not fit
+// their creature bodies, so shirt, chest, waist, legs, feet, wrists, hands, back and tabard are never shown on them
+inline constexpr bool IsCoaOutfitBodyHidden(uint32 race, uint8 slot)
+{
+    return (race == 83 || race == 84)
+        && (slot == 3 || slot == 4 || slot == 5 || slot == 6 || slot == 7 || slot == 8 || slot == 9 || slot == 14
+            || slot == 18);
+}
+
 inline constexpr bool UsesHaranirAppearance(uint32 race)
 {
     return race == 70 || race == 71;                    // Haranir (Horde, Alliance)
