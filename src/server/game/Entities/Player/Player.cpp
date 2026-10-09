@@ -16,6 +16,7 @@
  */
 
 #include "Player.h"
+#include "CoaCustomRacials.h"
 #include "AscensionSpellCopy.h"
 #include "AscensionIncarnation.h"
 #include "AccountMgr.h"
@@ -12752,6 +12753,10 @@ void Player::learnQuestRewardedSpells()
 
 void Player::learnSkillRewardedSpells(uint32 skill_id, uint32 skill_value)
 {
+    // CoA Custom: the added races have their own racials, never the vanilla racial lines (shared mask bits)
+    if (GetCoaCustomRacial(getRace()) && IsCoaVanillaRacialSkill(skill_id))
+        return;
+
     uint32 raceMask  = getRaceMask();
     uint32 classMask = getClassMask();
 

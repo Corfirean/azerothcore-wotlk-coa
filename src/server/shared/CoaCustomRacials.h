@@ -67,4 +67,18 @@ inline CoaCustomRacial const* GetCoaCustomRacial(uint8 race)
     return nullptr;
 }
 
+// skill lines of the vanilla racials (Racial - Human ... Racial - Draenei, Goblin): never for the races above, whose
+// mask bits are shared with others (races above 32 wrap onto bits 0-31, e.g. Earthen 69 on Undead 5)
+inline bool IsCoaVanillaRacialSkill(uint32 skill)
+{
+    switch (skill)
+    {
+        case 101: case 124: case 125: case 126: case 220: case 733: case 753: case 754: case 756: case 760:
+        case 11125: case 11760:
+            return true;
+        default:
+            return false;
+    }
+}
+
 #endif

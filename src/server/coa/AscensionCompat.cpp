@@ -7772,7 +7772,39 @@ public:
     }
   }
 
+  // CoA Custom: the added races (12+) lose any vanilla racial they picked up through a shared race-mask bit
+  // (Nightborne 63 had the Undead racials, Earthen 69 too, ...): their skill lines and spells
+  static void RemoveForeignVanillaRacials(Player* player)
+  {
+    CoaCustomRacial const* custom = GetCoaCustomRacial(player->getRace());
+    if (!custom)
+      return;
+    std::vector<uint32> foreign;
+    for (auto const& [spellId, spell] : player->GetSpellMap())
+    {
+      if (spell->State == PLAYERSPELL_REMOVED ||
+          std::find(custom->Spells.begin(), custom->Spells.end(), spellId) != custom->Spells.end())
+        continue;
+      SkillLineAbilityMapBounds bounds = sSpellMgr->GetSkillLineAbilityMapBounds(spellId);
+      for (auto itr = bounds.first; itr != bounds.second; ++itr)
+        if (IsCoaVanillaRacialSkill(itr->second->SkillLine))
+        {
+          foreign.push_back(spellId);
+          break;
+        }
+    }
+    for (uint32 spellId : foreign)
+      player->removeSpell(spellId, SPEC_MASK_ALL, false);
+    for (uint32 skill : {101u, 124u, 125u, 126u, 220u, 733u, 753u, 754u, 756u, 760u, 11125u, 11760u})
+      if (player->HasSkill(skill))
+        player->SetSkill(skill, 0, 0, 0);
+    if (!foreign.empty())
+      LOG_INFO("module", "CoA racials: removed {} vanilla racial spells from {} (race {})", foreign.size(),
+               player->GetName(), uint32(player->getRace()));
+  }
+
   void OnPlayerLogin(Player *player) override {
+    RemoveForeignVanillaRacials(player);
     if (ascensionCompatConfig.GetConfigValue<bool>(
             AscensionCompatConfig::ENABLED)) {
       AscensionClassService::Instance().OnPlayerLogin(player);
