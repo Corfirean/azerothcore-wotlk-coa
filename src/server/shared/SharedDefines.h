@@ -102,13 +102,11 @@ inline constexpr bool UsesExtendedAppearance(uint32 race)
 
 // CoA Custom 1.5: Gnoll (83) and Saberon (84) wear their own outfit (Esteria appearance); body armor does not fit
 // their creature bodies, so shirt, chest, waist, legs, feet, wrists, hands, back and tabard are never shown on them
-inline constexpr bool IsCoaOutfitBodyHidden(uint32 race, uint8 slot)
+inline constexpr bool IsCoaOutfitBodyHidden(uint32 /*race*/, uint8 /*slot*/)
 {
-    // Saberon (84) has a cloak mesh (texture type 2): its cloak shows; Gnoll paints armor on its own skin
-    return (race == 84 && (slot == 3 || slot == 4 || slot == 5 || slot == 6 || slot == 7 || slot == 8 || slot == 9
-            || slot == 18))
-        || (race == 83 && (slot == 3 || slot == 4 || slot == 5 || slot == 6 || slot == 7 || slot == 8 || slot == 9
-            || slot == 14 || slot == 18));
+    // 2026-10-09: none. Esteria's EsteriaAppearance.dll draws Gnoll / Saberon armor itself (Saberon coverage
+    // geosets 20001-20009, Gnoll outfits yielding to equipped regions) and needs the real equipped displays
+    return false;
 }
 
 inline constexpr bool UsesHaranirAppearance(uint32 race)
