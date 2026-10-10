@@ -3,6 +3,7 @@
 #include "AscensionItemScaling.h"
 #include "AscensionItemScalingPolicy.h"
 #include "AscensionItemStatData.h"
+#include "AscensionNativeItemScaling.h"
 #include "Config.h"
 #include "Creature.h"
 #include "DBCStores.h"
@@ -371,23 +372,29 @@ ItemTemplate const* ScaledTemplate(uint32 entry)
     return Registry::Instance().Template(entry);
 }
 
+bool LiftsActive()
+{
+    return liftsEnabled.load(std::memory_order_relaxed) && !NativeItemScaling::Active();
+}
+
 uint32 EligibleLift(uint32 itemId, uint32 rawLift)
 {
     uint32 const lift = SteppedLift(rawLift);
-    if (!lift || !liftsEnabled.load(std::memory_order_relaxed))
+    if (!lift || !LiftsActive())
         return itemId;
 
     ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
-    return proto && Liftable(*proto) ? Registry::Instance().Acquire(itemId, lift) : itemId;
+    if (!proto || !Liftable(*proto))
+        return itemId;
+    return Registry::Instance().Acquire(itemId, lift);
 }
 
-uint32 QuestRewardItem(Player const* player, uint32 itemId, int32 questLevel)
+uint32 QuestRewardItem(Player const* player, uint32 itemId, Quest const* quest)
 {
-    if (!player || !LocalLevelScaling::QuestScalingEnabled(player))
+    if (!player)
         return itemId;
 
-    uint8 const scaledLevel = LocalLevelScaling::ScaleQuestLevel(questLevel, player->GetLevel());
-    return EligibleLift(itemId, QuestLift(questLevel, scaledLevel));
+    return EligibleLift(itemId, QuestLift(quest->GetQuestLevel(), uint32(player->GetQuestLevel(quest))));
 }
 
 uint32 CreatureViewerLift(Player const* player, Creature const* creature)
@@ -397,7 +404,8 @@ uint32 CreatureViewerLift(Player const* player, Creature const* creature)
 
 uint32 ChestViewerLift(Player const* player, uint32 itemLevel)
 {
-    if (!LocalLevelScaling::ScalingChoiceEnabled(player))
+    if (!LocalLevelScaling::ScalingChoiceEnabled(player) ||
+        (LocalLevelScaling::ScalingBlocksFor(player) & LocalLevelScaling::ChallengeBlocksCreatureScaling))
         return 0;
     return ContentLift(itemLevel, player->GetLevel(),
         LocalLevelScaling::CreatureOffset.load(std::memory_order_relaxed));
@@ -471,7 +479,7 @@ public:
     void OnAfterLootTemplateProcess(Loot* loot, LootTemplate const*, LootStore const& store, Player* owner,
         bool personal, bool, uint16) override
     {
-        if (!loot || !owner || !liftsEnabled.load(std::memory_order_relaxed) ||
+        if (!loot || !owner || !LiftsActive() ||
             (&store != &LootTemplates_Creature && &store != &LootTemplates_Gameobject))
             return;
 
@@ -519,6 +527,12 @@ std::optional<ClientItemRow> ClientRow(uint32 entry)
     return std::nullopt;
 }
 
+bool LiftableEntry(uint32 entry)
+{
+    ItemTemplate const* proto = sObjectMgr->GetItemTemplate(entry);
+    return proto && Liftable(*proto);
+}
+
 void HandleStatQuery(WorldSession* session, WorldPacket const& packet)
 {
     if (!session || packet.size() != sizeof(uint64) || !capturedStats.Size())
@@ -527,7 +541,7 @@ void HandleStatQuery(WorldSession* session, WorldPacket const& packet)
     uint32 const item = packet.read<uint32>(0);
     uint32 const level = packet.read<uint32>(sizeof(uint32));
     ItemTemplate const* proto = sObjectMgr->GetItemTemplate(item);
-    if (!proto)
+    if (!proto || NativeItemScaling::Handles(item))
         return;
     CapturedStats::Record const* record = capturedStats.Find(BaseEntry(item), level);
     if (!record)

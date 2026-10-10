@@ -6986,7 +6986,7 @@ void Player::_ApplyItemMods(Item* item, uint8 slot, bool apply)
     if (slot >= INVENTORY_SLOT_BAG_END || !item)
         return;
 
-    ItemTemplate const* proto = item->GetTemplate();
+    ItemTemplate const* proto = LocalLevelScaling::InstanceTemplateFor(item, item->GetTemplate());
 
     if (!proto)
         return;
@@ -8010,7 +8010,7 @@ void Player::_RemoveAllItemMods()
         {
             if (m_items[i]->IsBroken() || !CanUseAttackType(GetAttackBySlot(i)))
                 continue;
-            ItemTemplate const* proto = m_items[i]->GetTemplate();
+            ItemTemplate const* proto = LocalLevelScaling::InstanceTemplateFor(m_items[i], m_items[i]->GetTemplate());
             if (!proto)
                 continue;
 
@@ -8036,7 +8036,7 @@ void Player::_ApplyAllItemMods()
             if (m_items[i]->IsBroken() || !CanUseAttackType(GetAttackBySlot(i)))
                 continue;
 
-            ItemTemplate const* proto = m_items[i]->GetTemplate();
+            ItemTemplate const* proto = LocalLevelScaling::InstanceTemplateFor(m_items[i], m_items[i]->GetTemplate());
             if (!proto)
                 continue;
 
@@ -13481,7 +13481,9 @@ uint32 Player::GetResurrectionSpellId()
     }
 
     // Reincarnation (passive spell)  // prio: 1                  // Glyph of Renewed Life
-    if (prio < 1 && HasSpell(20608) && !HasSpellCooldown(21169) && (HasAura(58059) || HasItemCount(17030)))
+    std::vector<uint32> const reincarnation = sSpellMgr->GetSpellAndRelatives(20608);
+    bool const knowsReincarnation = std::any_of(reincarnation.begin(), reincarnation.end(), [this](uint32 spellId) { return HasSpell(spellId); });
+    if (prio < 1 && knowsReincarnation && !HasSpellCooldown(21169) && (HasAura(58059) || HasItemCount(17030)))
         spell_id = 21169;
 
     return spell_id;
@@ -14007,7 +14009,7 @@ bool Player::CanTitanGrip(ItemTemplate const* weapon) const
         (weapon->SubClass != ITEM_SUBCLASS_WEAPON_POLEARM || commander));
 }
 
-void Player::SetTemporarySpellReplacement(uint32 original, uint32 replacement)
+void Player::SetTemporarySpellReplacement(uint32 original, uint32 replacement, bool redirect)
 {
     auto itr = m_temporarySpellReplacements.find(original);
     uint32 previous = itr == m_temporarySpellReplacements.end() ? original : itr->second;
@@ -14019,6 +14021,7 @@ void Player::SetTemporarySpellReplacement(uint32 original, uint32 replacement)
     if (!replacement)
     {
         m_temporarySpellReplacements.erase(original);
+        m_temporarySpellReplacementKeepsCast.erase(original);
         replacement = original;
     }
     else
@@ -14027,6 +14030,10 @@ void Player::SetTemporarySpellReplacement(uint32 original, uint32 replacement)
             return;
         m_temporarySpellReplacements[original] = replacement;
         m_temporarySpellReplacementOrigins[replacement] = original;
+        if (redirect)
+            m_temporarySpellReplacementKeepsCast.erase(original);
+        else
+            m_temporarySpellReplacementKeepsCast[original] = 1;
     }
     if (previous != replacement && IsInWorld() && HasActiveSpell(original))
     {
@@ -14049,6 +14056,13 @@ uint32 Player::GetTemporarySpellReplacement(uint32 original) const
     auto itr = m_temporarySpellReplacements.find(original);
     return itr != m_temporarySpellReplacements.end() && HasActiveSpell(original) && HasActiveSpell(itr->second) ?
         itr->second : original;
+}
+
+uint32 Player::GetCastReplacement(uint32 original) const
+{
+    if (m_temporarySpellReplacementKeepsCast.count(original))
+        return original;
+    return GetTemporarySpellReplacement(original);
 }
 
 bool Player::IsTemporarySpellReplacementStandIn(uint32 spellId) const

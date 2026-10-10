@@ -67,6 +67,12 @@ struct WorldScript
     virtual void OnStartup() { }
 };
 
+namespace NativeItemScaling
+{
+std::unordered_set<uint32> handled;
+bool Handles(uint32 item) { return handled.contains(item); }
+}
+
 namespace ItemScaling
 {
 // ACTUAL_STARTUP
@@ -305,6 +311,10 @@ void TestTemplatesAndReplies()
     unknown << uint32(999) << uint32(58);
     HandleStatQuery(&session, unknown);
     Check(session.sent.size() == count, "null sessions, malformed queries and uncaptured keys send no fabricated rows");
+    NativeItemScaling::handled.insert(FirstScaledEntry);
+    HandleStatQuery(&session, query);
+    Check(session.sent.size() == count, "items answered by native item scaling get no captured reply");
+    NativeItemScaling::handled.clear();
     auto const* weapon = capturedStats.Find(753, 58);
     ItemTemplate sword{};
     weapon->Apply(sword);
