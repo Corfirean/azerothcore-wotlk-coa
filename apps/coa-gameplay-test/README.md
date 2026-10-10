@@ -514,7 +514,8 @@ Metrics: `health`, `max_health`, `creature_type`, `power`, `max_power`, `alive`,
 `dynamic_object_duration_ms`, `distance`, `spell_proc_count`, `spell_proc_chance`, `aura_proc_rate`,
 `spell_cast_count`, `temporary_spell_replacement`,
 `bank_shows`, `system_messages`, `cast_failure`, `pet_is_banker`, `pet_display`, `pet_scale`,
-`pet_knows_spell`, `pet_distance`.
+`pet_knows_spell`, `pet_distance`. `pet_health` and `pet_max_health` read native health and maximum health.
+`equipped_item` takes `slot` (0..18) and reads that equipment slot's item entry, or zero when empty.
 `free_inventory_slots` is how many bag slots the player could still fill, so `fill_bags` plus
 `free_inventory_slots` `equals: 0` is how a scenario states "the bags are full". `mail_count` is the
 number of mails the player holds and `mail_item_count` the items inside them, which is how a reward
@@ -547,6 +548,9 @@ from one that still offers it.
 count of the last one, `vendor_price` requires `item` and returns the price that list offered it at
 (`-1` when the shelves do not hold that item), and `vendor_price_sum` is what the whole list costs -
 a fingerprint of a vendor's stock, so one vendor can be held to another's items and prices.
+`vendor_extended_cost` requires `item` and returns the ItemExtendedCost id that list sold it for (`0` for a
+plain money price, `-1` when the shelves do not hold that item): the honor, arena point, token and rating
+price a client reads from its own ItemExtendedCost.dbc.
 `who_count` counts players in the actor's last native Who response; `who_class` requires a player `target`
 and returns that player's class ID, or zero if absent. These inspect packets from socketless test sessions,
 not client packet delivery. Masks use native Who bits (`1 << classID`, `1 << raceID`), with class 32 in bit zero;
@@ -647,6 +651,8 @@ that the false-failure probability is acceptable, and assert a `min` on the coun
 `spell_cast_count` requires `spell` and counts the casts of that exact spell the actor completed since the scenario
 started, triggered casts included. Use it where a script casts the effect directly, so no aura is named as the trigger
 and `spell_proc_count` reads zero.
+These two count metrics accept each other's snapshots with `relative_to`. Subtract an engraving aura's proc count
+from its payload's total cast count to isolate a talent that casts the same payload without aura attribution.
 `spell_proc_chance` requires `spell` and reads the loaded `spell_proc` Chance, after a zero is replaced by the DBC
 ProcChance. `aura_proc_rate` requires `spell` (an aura on the actor), `target` and `type_mask` (proc flags), and runs
 the aura's full proc decision, database filters, conditions, script CheckProc and the native chance roll, `trials`
@@ -708,17 +714,49 @@ reward eligibility and invokes native reward delivery. These actions do not test
 `action_button_packed` takes `button` and reads the complete action word, including its type.
 `server_packet_u32` takes `opcode` and optional zero-based `index`, and decodes a word from the last
 packet payload. It returns -1 when no such word was sent. These observe server state and packet contents.
+`server_packet_float` uses the same fields to decode a finite IEEE 754 float. With `from_end: true`,
+`index: 0` reads the last float and `index: 1` the preceding float, independent of a packed GUID's size.
+The recorded core packets include `SMSG_MOVE_KNOCK_BACK` (239), whose final two floats are horizontal
+speed and the negated vertical speed. These observations do not simulate client movement or keyboard input.
 Besides the Ascension extension opcodes (0x520 and above), the recorded packets include the learned, superseded
 and removed spell notices (299, 300 and 515) that the client prints to chat.
 
 `relog` takes `actor`, commits the character through the native save path, logs it out, and reloads it
 through the native character-login handler. It preserves saved character state and the scenario phase.
+Optional `race` seeds the saved character's race through `CHAR_UPD_CHAR_RACE` and updates the character cache
+before login, retaining saved pet data. This fixtures the post-service state; it does not submit a race/faction
+service request or perform that service's spell, quest, faction, language or appearance conversions.
+`race` reads the loaded unit's current race. `pet_native_display` reads the guardian's native display,
+which the pet save path persists and transformation removal restores.
 
 `login_hooks` takes `actor` and replays registered player-login hooks on the current character; it does not reconnect
 or reload the character from the database. Use it to exercise a repair against deliberately seeded fixture state.
 Hooks read character rows synchronously, so the step first waits for a marker query queued behind every character
 database write already queued, as a real login's queries are; with several character database workers a write that
 another worker is still running when the marker returns can remain uncommitted.
+`persisted_action_button` requires `button` and returns the spell ID `Player::_SaveActions` writes for that action
+button, or zero if it holds no spell.
+
+`spellbook_loud_supersedes_for` requires `spell` and counts the `SMSG_SUPERCEDED_SPELL` notices that swapped that spell in
+while the client still held it notable, the bit of its `SpellCustomAttr` row the "New Spell Learned" toast tests: no row
+pushed yet, or the last one pushed carrying the bit. `spellbook_client_notable` reports the last pushed row's bit for
+`spell`: 1, 0, or -1 when none was pushed.
+`client_chat_lines_for` requires `spell` and counts the spell notices for it that the client prints to chat, following
+Extensions.dll. A learned notice (299) is silent while the spell's last `SpellCustomAttr` row carries the quiet-learn
+bit (0x40000 of the fourth attribute dword). A learned or superseded notice (300) is silent while a spell in it, or its
+first rank, is listed by an indexed `SMSG_PATCH_CHARACTER_ADVANCEMENT` row (1610); a row is indexed by its second send
+and every insertion of a new row clears that index; a learned or superseded notice is also silent while the added
+spell's last Spell row is hidden. A learned or removed notice (515) is silent while the spell's last
+`SMSG_PATCH_SPELL` row (2346) carries `SPELL_ATTR0_DO_NOT_DISPLAY` or `SPELL_ATTR0_IS_TRADESKILL`.
+`client_placing_learns_for` counts the spell's learned notices sent while its last `SpellCustomAttr` row lacked the
+no-placement bit (0x1000000 of the fourth attribute dword); up to level 10 the client places such a spell on an empty
+button. `client_placing_supersedes_for` counts the superseded notices adding that spell while the Rank text of its last
+`SMSG_PATCH_SPELL` row (the number in it) was 1 or less, or before any row was sent: up to level 10 the client places
+such a spell on an empty button. `client_spell_rank_for` returns that number for the last row sent, or -1.
+`client_removals_keeping_buttons_for` counts its removed notices ending in a zero byte, which Extensions.dll
+answers without clearing the spell's action buttons. `client_spell_row_restored` returns 1 when the last two
+`SMSG_PATCH_SPELL` rows for `spell` are the same row, first with `SPELL_ATTR0_DO_NOT_DISPLAY` and then without.
+The model reads attributes only from rows the server sent, not from the client's own tables.
 `temporary_spell_replacement` requires `spell` and returns the spell ID currently standing in for it on the
 player's bars. `Player::GetTemporarySpellReplacement` returns the queried spell itself when nothing replaces
 it, so the unreplaced reading is that spell's own ID, never zero. It reads server-side state, not what the
