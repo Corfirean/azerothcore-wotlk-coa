@@ -233,6 +233,8 @@ uint32 Quest::CalculateQuestXP(uint32 baseExp, int32 questLevel, uint8 playerLev
 
 uint32 Quest::XPValue(uint8 playerLevel, bool levelScaling) const
 {
+    if (RewardXPDifficulty >= 10)
+        return 0;
     int32 const baseLevel = LocalLevelScaling::GetEffectiveQuestBaseLevel(this);
     int32 quest_level = levelScaling && LocalLevelScaling::QuestEnabled.load(std::memory_order_relaxed) ?
         LocalLevelScaling::ScaleQuestLevel(baseLevel, playerLevel) : (baseLevel == -1 ? playerLevel : baseLevel);
