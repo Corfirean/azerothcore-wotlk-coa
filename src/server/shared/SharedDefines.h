@@ -92,6 +92,28 @@ enum Races
     //RACE_ICE_TROLL      = 21
 };
 
+// CoA: Esteria's native races (EsteriaAppearance.dll on the client). Highmountain and Earthen keep a sixth
+// appearance byte (the unused outfit byte of CMSG_CHAR_CREATE), Haranir a uint64 sent after the stock packet.
+// Saved in characters.extraAppearance, carried live in UNIT_FIELD_PADDING (+ OBJECT_FIELD_PADDING for Haranir).
+inline constexpr bool UsesExtendedAppearance(uint32 race)
+{
+    return race == 66 || race == 68 || race == 69;      // Highmountain Tauren, Earthen (Alliance, Horde)
+}
+
+// CoA Custom 1.5: Gnoll (83) and Saberon (84) wear their own outfit (Esteria appearance); body armor does not fit
+// their creature bodies, so shirt, chest, waist, legs, feet, wrists, hands, back and tabard are never shown on them
+inline constexpr bool IsCoaOutfitBodyHidden(uint32 /*race*/, uint8 /*slot*/)
+{
+    // 2026-10-09: none. Esteria's EsteriaAppearance.dll draws Gnoll / Saberon armor itself (Saberon coverage
+    // geosets 20001-20009, Gnoll outfits yielding to equipped regions) and needs the real equipped displays
+    return false;
+}
+
+inline constexpr bool UsesHaranirAppearance(uint32 race)
+{
+    return race == 70 || race == 71;                    // Haranir (Horde, Alliance)
+}
+
 // DisplayRace values from CreatureDisplayInfoExtra.dbc
 enum class DisplayRace : uint8
 {
@@ -4135,18 +4157,5 @@ namespace Acore::Impl
 }
 
 #define THIS_SERVER_PROCESS (Acore::Impl::CurrentServerProcessHolder::type())
-
-// CoA: Esteria's native races (EsteriaAppearance.dll on the client). Highmountain and Earthen keep a sixth
-// appearance byte (the unused outfit byte of CMSG_CHAR_CREATE), Haranir a uint64 sent after the stock packet.
-// Saved in characters.extraAppearance, carried live in UNIT_FIELD_PADDING (+ OBJECT_FIELD_PADDING for Haranir).
-inline constexpr bool UsesExtendedAppearance(uint32 race)
-{
-    return race == 66 || race == 68 || race == 69;      // Highmountain Tauren, Earthen (Alliance, Horde)
-}
-
-inline constexpr bool UsesHaranirAppearance(uint32 race)
-{
-    return race == 70 || race == 71;                    // Haranir (Horde, Alliance)
-}
 
 #endif

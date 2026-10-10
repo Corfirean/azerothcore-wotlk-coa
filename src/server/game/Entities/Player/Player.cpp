@@ -16,6 +16,9 @@
  */
 
 #include "Player.h"
+#include "CoaCustomRacials.h"
+#include "AscensionSpellCopy.h"
+#include "AscensionIncarnation.h"
 #include "AccountMgr.h"
 #include "AchievementMgr.h"
 #include "AreaDefines.h"
@@ -4276,19 +4279,28 @@ void Player::DestroyForPlayer(Player* target, bool onDeath) const
 bool Player::HasSpell(uint32 spell) const
 {
     PlayerSpellMap::const_iterator itr = m_spells.find(spell);
-    return (itr != m_spells.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->IsInSpec(m_activeSpec));
+    if (itr != m_spells.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->IsInSpec(m_activeSpec))
+        return true;
+    uint32 copy = GetAscensionSpellCopy(spell); // Bronzebeard copy (vanilla classes)
+    return copy && HasSpell(copy);
 }
 
 bool Player::HasTalent(uint32 spell, uint8 spec) const
 {
     PlayerTalentMap::const_iterator itr = m_talents.find(spell);
-    return (itr != m_talents.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->IsInSpec(spec));
+    if (itr != m_talents.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->IsInSpec(spec))
+        return true;
+    uint32 copy = GetAscensionSpellCopy(spell); // Bronzebeard copy (vanilla classes)
+    return copy && HasTalent(copy, spec);
 }
 
 bool Player::HasActiveSpell(uint32 spell) const
 {
     PlayerSpellMap::const_iterator itr = m_spells.find(spell);
-    return (itr != m_spells.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->Active && itr->second->IsInSpec(m_activeSpec));
+    if (itr != m_spells.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->Active && itr->second->IsInSpec(m_activeSpec))
+        return true;
+    uint32 copy = GetAscensionSpellCopy(spell); // Bronzebeard copy (vanilla classes)
+    return copy && HasActiveSpell(copy);
 }
 
 /**
@@ -11303,11 +11315,15 @@ void Player::InitDisplayIds()
             return;
     }
 
+    // SetDisplayId takes the gender of the model's creature_model_info row; a player keeps its own.
+    SetByteValue(UNIT_FIELD_BYTES_0, 2, gender);
+
+    // Custom races without a dressable player model wear an NPC look picked by skin colour.
     if (uint32 customDisplay = GetAscensionCustomRaceDisplay(this))
     {
         SetDisplayId(customDisplay);
         SetNativeDisplayId(customDisplay);
-        SetByteValue(UNIT_FIELD_BYTES_0, 2, GENDER_MALE);
+        SetByteValue(UNIT_FIELD_BYTES_0, 2, gender);
     }
 }
 
@@ -12632,7 +12648,9 @@ void Player::LearnDefaultSkill(uint32 skillId, uint16 rank)
         {
             uint16 skillValue = 1;
             uint16 maxValue = GetMaxSkillValueForLevel();
-            if (sWorld->getBoolConfig(CONFIG_ALWAYS_MAXSKILL) && !IsProfessionOrRidingSkill(skillId))
+            SkillLineEntry const* maxLine = sSkillLineStore.LookupEntry(skillId);
+            if (sWorld->getBoolConfig(CONFIG_ALWAYS_MAXSKILL) && !IsProfessionOrRidingSkill(skillId) &&
+                (skillId == SKILL_DEFENSE || (maxLine && maxLine->categoryId == SKILL_CATEGORY_WEAPON)))
             {
                 skillValue = maxValue;
             }
@@ -12736,6 +12754,10 @@ void Player::learnQuestRewardedSpells()
 
 void Player::learnSkillRewardedSpells(uint32 skill_id, uint32 skill_value)
 {
+    // CoA Custom: the added races have their own racials, never the vanilla racial lines (shared mask bits)
+    if (sConfigMgr->GetOption<bool>("CoACustomRaces.Enable", false) && GetCoaCustomRacial(getRace()) && IsCoaVanillaRacialSkill(skill_id))
+        return;
+
     uint32 raceMask  = getRaceMask();
     uint32 classMask = getClassMask();
 

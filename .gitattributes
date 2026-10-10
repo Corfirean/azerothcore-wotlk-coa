@@ -41,3 +41,5 @@ src/server/coa/AscensionClassContracts19To25Data.h -text
 src/server/coa/AscensionClassContracts26To32Data.h -text
 src/server/coa/AscensionCoATalentData.h -text
 src/server/coa/AscensionCustomClassData.h -text
+
+*.dbc -text -diff

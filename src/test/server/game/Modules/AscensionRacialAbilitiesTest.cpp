@@ -1,6 +1,7 @@
 /* Copyright (C) 2016+ AzerothCore, GNU AGPL v3. */
 
 #include "AscensionRacialAbilities.h"
+#include "CoaCustomRacials.h"
 #include "gtest/gtest.h"
 #include <vector>
 
@@ -162,4 +163,21 @@ TEST(AscensionRacialAbilitiesTest, RejectsUnrelatedSkillsClassesAndNonDefaultAbi
     ability.MinSkillLineRank = 1;
     ability.SupercededBySpell = 123;
     EXPECT_FALSE(AscensionRacialAbilities::CanLearn(ability, RACE_HUMAN, CLASS_BARBARIAN));
+}
+
+TEST(AscensionRacialAbilitiesTest, AddedRacesReceiveFourUniqueRacialsByExactRaceId)
+{
+    for (uint8 race : {uint8(78), uint8(82), uint8(83), uint8(97)})
+    {
+        auto const* racial = GetCoaCustomRacial(race);
+        ASSERT_NE(racial, nullptr);
+        for (uint32 index = 0; index < racial->Spells.size(); ++index)
+        {
+            EXPECT_GE(racial->Spells[index], 14000000u);
+            for (uint32 other = index + 1; other < racial->Spells.size(); ++other)
+                EXPECT_NE(racial->Spells[index], racial->Spells[other]);
+        }
+    }
+    EXPECT_EQ(GetCoaCustomRacial(1), nullptr);
+    EXPECT_EQ(GetCoaCustomRacial(84), nullptr);
 }

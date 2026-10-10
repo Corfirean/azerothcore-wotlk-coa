@@ -1245,6 +1245,11 @@ void Player::UpdateSkillsToMaxSkillsForLevel()
         uint32 pskill = itr->first;
         if (IsProfessionOrRidingSkill(pskill))
             continue;
+        // AlwaysMaxWeaponSkill: weapon skills and Defense only (CoA's Woodcutting / Woodworking are not professions
+        // in SkillLine and were maxed too)
+        SkillLineEntry const* skillLine = sSkillLineStore.LookupEntry(pskill);
+        if (pskill != SKILL_DEFENSE && (!skillLine || skillLine->categoryId != SKILL_CATEGORY_WEAPON))
+            continue;
         uint32 valueIndex = PLAYER_SKILL_VALUE_INDEX(itr->second.pos);
         uint32 data       = GetUInt32Value(valueIndex);
         uint32 max        = SKILL_MAX(data);

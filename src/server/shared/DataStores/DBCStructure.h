@@ -2277,7 +2277,7 @@ struct TalentSpellPos
     TalentSpellPos()  = default;
     TalentSpellPos(uint32 _talent_id, uint8 _rank) : talent_id(_talent_id), rank(_rank) {}
 
-    uint32 talent_id{0}; // Ascension talent ids go above 65535
+    uint32 talent_id{0};                // Ascension talent ids go above 65535
     uint8  rank{0};
 };
 
