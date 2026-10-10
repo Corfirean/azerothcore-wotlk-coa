@@ -1,0 +1,15 @@
+[worldserver]
+
+###################################################################################################
+# CoA Custom Races
+###################################################################################################
+#
+#    CoACustomRaces.Enable
+#        Description: Master switch for the CoA Custom races (Jinyu, Sethrak, Gnoll, Saberon, the Esteria and
+#                     Eunoia races and the other added races). When 0, no new character of an added race can be
+#                     created; existing characters and their data are kept. The original races are never affected.
+#        Default:     1 - Enabled
+#                     0 - Disabled
+#
+
+CoACustomRaces.Enable = 1
