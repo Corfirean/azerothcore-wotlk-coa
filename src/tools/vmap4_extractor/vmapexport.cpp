@@ -23,6 +23,7 @@
 #include <filesystem>
 #include <list>
 #include <map>
+#include <set>
 #include <string>
 #include <sys/stat.h>
 #include <system_error>
@@ -62,6 +63,7 @@ typedef struct
 } map_id;
 
 std::vector<map_id> map_ids;
+std::set<uint32> selectedMaps;
 uint32 map_count;
 char output_path[128] = ".";
 char input_path[1024] = ".";
@@ -214,6 +216,8 @@ void ParsMapFiles()
     //char id_filename[64];
     for (unsigned int i = 0; i < map_count; ++i)
     {
+        if (!selectedMaps.empty() && !selectedMaps.count(map_ids[i].id))
+            continue;
         sprintf(fn,"World\\Maps\\%s\\%s.wdt", map_ids[i].name, map_ids[i].name);
         WDTFile WDT(fn,map_ids[i].name);
         if (WDT.init(map_ids[i].id))
@@ -434,6 +438,17 @@ bool processArgv(int argc, char** argv, char const* versionString)
                 result = false;
             }
         }
+        else if (strcmp("-m", argv[i]) == 0)
+        {
+            if (i + 1 >= argc)
+                return false;
+            char* end = nullptr;
+            char const* value = argv[++i];
+            unsigned long const id = strtoul(value, &end, 10);
+            if (!*value || *end || *value == '-' || id > UINT32_MAX)
+                return false;
+            selectedMaps.insert(static_cast<uint32>(id));
+        }
         else if (strcmp("-?", argv[1]) == 0)
         {
             result = false;
@@ -451,7 +466,7 @@ bool processArgv(int argc, char** argv, char const* versionString)
     if (!result)
     {
         printf("Extract %s.\n", versionString);
-        printf("%s [-?][-s][-l][-d <path>]\n", argv[0]);
+        printf("%s [-?][-s][-l][-d <path>][-m <map id>]\n", argv[0]);
         printf("   -s : (default) small size (data size optimization), ~500MB less vmap data.\n");
         printf("   -l : large size, ~500MB more vmap data. (might contain more details)\n");
         printf("   -d <path>: Path to the vector data source folder.\n");
