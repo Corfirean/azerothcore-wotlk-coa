@@ -225,6 +225,10 @@ void WorldSession::HandleCharEnum(PreparedQueryResult result)
     WorldPacket data(SMSG_CHAR_ENUM, 100);                  // we guess size
 
     uint8 num = 0;
+    ByteBuffer extraAppearances;                        // CoA: Esteria races, read by EsteriaAppearance.dll
+    uint32 extraCount = 0;
+    ByteBuffer haranirAppearances;
+    uint32 haranirCount = 0;
 
     data << num;
 
@@ -239,11 +243,35 @@ void WorldSession::HandleCharEnum(PreparedQueryResult result)
             {
                 _legitCharacters.insert(guid);
                 ++num;
+                uint64 extra = (*result)[result->GetFieldCount() - 1].Get<uint64>();
+                if (UsesExtendedAppearance((*result)[2].Get<uint8>()))
+                {
+                    extraAppearances << guid.GetRawValue() << uint8(extra);
+                    ++extraCount;
+                }
+                else if (UsesHaranirAppearance((*result)[2].Get<uint8>()))
+                {
+                    haranirAppearances << guid.GetRawValue() << extra;
+                    ++haranirCount;
+                }
             }
         } while (result->NextRow());
     }
 
     data.put<uint8>(0, num);
+    if (sConfigMgr->GetOption<bool>("CoACustomRaces.Enable", false))
+    {
+        if (extraCount)
+        {
+            data.append(extraAppearances);
+            data << extraCount << uint32(0x31455848);       // HXE1, removed by the native client before stock parsing
+        }
+        if (haranirCount)
+        {
+            data.append(haranirAppearances);
+            data << haranirCount << uint32(0x32455848);     // HXE2: GUID + uint64 extension
+        }
+    }
 
     SendPacket(&data);
 }
@@ -279,6 +307,25 @@ void WorldSession::HandleCharCreateOpcode(WorldPacket& recvData)
              >> createInfo->HairColor
              >> createInfo->FacialHair
              >> createInfo->OutfitId;
+
+    // CoA: Esteria's Haranir append a uint64 appearance and the HRC1 magic to the stock packet
+    if (UsesHaranirAppearance(createInfo->Race))
+    {
+        uint32 magic = 0;
+        if (recvData.size() - recvData.rpos() == 12)
+            recvData >> createInfo->HaranirExtra >> magic;
+        if (magic != 0x31435248)
+        {
+            SendCharCreate(CHAR_CREATE_FAILED);
+            return;
+        }
+    }
+
+    if (createInfo->Race > RACE_DRAENEI && !sConfigMgr->GetOption<bool>("CoACustomRaces.Enable", false))
+    {
+        SendCharCreate(CHAR_CREATE_DISABLED);
+        return;
+    }
 
     if (createInfo->Class == 10 && IsAscensionCompatEnabled() &&
         sConfigMgr->GetOption<bool>("CoA.MapClass10ToWarrior", false))

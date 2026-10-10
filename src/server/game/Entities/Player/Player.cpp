@@ -16,6 +16,9 @@
  */
 
 #include "Player.h"
+#include "CoaCustomRacials.h"
+#include "AscensionSpellCopy.h"
+#include "AscensionIncarnation.h"
 #include "AccountMgr.h"
 #include "AchievementMgr.h"
 #include "AreaDefines.h"
@@ -23,6 +26,7 @@
 #include "ArenaTeam.h"
 #include "ArenaTeamMgr.h"
 #include "ArenaSeasonMgr.h"
+#include "AscensionIncarnation.h"
 #include "AscensionPooledVitality.h"
 #include "Battlefield.h"
 #include "BattlefieldMgr.h"
@@ -594,6 +598,13 @@ bool Player::Create(ObjectGuid::LowType guidlow, CharacterCreateInfo* createInfo
                                     (0x00 << 16) |
                                     (((GetSession()->IsARecruiter() || GetSession()->GetRecruiterId() != 0) ? REST_STATE_RAF_LINKED : REST_STATE_NOT_RAF_LINKED) << 24)));
     SetByteValue(PLAYER_BYTES_3, 0, createInfo->Gender);
+    if (UsesExtendedAppearance(createInfo->Race))         // CoA: Esteria sixth appearance byte
+        SetByteValue(UNIT_FIELD_PADDING, 0, createInfo->OutfitId);
+    else if (UsesHaranirAppearance(createInfo->Race))
+    {
+        SetUInt32Value(UNIT_FIELD_PADDING, uint32(createInfo->HaranirExtra));
+        SetUInt32Value(OBJECT_FIELD_PADDING, uint32(createInfo->HaranirExtra >> 32));
+    }
     SetByteValue(PLAYER_BYTES_3, 3, 0);                     // BattlefieldArenaFaction (0 or 1)
 
     SetUInt32Value(PLAYER_GUILDID, 0);
@@ -1349,6 +1360,9 @@ bool Player::BuildEnumData(PreparedQueryResult result, WorldPacket* data)
     *data << uint32(petFamily);
 
     std::vector<std::string_view> equipment = Acore::Tokenize(fields[22].Get<std::string_view>(), ' ', false);
+    // Custom races that wear an NPC look in game (Murloc): the character screen paints armor with the human body
+    // layout on their model, so only their weapons are listed.
+    bool const weaponsOnly = HasAscensionCustomRaceDisplay(plrRace, gender);
     for (uint8 slot = 0; slot < INVENTORY_SLOT_BAG_END; ++slot)
     {
         uint32 const visualBase = slot * 2;
@@ -1357,6 +1371,8 @@ bool Player::BuildEnumData(PreparedQueryResult result, WorldPacket* data)
         if (visualBase < equipment.size())
         {
             itemId = Acore::StringTo<uint32>(equipment[visualBase]);
+            if (weaponsOnly && slot != EQUIPMENT_SLOT_MAINHAND && slot != EQUIPMENT_SLOT_OFFHAND && slot != EQUIPMENT_SLOT_RANGED)
+                itemId = 0u;                      // shown empty, no warning
         }
 
         ItemTemplate const* proto = nullptr;
@@ -4263,19 +4279,28 @@ void Player::DestroyForPlayer(Player* target, bool onDeath) const
 bool Player::HasSpell(uint32 spell) const
 {
     PlayerSpellMap::const_iterator itr = m_spells.find(spell);
-    return (itr != m_spells.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->IsInSpec(m_activeSpec));
+    if (itr != m_spells.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->IsInSpec(m_activeSpec))
+        return true;
+    uint32 copy = GetAscensionSpellCopy(spell); // Bronzebeard copy (vanilla classes)
+    return copy && HasSpell(copy);
 }
 
 bool Player::HasTalent(uint32 spell, uint8 spec) const
 {
     PlayerTalentMap::const_iterator itr = m_talents.find(spell);
-    return (itr != m_talents.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->IsInSpec(spec));
+    if (itr != m_talents.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->IsInSpec(spec))
+        return true;
+    uint32 copy = GetAscensionSpellCopy(spell); // Bronzebeard copy (vanilla classes)
+    return copy && HasTalent(copy, spec);
 }
 
 bool Player::HasActiveSpell(uint32 spell) const
 {
     PlayerSpellMap::const_iterator itr = m_spells.find(spell);
-    return (itr != m_spells.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->Active && itr->second->IsInSpec(m_activeSpec));
+    if (itr != m_spells.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->Active && itr->second->IsInSpec(m_activeSpec))
+        return true;
+    uint32 copy = GetAscensionSpellCopy(spell); // Bronzebeard copy (vanilla classes)
+    return copy && HasActiveSpell(copy);
 }
 
 /**
@@ -11289,6 +11314,17 @@ void Player::InitDisplayIds()
             LOG_ERROR("entities.player", "Invalid gender {} for player", gender);
             return;
     }
+
+    // SetDisplayId takes the gender of the model's creature_model_info row; a player keeps its own.
+    SetByteValue(UNIT_FIELD_BYTES_0, 2, gender);
+
+    // Custom races without a dressable player model wear an NPC look picked by skin colour.
+    if (uint32 customDisplay = GetAscensionCustomRaceDisplay(this))
+    {
+        SetDisplayId(customDisplay);
+        SetNativeDisplayId(customDisplay);
+        SetByteValue(UNIT_FIELD_BYTES_0, 2, gender);
+    }
 }
 
 inline bool Player::_StoreOrEquipNewItem(uint32 vendorslot, uint32 item, uint8 count, uint8 bag, uint8 slot, int32 price, ItemTemplate const* pProto, Creature* pVendor, VendorItem const* crItem, bool bStore)
@@ -12612,7 +12648,9 @@ void Player::LearnDefaultSkill(uint32 skillId, uint16 rank)
         {
             uint16 skillValue = 1;
             uint16 maxValue = GetMaxSkillValueForLevel();
-            if (sWorld->getBoolConfig(CONFIG_ALWAYS_MAXSKILL) && !IsProfessionOrRidingSkill(skillId))
+            SkillLineEntry const* maxLine = sSkillLineStore.LookupEntry(skillId);
+            if (sWorld->getBoolConfig(CONFIG_ALWAYS_MAXSKILL) && !IsProfessionOrRidingSkill(skillId) &&
+                (skillId == SKILL_DEFENSE || (maxLine && maxLine->categoryId == SKILL_CATEGORY_WEAPON)))
             {
                 skillValue = maxValue;
             }
@@ -12716,6 +12754,10 @@ void Player::learnQuestRewardedSpells()
 
 void Player::learnSkillRewardedSpells(uint32 skill_id, uint32 skill_value)
 {
+    // CoA Custom: the added races have their own racials, never the vanilla racial lines (shared mask bits)
+    if (sConfigMgr->GetOption<bool>("CoACustomRaces.Enable", false) && GetCoaCustomRacial(getRace()) && IsCoaVanillaRacialSkill(skill_id))
+        return;
+
     uint32 raceMask  = getRaceMask();
     uint32 classMask = getClassMask();
 
@@ -16005,6 +16047,22 @@ void Player::_SaveCharacter(bool create, CharacterDatabaseTransaction trans)
     }
 
     trans->Append(stmt);
+
+    if (UsesExtendedAppearance(getRace(true)))
+    {
+        CharacterDatabasePreparedStatement* appStmt = CharacterDatabase.GetPreparedStatement(CHAR_UPD_EXTENDED_APPEARANCE);
+        appStmt->SetData(0, uint64(GetByteValue(UNIT_FIELD_PADDING, 0)));
+        appStmt->SetData(1, GetGUID().GetRawValue());
+        trans->Append(appStmt);
+    }
+    else if (UsesHaranirAppearance(getRace(true)))
+    {
+        uint64 haranirExtra = uint64(GetUInt32Value(UNIT_FIELD_PADDING)) | (uint64(GetUInt32Value(OBJECT_FIELD_PADDING)) << 32);
+        CharacterDatabasePreparedStatement* appStmt = CharacterDatabase.GetPreparedStatement(CHAR_UPD_EXTENDED_APPEARANCE);
+        appStmt->SetData(0, haranirExtra);
+        appStmt->SetData(1, GetGUID().GetRawValue());
+        trans->Append(appStmt);
+    }
 }
 
 void Player::_LoadGlyphs(PreparedQueryResult result)

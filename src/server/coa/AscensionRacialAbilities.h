@@ -71,7 +71,7 @@ constexpr bool IsClassVariantOutsideDbcMask(uint32 spellId, uint8 classId)
     return false;
 }
 
-inline constexpr std::array<RacialSkill, 12> Skills =
+inline constexpr std::array<RacialSkill, 14> Skills =
 {{
     {RACE_HUMAN, SKILL_RACIAL_HUMAN},
     {RACE_ORC, SKILL_ORC_RACIAL},
@@ -84,8 +84,18 @@ inline constexpr std::array<RacialSkill, 12> Skills =
     {RACE_TROLL, SKILL_RACIAL_TROLL},
     {RACE_BLOODELF, SKILL_RACIAL_BLOODELF},
     {RACE_DRAENEI, SKILL_RACIAL_DRAENEI},
-    {RACE_DRAENEI, SKILL_DRAENEI_RACIAL_COA}
+    {RACE_DRAENEI, SKILL_DRAENEI_RACIAL_COA},
+    {9, SKILL_ORC_RACIAL},
+    {9, SKILL_ORC_RACIAL_LEGACY}
 }};
+
+constexpr bool HasRacialSkill(uint8 raceId, uint32 skillId)
+{
+    for (RacialSkill const& skill : Skills)
+        if (skill.RaceId == raceId && skill.SkillId == skillId)
+            return true;
+    return false;
+}
 
 constexpr uint8 GetRace(uint32 skillId)
 {
@@ -97,12 +107,12 @@ constexpr uint8 GetRace(uint32 skillId)
 
 inline bool CanLearn(SkillLineAbilityEntry const& ability, uint8 raceId, uint8 classId)
 {
-    if (!raceId || GetRace(ability.SkillLine) != raceId || !IsAscensionClass(classId))
+    if (!raceId || !HasRacialSkill(raceId, ability.SkillLine) || !IsAscensionClass(classId))
         return false;
 
     return ability.AcquireMethod == SKILL_LINE_ABILITY_LEARNED_ON_SKILL_LEARN &&
         ability.MinSkillLineRank <= 1 && !ability.SupercededBySpell &&
-        (!ability.RaceMask || (ability.RaceMask & (uint32(1) << (raceId - 1)))) &&
+        (!ability.RaceMask || (ability.RaceMask & (uint32(1) << ((raceId - 1) & 31)))) &&
         (IsClassVariantOutsideDbcMask(ability.Spell, classId) || !ability.ClassMask ||
             (ability.ClassMask & (uint32(1) << (classId - 1))));
 }

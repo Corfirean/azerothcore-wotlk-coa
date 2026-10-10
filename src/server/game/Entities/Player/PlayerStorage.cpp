@@ -2984,6 +2984,14 @@ void Player::SetVisibleItemSlot(uint8 slot, Item* pItem)
     }
 
     sScriptMgr->OnPlayerAfterSetVisibleItemSlot(this, slot, pItem);
+
+    // CoA Custom 1.5: Gnoll (83) and Saberon (84) are creature bodies whose own outfit (Esteria appearance) dresses
+    // them; body armor drawn on them does not fit, so those slots stay unseen (weapons, shield, shoulders, helmet do)
+    if (IsCoaOutfitBodyHidden(getRace(), slot))
+    {
+        SetUInt32Value(PLAYER_VISIBLE_ITEM_1_ENTRYID + (slot * 2), 0);
+        SetUInt32Value(PLAYER_VISIBLE_ITEM_1_ENCHANTMENT + (slot * 2), 0);
+    }
 }
 
 void Player::VisualizeItem(uint8 slot, Item* pItem)
@@ -5135,6 +5143,13 @@ bool Player::LoadFromDB(ObjectGuid playerGuid, CharacterDatabaseQueryHolder cons
     SetByteValue(PLAYER_BYTES_2, 3, fields[15].Get<uint8>());
     SetByteValue(PLAYER_BYTES_3, 0, fields[5].Get<uint8>());
     SetByteValue(PLAYER_BYTES_3, 1, fields[54].Get<uint8>());
+    if (UsesExtendedAppearance(getRace(true)))           // CoA: Esteria appearance extension
+        SetByteValue(UNIT_FIELD_PADDING, 0, uint8(fields[75].Get<uint64>()));
+    else if (UsesHaranirAppearance(getRace(true)))
+    {
+        SetUInt32Value(UNIT_FIELD_PADDING, uint32(fields[75].Get<uint64>()));
+        SetUInt32Value(OBJECT_FIELD_PADDING, uint32(fields[75].Get<uint64>() >> 32));
+    }
     ReplaceAllPlayerFlags((PlayerFlags)fields[16].Get<uint32>());
 
     RemovePlayerFlag(PLAYER_FLAGS_NO_PLAY_TIME);

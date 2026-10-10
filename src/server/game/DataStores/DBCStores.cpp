@@ -27,6 +27,7 @@
 #include "SpellMgr.h"
 #include "TransportMgr.h"
 #include "World.h"
+#include "Config.h"
 #include <algorithm>
 #include <filesystem>
 #include <map>
@@ -285,12 +286,18 @@ void LoadDBCStores(std::string const& dataPath)
     uint32 oldMSTime = getMSTime();
 
     std::string dbcPath = dataPath + "dbc/";
+    std::string customDbcPath = dataPath + "dbc_races/";
+    bool const customRacesEnabled = sConfigMgr->GetOption<bool>("CoACustomRaces.Enable", false);
     sDBCPath = dbcPath;
 
     StoreProblemList bad_dbc_files;
     uint32 availableDbcLocales = 0xFFFFFFFF;
 
-#define LOAD_DBC(store, file, dbtable) LoadDBC(availableDbcLocales, bad_dbc_files, store, dbcPath, file, dbtable)
+#define LOAD_DBC(store, file, dbtable) \
+    do { \
+        std::string chosenPath = (customRacesEnabled && std::filesystem::exists(customDbcPath + file)) ? customDbcPath : dbcPath; \
+        LoadDBC(availableDbcLocales, bad_dbc_files, store, chosenPath, file, dbtable); \
+    } while (0)
 
     LOAD_DBC(sAreaTableStore,                       "AreaTable.dbc",                        "areatable_dbc");
     LOAD_DBC(sAchievementStore,                     "Achievement.dbc",                      "achievement_dbc");
@@ -361,8 +368,10 @@ void LoadDBCStores(std::string const& dataPath)
     LOAD_DBC(sMapStore,                             "Map.dbc",                              "map_dbc");
     LOAD_DBC(sMapDifficultyStore,                   "MapDifficulty.dbc",                    "mapdifficulty_dbc");
     LOAD_DBC(sMovieStore,                           "Movie.dbc",                            "movie_dbc");
-    LOAD_DBC(sNamesReservedStore,                   "NamesReserved.dbc",                    "namesreserved_dbc");
-    LOAD_DBC(sNamesProfanityStore,                  "NamesProfanity.dbc",                   "namesprofanity_dbc");
+    LOAD_DBC(sNamesReservedStore, "NamesReserved.dbc",
+        customRacesEnabled ? nullptr : "namesreserved_dbc");
+    LOAD_DBC(sNamesProfanityStore, "NamesProfanity.dbc",
+        customRacesEnabled ? nullptr : "namesprofanity_dbc");
     LOAD_DBC(sOverrideSpellDataStore,               "OverrideSpellData.dbc",                "overridespelldata_dbc");
     LOAD_DBC(sPowerDisplayStore,                    "PowerDisplay.dbc",                     "powerdisplay_dbc");
     LOAD_DBC(sPvPDifficultyStore,                   "PvpDifficulty.dbc",                    "pvpdifficulty_dbc");
@@ -1006,7 +1015,7 @@ SkillRaceClassInfoEntry const* GetSkillRaceClassInfo(uint32 skill, uint8 race, u
     SkillRaceClassInfoBounds bounds = SkillRaceClassInfoBySkill.equal_range(skill);
     for (SkillRaceClassInfoMap::iterator itr = bounds.first; itr != bounds.second; ++itr)
     {
-        if (itr->second->RaceMask && !(itr->second->RaceMask & (1 << (race - 1))))
+        if (itr->second->RaceMask && !(itr->second->RaceMask & (1u << ((race - 1) & 31))))
         {
             continue;
         }
