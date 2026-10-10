@@ -59,6 +59,10 @@ int32 Player::GetQuestLevel(Quest const* quest) const
     if (!quest)
         return GetLevel();
 
+    if (!LocalLevelScaling::ContentScalingActive.load(std::memory_order_relaxed))
+        return LocalLevelScaling::EffectiveQuestLevel(quest->GetQuestLevel(), GetLevel(),
+            LocalLevelScaling::ScalingCurveFor(LocalLevelScaling::QuestScalingEnabled(this), quest->GetQuestId()));
+
     int32 const baseLevel = LocalLevelScaling::GetEffectiveQuestBaseLevel(quest);
     if (LocalLevelScaling::QuestScalingEnabled(this))
         return LocalLevelScaling::ScaleQuestLevel(baseLevel, GetLevel());
@@ -524,7 +528,7 @@ bool Player::CanRewardQuest(Quest const* quest, uint32 reward, bool msg)
     if (quest->GetRewChoiceItemsCount() > 0)
     {
         if (uint32 const itemId = LocalLevelScaling::QuestRewardItemFor(this, quest->RewardChoiceItemId[reward],
-            quest->GetQuestLevel()))
+            quest))
         {
             InventoryResult res = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId,
                 quest->RewardChoiceItemCount[reward]);
@@ -541,7 +545,7 @@ bool Player::CanRewardQuest(Quest const* quest, uint32 reward, bool msg)
         for (uint32 i = 0; i < quest->GetRewItemsCount(); ++i)
         {
             if (uint32 const itemId = LocalLevelScaling::QuestRewardItemFor(this, quest->RewardItemId[i],
-                quest->GetQuestLevel()))
+                quest))
             {
                 InventoryResult res = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, quest->RewardItemIdCount[i]);
                 if (res != EQUIP_ERR_OK)
@@ -754,13 +758,14 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
     if (quest->GetRewChoiceItemsCount())
     {
         if (uint32 itemId = LocalLevelScaling::QuestRewardItemFor(this, quest->RewardChoiceItemId[reward],
-            quest->GetQuestLevel()))
+            quest))
         {
             ItemPosCountVec dest;
             if (CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, quest->RewardChoiceItemCount[reward]) == EQUIP_ERR_OK)
             {
                 Item* item = StoreNewItem(dest, itemId, true);
                 SendNewItem(item, quest->RewardChoiceItemCount[reward], true, false, false, false);
+                LocalLevelScaling::NotifyQuestRewardItem(this, item, quest);
 
                 sScriptMgr->OnPlayerQuestRewardItem(this, item, quest->RewardChoiceItemCount[reward]);
             }
@@ -776,13 +781,14 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
         for (uint32 i = 0; i < quest->GetRewItemsCount(); ++i)
         {
             if (uint32 itemId = LocalLevelScaling::QuestRewardItemFor(this, quest->RewardItemId[i],
-                quest->GetQuestLevel()))
+                quest))
             {
                 ItemPosCountVec dest;
                 if (CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, quest->RewardItemIdCount[i]) == EQUIP_ERR_OK)
                 {
                     Item* item = StoreNewItem(dest, itemId, true);
                     SendNewItem(item, quest->RewardItemIdCount[i], true, false, false, false);
+                    LocalLevelScaling::NotifyQuestRewardItem(this, item, quest);
 
                     sScriptMgr->OnPlayerQuestRewardItem(this, item, quest->RewardItemIdCount[i]);
                 }

@@ -22,6 +22,28 @@
 #include "SpellInfo.h"
 #include "SpellMgr.h"
 
+inline bool SameSpellTuning(SpellInfo const* first, SpellInfo const* second)
+{
+    for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+    {
+        SpellEffectInfo const& a = first->Effects[i];
+        SpellEffectInfo const& b = second->Effects[i];
+        if (a.BasePoints != b.BasePoints || a.DieSides != b.DieSides || a.RealPointsPerLevel != b.RealPointsPerLevel ||
+            a.PointsPerComboPoint != b.PointsPerComboPoint || a.ValueMultiplier != b.ValueMultiplier ||
+            a.DamageMultiplier != b.DamageMultiplier || a.BonusMultiplier != b.BonusMultiplier || a.Amplitude != b.Amplitude ||
+            a.MiscValue != b.MiscValue || a.MiscValueB != b.MiscValueB || a.RadiusEntry != b.RadiusEntry ||
+            a.ChainTarget != b.ChainTarget)
+            return false;
+    }
+    return first->DurationEntry == second->DurationEntry && first->RangeEntry == second->RangeEntry &&
+        first->CastTimeEntry == second->CastTimeEntry && first->RecoveryTime == second->RecoveryTime &&
+        first->CategoryRecoveryTime == second->CategoryRecoveryTime && first->StartRecoveryTime == second->StartRecoveryTime &&
+        first->ProcChance == second->ProcChance && first->ProcCharges == second->ProcCharges &&
+        first->StackAmount == second->StackAmount && first->MaxAffectedTargets == second->MaxAffectedTargets &&
+        first->ManaCost == second->ManaCost && first->ManaCostPercentage == second->ManaCostPercentage &&
+        first->Speed == second->Speed;
+}
+
 inline void ApplySpellFix(std::initializer_list<uint32> spellIds, void(*fix)(SpellInfo*))
 {
     for (uint32 spellId : spellIds)
@@ -33,7 +55,15 @@ inline void ApplySpellFix(std::initializer_list<uint32> spellIds, void(*fix)(Spe
             continue;
         }
 
+        std::vector<SpellInfo*> twins;
+        auto const [begin, end] = sSpellMgr->GetSpellTwins().equal_range(spellId);
+        for (auto itr = begin; itr != end; ++itr)
+            if (SpellInfo const* twin = sSpellMgr->GetSpellInfo(itr->second); twin && SameSpellTuning(spellInfo, twin))
+                twins.push_back(const_cast<SpellInfo*>(twin));
+
         fix(const_cast<SpellInfo*>(spellInfo));
+        for (SpellInfo* twin : twins)
+            fix(twin);
     }
 }
 
@@ -71,6 +101,19 @@ void SpellMgr::LoadSpellInfoCorrections()
             return;
         spellInfo->Attributes |= SPELL_ATTR0_NO_AURA_CANCEL;
         spellInfo->AttributesEx |= SPELL_ATTR1_NO_AURA_ICON;
+    });
+    // Pulverize Reset is Guardbreaker's cooldown reset, but its effect names
+    // only Ram's rank 1 record. Ram is a ten rank ability whose later ranks are
+    // the ones a levelled Guardian has on the bar, and its ranks share spell
+    // category 1096, so the reset has to clear that category as well or the
+    // talent's 20% proc changed nothing the player could see.
+    ApplySpellFix({ 802895 }, [](SpellInfo* spellInfo)
+    {
+        if (spellInfo->SpellFamilyName != 24 ||
+            spellInfo->Effects[EFFECT_0].Effect != SPELL_EFFECT_ASCENSION_RESET_COOLDOWN ||
+            spellInfo->Effects[EFFECT_0].MiscValue != 802284)
+            return;
+        spellInfo->Effects[EFFECT_0].MiscValueB = 1;
     });
     // Reclaim uses the owner's exact standard GUID in its script; the authored
     // entry-area target must not enumerate nearby unrelated creatures first.
@@ -5250,6 +5293,7 @@ void SpellMgr::LoadSpellInfoCorrections()
 
     ApplySpellFix({
         42292,  // PvP Trinket
+        1142292, // PvP Trinket (Ascension)
         59752,  // Every Man for Himself
         19574,  // Bestial Wrath
         34471   // The Beast Within
@@ -5402,6 +5446,19 @@ void SpellMgr::LoadSpellInfoCorrections()
         spellInfo->Effects[EFFECT_1].Effect = 0;
     });
 
+    // CoA: Fierce Blow (the dungeon and raid bosses' kit strike): it takes the place of the next
+    // melee swing instead of landing on top of one, and never goes off while another spell is cast.
+    ApplySpellFix({ 975011 }, [](SpellInfo* spellInfo)
+    {
+        spellInfo->Attributes |= SPELL_ATTR0_ON_NEXT_SWING;
+    });
+
+    // CoA: Summon Eye of Immol'thar puts the eyes anywhere up to 30 yards away; keep them close around him.
+    ApplySpellFix({ 2100246 }, [](SpellInfo* spellInfo)
+    {
+        spellInfo->Effects[EFFECT_0].RadiusEntry = sSpellRadiusStore.LookupEntry(EFFECT_RADIUS_10_YARDS);
+    });
+
     for (uint32 i = 0; i < GetSpellInfoStoreSize(); ++i)
     {
         SpellInfo* spellInfo = mSpellInfoMap[i];
@@ -5494,6 +5551,11 @@ void SpellMgr::LoadSpellInfoCorrections()
             // Xinef: Dun Morogh, Kharanos tavern, missing resting flag
             else if (areaEntry->ID == 2102)
                 areaEntry->flags |= AREA_FLAG_REST_ZONE_ALLIANCE;
+
+            // CoA: Ascension's AreaTable marks some dungeon areas flyable (Zul'Farrak); nobody flies
+            // inside a dungeon or raid.
+            if (MapEntry const* mapEntry = sMapStore.LookupEntry(areaEntry->mapid); mapEntry && mapEntry->IsDungeon())
+                areaEntry->flags &= ~AREA_FLAG_OUTLAND;
         }
 
     // Xinef: fix for something?

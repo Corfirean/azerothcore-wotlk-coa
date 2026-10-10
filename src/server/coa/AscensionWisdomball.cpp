@@ -40,10 +40,13 @@ constexpr float InteractionRange = 30.0f;
 
 constexpr uint32 StatusCheckIntervalMs = 2000;
 
-constexpr uint32 QuestsCompletedWithoutPlayerAction[] = { 5722, 5724 };
+constexpr uint32 QuestsCompletedWithoutPlayerAction[] = { 5722, 5724, 7498, 7499, 7500, 7501, 7502, 7503, 7504, 7505, 7506, 7507, 7508, 8948 };
 
 constexpr uint32 RazorfenKraulMapId = 47;
 constexpr uint32 RazorfenKraulOverworldQuestSortAreaId = 1717;
+
+constexpr uint32 GnomereganMapId = 90;
+constexpr uint32 GnomereganQuestSortAreaId = 133;
 
 struct DungeonQuests
 {
@@ -114,6 +117,9 @@ std::vector<uint32> ExtraQuestSortAreas(uint32 mapId)
 
     if (mapId == RazorfenKraulMapId)
         areas.push_back(RazorfenKraulOverworldQuestSortAreaId);
+
+    if (mapId == GnomereganMapId)
+        areas.push_back(GnomereganQuestSortAreaId);
 
     return areas;
 }
@@ -300,6 +306,9 @@ bool CanOffer(Player* player, uint32 questId)
         return false;
 
     if (!player->SatisfyQuestRace(quest, false))
+        return false;
+
+    if (!player->SatisfyQuestClass(quest, false))
         return false;
 
     if (!player->SatisfyQuestExclusiveGroup(quest, false))

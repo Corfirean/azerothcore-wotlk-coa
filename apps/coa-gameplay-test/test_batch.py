@@ -292,7 +292,7 @@ SHIPPED_EXCLUSIVE = {'bloodforged-high-risk-drop', 'coa-prestige-chromie-spawns'
                      'who-hides-bots', 'who-lists-bots', 'wildcard-season-event',
                      'native-fixture-descendant-cleanup-producer', 'native-fixture-descendant-cleanup-consumer',
                      'vanilla-dungeons-normal', 'vanilla-dungeons-heroic', 'vanilla-dungeons-mythic',
-                     'vanilla-dungeons-health'}
+                     'vanilla-dungeons-health', 'mythic-plus-keystone-run', 'mythic-plus-client-data-at-login'}
 UTC_EVENING = datetime(2026, 9, 24, 22, 40, tzinfo=timezone.utc)
 
 
@@ -906,6 +906,16 @@ class BatchTests(unittest.TestCase):
         self.assertEqual([event['exclusive'] for event in admissions[1:]], [False] * 3)
         self.assertEqual(result['simulation']['exclusive'], ['beta'])
         self.assertTrue(self.summary('beta')['simulation']['exclusive'])
+
+    def test_creature_scaling_cases_run_exclusively_without_a_policy_entry(self):
+        self.write(self.definitions / 'scenarios' / 'beta.json', {**SCENARIOS['beta'], 'creature_scaling': True})
+        code, result = self.simulated('--lanes', '3', '--scenario', 'beta', *SLOW[:3])
+        self.assertEqual(code, 0, self.stderr.getvalue())
+        admissions = self.events('lanes.log')
+        self.assertEqual((admissions[0]['name'], admissions[0]['exclusive'], admissions[0]['running']),
+                         ('Beta', True, []))
+        self.assertEqual([event['exclusive'] for event in admissions[1:]], [False] * 3)
+        self.assertEqual(result['simulation']['exclusive'], ['beta'])
 
     def test_exploratory_world_phase_masks_run_exclusively(self):
         probe = self.path / 'world-phase-probe.json'

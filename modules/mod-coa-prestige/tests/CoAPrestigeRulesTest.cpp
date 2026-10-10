@@ -121,7 +121,18 @@ TEST(CoAPrestige, TheSpecializationStaysLockedWhilePrestiging)
         "Your active specialization is prestige locked until you reach level 60.");
 }
 
-TEST(CoAPrestige, OnlyOrdinaryZoneQuestsAreReplayed)
+TEST(CoAPrestige, CompletedPrestigeKeepsOnlySignatureRestorationPending)
+{
+    State const pending{ 1, false, 17, true };
+    EXPECT_EQ(EncodeState(pending), (std::vector<uint32_t>{ 1, 0, 17, 1 }));
+    EXPECT_EQ(DecodeState(EncodeState(pending)), pending);
+    EXPECT_TRUE(IsSpecializationSwitchAllowed(DecodeState(EncodeState(pending)), 18));
+
+    EXPECT_FALSE(DecodeState({ 1, 0, 17 }).signaturePending);
+    EXPECT_FALSE(DecodeState({ 1, 0, 17, 0 }).signaturePending);
+}
+
+TEST(CoAPrestige, OnlyLevellingZoneAndDungeonQuestsAreReplayed)
 {
     QuestTraits const zoneQuest{ 12, 20, QuestTypeNormal, false };
     EXPECT_TRUE(IsReplayableQuest(zoneQuest, 60));
@@ -132,9 +143,10 @@ TEST(CoAPrestige, OnlyOrdinaryZoneQuestsAreReplayed)
     quest.type = QuestTypeEscort;
     EXPECT_TRUE(IsReplayableQuest(quest, 60));
 
+    quest.type = QuestTypeDungeon;
+    EXPECT_TRUE(IsReplayableQuest(quest, 60)) << "dungeon";
+
     quest = zoneQuest;
-    quest.type = 81;
-    EXPECT_FALSE(IsReplayableQuest(quest, 60)) << "dungeon";
     quest.type = 62;
     EXPECT_FALSE(IsReplayableQuest(quest, 60)) << "raid";
     quest.type = 41;
@@ -155,8 +167,18 @@ TEST(CoAPrestige, OnlyOrdinaryZoneQuestsAreReplayed)
     EXPECT_FALSE(IsReplayableQuest(quest, 60));
     quest.level = 60;
     EXPECT_TRUE(IsReplayableQuest(quest, 60));
-    quest.level = -1;
-    EXPECT_FALSE(IsReplayableQuest(quest, 60)) << "scales with the player";
+    quest.level = 0;
+    EXPECT_FALSE(IsReplayableQuest(quest, 60));
+
+    quest = zoneQuest;
+    quest.level = ScaledQuestLevel;
+    quest.minLevel = 3;
+    EXPECT_TRUE(IsReplayableQuest(quest, 60)) << "scales with the player";
+    quest.minLevel = 61;
+    EXPECT_FALSE(IsReplayableQuest(quest, 60)) << "scales, but opens above the Prestige level";
+    quest.minLevel = 3;
+    quest.zoneOrSort = -161;
+    EXPECT_FALSE(IsReplayableQuest(quest, 60)) << "scaled class quest";
 }
 
 TEST(CoAPrestige, RewardsParseAsItemCountPairs)

@@ -15,6 +15,24 @@ import run
 
 
 class RunnerTests(unittest.TestCase):
+    def test_player_account_sharing_requires_an_earlier_player(self):
+        self.scenario['players'].append({'id': 'alt', 'race': 1, 'class': 1, 'account_of': 'caster'})
+        self.assertIs(run.validate(self.scenario), self.scenario)
+        for owner in ('alt', 'missing', 'target', '', 1, None):
+            self.scenario['players'][-1]['account_of'] = owner
+            with self.subTest(owner=owner), self.assertRaisesRegex(ValueError, 'earlier player'):
+                run.validate(self.scenario)
+
+    def test_duel_arbiter_packet_field_requires_a_player(self):
+        step = {'action': 'client_packet', 'actor': 'caster', 'opcode': 364,
+                'fields': [{'duel_arbiter': 'caster'}], 'consumed': False}
+        self.scenario['steps'].append(step)
+        self.assertIs(run.validate(self.scenario), self.scenario)
+        for actor in ('target', 'missing', 1):
+            step['fields'] = [{'duel_arbiter': actor}]
+            with self.subTest(actor=actor), self.assertRaisesRegex(ValueError, 'expected a player id'):
+                run.validate(self.scenario)
+
     def test_spell_cast_and_proc_counts_can_share_relative_snapshots(self):
         for measured, captured in (('spell_cast_count', 'spell_proc_count'),
                                    ('spell_proc_count', 'spell_cast_count')):
@@ -120,6 +138,25 @@ class RunnerTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 run.validate(candidate)
 
+    def test_personal_bank_split_packets(self):
+        for direction in ('deposit', 'withdraw'):
+            scenario = copy.deepcopy(self.scenario)
+            step = {'action': 'personal_bank_swap', 'actor': 'caster', 'entry': 475001,
+                    'direction': direction, 'count': 5}
+            if direction == 'deposit':
+                step['item'] = 2589
+            else:
+                step['inventory_slot'] = 38
+            scenario['steps'].append(step)
+            self.assertIs(run.validate(scenario), scenario)
+            for key, value in (('count', -1), ('count', 2**31), ('count', True), ('slot', 98),
+                               ('inventory_slot', 39), ('direction', 'invalid')):
+                invalid = copy.deepcopy(scenario)
+                invalid['steps'][-1][key] = value
+                with self.subTest(direction=direction, key=key, value=value):
+                    with self.assertRaises(ValueError):
+                        run.validate(invalid)
+
     def setUp(self):
         self.scenario = run.read_json(Path(__file__).parent / 'scenarios' / 'frostbolt.json')
 
@@ -152,6 +189,17 @@ class RunnerTests(unittest.TestCase):
             scenario = copy.deepcopy(self.scenario)
             scenario['hour'] = hour
             with self.subTest(hour=hour), self.assertRaisesRegex(ValueError, '^hour: '):
+                run.validate(scenario)
+
+    def test_creature_scaling_is_an_optional_boolean(self):
+        for value in (True, False):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['creature_scaling'] = value
+            self.assertIs(run.validate(scenario), scenario)
+        for value in (1, 'true', None):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['creature_scaling'] = value
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, 'creature_scaling must be boolean'):
                 run.validate(scenario)
 
     def test_hour_timezone_is_a_posix_offset_placing_local_time_at_the_start_of_that_hour(self):
@@ -230,6 +278,9 @@ class RunnerTests(unittest.TestCase):
     def test_native_relog_and_slot_observations(self):
         for step in [
             {'action': 'relog', 'actor': 'caster'},
+            {'action': 'relog', 'actor': 'caster', 'race': 11},
+            {'action': 'assert', 'actor': 'caster', 'metric': 'race', 'equals': 11},
+            {'action': 'assert', 'actor': 'caster', 'metric': 'pet_native_display', 'equals': 173031},
             {'action': 'assert', 'actor': 'caster', 'metric': 'action_button_packed', 'button': 143, 'equals': 0},
             {'action': 'assert', 'actor': 'caster', 'metric': 'server_packet_u32', 'opcode': 1829, 'index': 1,
              'equals': 20},
@@ -247,6 +298,22 @@ class RunnerTests(unittest.TestCase):
             scenario['steps'].append(step)
             with self.assertRaises(ValueError):
                 run.validate(scenario)
+
+    def test_packet_float_observation_fields(self):
+        valid = {'action': 'assert', 'actor': 'caster', 'metric': 'server_packet_float',
+                 'opcode': 239, 'from_end': True, 'index': 0, 'equals': -8.6}
+        scenario = copy.deepcopy(self.scenario)
+        scenario['steps'].append(valid)
+        self.assertIs(run.validate(scenario), scenario)
+        for changes in [{'opcode': 0}, {'index': -1}, {'from_end': 1}, {'offset': 4}, {'skip_strings': 1}]:
+            with self.subTest(changes=changes):
+                scenario = copy.deepcopy(self.scenario)
+                scenario['steps'].append({**valid, **changes})
+                with self.assertRaises(ValueError):
+                    run.validate(scenario)
+        scenario = copy.deepcopy(self.scenario)
+        scenario['steps'].append({**valid, 'from_end': False, 'offset': 4})
+        self.assertIs(run.validate(scenario), scenario)
 
     def test_pet_aura_fixture(self):
         self.scenario['steps'].append({'action': 'set_aura', 'actor': 'caster',
@@ -508,6 +575,9 @@ class RunnerTests(unittest.TestCase):
             lambda s: s['players'][0].update(level=True),
             lambda s: s['steps'].append({'action': 'set_level', 'actor': 'caster', 'value': 0}),
             lambda s: s['steps'].append({'action': 'set_level', 'actor': 'caster', 'value': 81}),
+            lambda s: s['steps'].append({'action': 'relog', 'actor': 'caster', 'race': 0}),
+            lambda s: s['steps'].append({'action': 'relog', 'actor': 'caster', 'race': 256}),
+            lambda s: s['steps'].append({'action': 'relog', 'actor': 'caster', 'race': True}),
             lambda s: s['steps'].append({'action': 'assert', 'actor': 'caster',
                                          'metric': 'spell_damage_done', 'spell': 686, 'equals': 1000}),
             lambda s: s['steps'].append({'action': 'assert', 'actor': 'caster',
@@ -581,6 +651,8 @@ class RunnerTests(unittest.TestCase):
                                          'entry': 36, 'caster': 'caster', 'equals': 0}),
             lambda s: s['steps'].append({'action': 'assert', 'actor': 'caster',
                                          'metric': 'owned_creature_weapon_damage_min', 'min': 1}),
+            lambda s: s['steps'].append({'action': 'assert', 'actor': 'caster',
+                                         'metric': 'owned_creature_spacing', 'min': 1}),
             lambda s: s.update(steps=[{'action': 'wait', 'ms': 1}]),
             lambda s: s['steps'].insert(0, {'action': 'assert', 'actor': 'target', 'metric': 'health',
                                            'relative_to': 'missing', 'equals': 0}),

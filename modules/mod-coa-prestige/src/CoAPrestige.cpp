@@ -16,6 +16,8 @@
  */
 
 #include "AllBattlegroundScript.h"
+#include "AscensionHighRiskPolicy.h"
+#include "AscensionRulesets.h"
 #include "AscensionSpecialization.h"
 #include "AscensionTalentReplacementData.h"
 #include "AscensionWildcard.h"
@@ -31,6 +33,7 @@
 #include "GameEventMgr.h"
 #include "GlobalScript.h"
 #include "Item.h"
+#include "LFGMgr.h"
 #include "Log.h"
 #include "Mail.h"
 #include "Map.h"
@@ -330,7 +333,7 @@ namespace
             {
                 QuestTraits const traits{ quest->GetZoneOrSort(), quest->GetQuestLevel(), quest->GetType(),
                     quest->IsRepeatable() || quest->IsDailyOrWeekly() || quest->IsMonthly() || quest->IsSeasonal() ||
-                    quest->IsDFQuest() };
+                    quest->IsDFQuest(), quest->GetMinLevel() };
                 if (IsReplayableQuest(traits, maxLevel))
                     replayable.push_back(questId);
             }
@@ -513,6 +516,7 @@ namespace
 
         RememberActionBar(player);
         DismissPets(player);
+        sLFGMgr->LeaveLfg(player->GetGUID());
         ResetQuests(player, requiredLevel);
 
         uint32 const talents = wildcard ? AscensionWildcard::PrestigeSpecialization(player) :
@@ -525,6 +529,7 @@ namespace
         ReactivateRemainingRanks(player, chains);
         player->SendInitialActionButtons();
         StripTemporaryAuras(player);
+        AscensionRulesets::Apply(player, AscensionRulesets::Ruleset::WarMode);
 
         CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
         std::vector<Item*> mailed;
@@ -579,12 +584,26 @@ namespace
             return;
 
         state.active = false;
+        if (player->GetLevel() < 10 && !AscensionWildcard::IsWildcardHero(player))
+            state.signaturePending = true;
         SaveState(player, state);
         player->RemoveAurasDueToSpell(PrestigedAura);
         SyncDailyAuras(player);
         SendPrestigeLevels(player);
         ChatHandler(player->GetSession()).PSendSysMessage(
             "Prestige {} complete: your specialization is unlocked.", state.level);
+    }
+
+    void RestoreSpecializationSignature(Player* player)
+    {
+        State state = LoadState(player);
+        if ((state.active || state.signaturePending) && !AscensionWildcard::IsWildcardHero(player) &&
+            state.specialization == GetAscensionActiveSpecialization(player) &&
+            RestoreAscensionSpecializationSignature(player) && state.signaturePending)
+        {
+            state.signaturePending = false;
+            SaveState(player, state);
+        }
     }
 
     std::string SpecializationSwitchRefusal(Player* player, uint32 /*active*/, uint32 requested)
@@ -676,7 +695,10 @@ public:
             player->m_Events.AddEventAtOffset([guid = player->GetGUID()]
             {
                 if (Player* player = ObjectAccessor::FindPlayer(guid))
+                {
+                    RestoreSpecializationSignature(player);
                     SendPrestigeLevels(player);
+                }
             }, 1s);
     }
 
@@ -700,10 +722,18 @@ public:
         g_otherCharactersPrestige.erase(player->GetGUID().GetCounter());
     }
 
-    void OnPlayerLevelChanged(Player* player, uint8 /*oldLevel*/) override
+    void OnPlayerLevelChanged(Player* player, uint8 oldLevel) override
     {
         if (!g_enabled)
             return;
+
+        RestoreSpecializationSignature(player);
+
+        // A prestige starts in War Mode; reaching the level where the PvP rulesets can be
+        // chosen switches it to PvE Mode, and the player picks High-Risk or War Mode from there.
+        if (IsActive(player) && oldLevel < HighRisk::MinimumLevel && player->GetLevel() >= HighRisk::MinimumLevel
+            && AscensionRulesets::Has(player, AscensionRulesets::Ruleset::WarMode))
+            AscensionRulesets::Apply(player, AscensionRulesets::Ruleset::PvE);
 
         // "Max Level Reached" daily objective: credited at the required level. The
         // daily still keeps its content objective until that is met too.
@@ -715,8 +745,10 @@ public:
 
     void OnPlayerCompleteQuest(Player* player, Quest const* quest) override
     {
-        // "Daily Quests Completed" objective: any daily quest turned in counts.
-        if (quest && quest->IsDaily())
+        // "World Quests Completed" objective: any quest turned in outside instances and
+        // battlegrounds counts, except the Prestige dailies themselves.
+        if (quest && !IsPrestigeDaily(quest->GetQuestId()) && player->GetMap()
+            && !player->GetMap()->Instanceable() && !player->InBattleground())
             player->KilledMonsterCredit(DailyCreditWorldQuests);
 
         // A turned-in daily leaves the quest panel, so its aura goes with it.

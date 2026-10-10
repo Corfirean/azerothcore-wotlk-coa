@@ -3273,7 +3273,7 @@ void Player::_addTalentAurasAndSpells(uint32 spellId)
     }
 }
 
-void Player::SendLearnPacket(uint32 spellId, bool learn)
+void Player::SendLearnPacket(uint32 spellId, bool learn, bool keepActionButtons /*= false*/)
 {
     if (learn)
     {
@@ -3284,8 +3284,12 @@ void Player::SendLearnPacket(uint32 spellId, bool learn)
     }
     else
     {
-        WorldPacket data(SMSG_REMOVED_SPELL, 4);
+        WorldPacket data(SMSG_REMOVED_SPELL, 5);
         data << uint32(spellId);
+        // The CoA client's Extensions.dll leaves the spell's action buttons in place for a removal that ends in a
+        // zero byte; the stock client reads only the spell id.
+        if (keepActionButtons)
+            data << uint8(0);
         SendDirectMessage(&data);
     }
 }
@@ -3373,7 +3377,11 @@ bool Player::_addSpell(uint32 spellId, uint8 addSpecMask, bool temporary, bool l
     // condition mirrors the one Player::removeSpell uses for onlyTemporary. Player::learnSpell must not
     // announce the same grant again, or the client ends up with more copies than the server ever removes.
     if (IsInWorld() && !isBeingLoaded() && temporary && !learnFromSkill && (!spellInfo->HasAttribute(SpellAttr0(SPELL_ATTR0_PASSIVE | SPELL_ATTR0_DO_NOT_DISPLAY)) || !spellInfo->HasAnyAura()) && !spellInfo->HasEffect(SPELL_EFFECT_LEARN_SPELL))
+    {
+        sScriptMgr->OnPlayerTemporarySpellLearnNotice(this, spellInfo->Id, false);
         SendLearnPacket(spellInfo->Id, true);
+        sScriptMgr->OnPlayerTemporarySpellLearnNotice(this, spellInfo->Id, true);
+    }
 
     // xinef: DO NOT allow to learn spell with effect learn spell!
     // xinef: if spell possess spell learn effects only, learn those spells as temporary (eg. Metamorphosis, Tree of Life)
@@ -3827,7 +3835,11 @@ void Player::removeSpell(uint32 spell_id, uint8 removeSpecMask, bool onlyTempora
     if (!onlyTemporary || ((!spellInfo->HasAttribute(SpellAttr0(SPELL_ATTR0_PASSIVE | SPELL_ATTR0_DO_NOT_DISPLAY)) || !spellInfo->HasAnyAura()) && !spellInfo->HasEffect(SPELL_EFFECT_LEARN_SPELL)))
     {
         sScriptMgr->OnPlayerForgotSpell(this, spell_id);
-        SendLearnPacket(spell_id, false);
+        if (onlyTemporary)
+            sScriptMgr->OnPlayerTemporarySpellRemoveNotice(this, spell_id, false);
+        SendLearnPacket(spell_id, false, onlyTemporary && IsTemporarySpellReplacementStandIn(spell_id));
+        if (onlyTemporary)
+            sScriptMgr->OnPlayerTemporarySpellRemoveNotice(this, spell_id, true);
     }
 }
 
@@ -6949,7 +6961,7 @@ void Player::_ApplyItemMods(Item* item, uint8 slot, bool apply)
     if (slot >= INVENTORY_SLOT_BAG_END || !item)
         return;
 
-    ItemTemplate const* proto = item->GetTemplate();
+    ItemTemplate const* proto = LocalLevelScaling::InstanceTemplateFor(item, item->GetTemplate());
 
     if (!proto)
         return;
@@ -7973,7 +7985,7 @@ void Player::_RemoveAllItemMods()
         {
             if (m_items[i]->IsBroken() || !CanUseAttackType(GetAttackBySlot(i)))
                 continue;
-            ItemTemplate const* proto = m_items[i]->GetTemplate();
+            ItemTemplate const* proto = LocalLevelScaling::InstanceTemplateFor(m_items[i], m_items[i]->GetTemplate());
             if (!proto)
                 continue;
 
@@ -7999,7 +8011,7 @@ void Player::_ApplyAllItemMods()
             if (m_items[i]->IsBroken() || !CanUseAttackType(GetAttackBySlot(i)))
                 continue;
 
-            ItemTemplate const* proto = m_items[i]->GetTemplate();
+            ItemTemplate const* proto = LocalLevelScaling::InstanceTemplateFor(m_items[i], m_items[i]->GetTemplate());
             if (!proto)
                 continue;
 
@@ -13427,7 +13439,9 @@ uint32 Player::GetResurrectionSpellId()
     }
 
     // Reincarnation (passive spell)  // prio: 1                  // Glyph of Renewed Life
-    if (prio < 1 && HasSpell(20608) && !HasSpellCooldown(21169) && (HasAura(58059) || HasItemCount(17030)))
+    std::vector<uint32> const reincarnation = sSpellMgr->GetSpellAndRelatives(20608);
+    bool const knowsReincarnation = std::any_of(reincarnation.begin(), reincarnation.end(), [this](uint32 spellId) { return HasSpell(spellId); });
+    if (prio < 1 && knowsReincarnation && !HasSpellCooldown(21169) && (HasAura(58059) || HasItemCount(17030)))
         spell_id = 21169;
 
     return spell_id;
@@ -13953,7 +13967,7 @@ bool Player::CanTitanGrip(ItemTemplate const* weapon) const
         (weapon->SubClass != ITEM_SUBCLASS_WEAPON_POLEARM || commander));
 }
 
-void Player::SetTemporarySpellReplacement(uint32 original, uint32 replacement)
+void Player::SetTemporarySpellReplacement(uint32 original, uint32 replacement, bool redirect)
 {
     auto itr = m_temporarySpellReplacements.find(original);
     uint32 previous = itr == m_temporarySpellReplacements.end() ? original : itr->second;
@@ -13965,6 +13979,7 @@ void Player::SetTemporarySpellReplacement(uint32 original, uint32 replacement)
     if (!replacement)
     {
         m_temporarySpellReplacements.erase(original);
+        m_temporarySpellReplacementKeepsCast.erase(original);
         replacement = original;
     }
     else
@@ -13972,14 +13987,25 @@ void Player::SetTemporarySpellReplacement(uint32 original, uint32 replacement)
         if (!HasActiveSpell(original) || !HasActiveSpell(replacement))
             return;
         m_temporarySpellReplacements[original] = replacement;
+        m_temporarySpellReplacementOrigins[replacement] = original;
+        if (redirect)
+            m_temporarySpellReplacementKeepsCast.erase(original);
+        else
+            m_temporarySpellReplacementKeepsCast[original] = 1;
     }
     if (previous != replacement && IsInWorld() && HasActiveSpell(original))
     {
         if (sharedReplacement)
-            SendLearnPacket(replacement, false);
+        {
+            sScriptMgr->OnPlayerTemporarySpellRemoveNotice(this, replacement, false);
+            SendLearnPacket(replacement, false, true);
+            sScriptMgr->OnPlayerTemporarySpellRemoveNotice(this, replacement, true);
+        }
+        sScriptMgr->OnPlayerTemporarySpellReplacementNotice(this, previous, replacement, false);
         WorldPacket packet(SMSG_SUPERCEDED_SPELL, 8);
         packet << previous << replacement;
         GetSession()->SendPacket(&packet);
+        sScriptMgr->OnPlayerTemporarySpellReplacementNotice(this, previous, replacement, true);
     }
 }
 
@@ -13988,6 +14014,38 @@ uint32 Player::GetTemporarySpellReplacement(uint32 original) const
     auto itr = m_temporarySpellReplacements.find(original);
     return itr != m_temporarySpellReplacements.end() && HasActiveSpell(original) && HasActiveSpell(itr->second) ?
         itr->second : original;
+}
+
+uint32 Player::GetCastReplacement(uint32 original) const
+{
+    if (m_temporarySpellReplacementKeepsCast.count(original))
+        return original;
+    return GetTemporarySpellReplacement(original);
+}
+
+bool Player::IsTemporarySpellReplacementStandIn(uint32 spellId) const
+{
+    auto const origin = m_temporarySpellReplacementOrigins.find(spellId);
+    return origin != m_temporarySpellReplacementOrigins.end() && origin->second != spellId;
+}
+
+uint32 Player::GetSavedActionButtonSpell(uint32 action)
+{
+    // A temporary replacement is never saved, so the next login would drop a button holding it: save the spell it
+    // replaces, which the replacement takes over again once its owner re-applies it. A timed replacement may already
+    // be unlearned while a button still holds it, which the next login would drop just the same.
+    for (uint8 depth = 0; depth < 4; ++depth)
+    {
+        auto spell = m_spells.find(action);
+        auto origin = m_temporarySpellReplacementOrigins.find(action);
+        bool const unsaved = spell == m_spells.end() || spell->second->State == PLAYERSPELL_TEMPORARY ||
+            spell->second->State == PLAYERSPELL_REMOVED;
+        if (!unsaved || origin == m_temporarySpellReplacementOrigins.end() || !HasSpell(origin->second))
+            break;
+        action = origin->second;
+    }
+    sScriptMgr->OnPlayerNormalizeActionButtonSpell(this, action, false);
+    return action;
 }
 
 bool Player::CanUseTwoHandWithShield(ItemTemplate const* main, ItemTemplate const* off) const

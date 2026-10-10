@@ -80,7 +80,9 @@ def main():
         ('SEND_SECURE_ADDON_LIST', method_or(compat, 'void SendSecureAddonList(WorldSession* session)', '')),
         ('QUEUE_CLIENT_PACKET', method(compat, 'void QueueClientPacket(uint32 accountId')),
         ('REJECT_CLIENT_PACKET', method_or(compat, 'void RejectClientPacket(uint32 accountId', '')),
-        ('TAKE_CLIENT_PACKETS', method_or(compat, 'std::vector<WorldPacket> TakeClientPackets(uint32 accountId)', '')),
+        ('TAKE_CLIENT_PACKETS', method_or(compat, 'std::vector<WorldPacket> TakeClientPackets(uint32 accountId', '')),
+        ('PENDING_OUTFIT', method_or(compat, 'bool HasPendingOutfitCommit(ObjectGuid guid)',
+                                   'bool HasPendingOutfitCommit(ObjectGuid) { return false; }')),
         ('ON_PLAYER_UPDATE', method_in(compat, 'class AscensionCollectionService',
                                        'void OnPlayerUpdate(Player *player, uint32 diff) {')),
         ('HANDLE_CLIENT_PACKET', method(compat, 'void HandleClientPacket(Player *player')),
@@ -88,6 +90,11 @@ def main():
         ('CAN_PACKET_SEND', method(compat, 'bool CanPacketSend(WorldSession* session')),
         ('POINT_SPEND', method_or(compat, 'void HandlePointSpendRequest(Player* player', '')),
         ('DELIVER_VANITY', method(compat, 'void DeliverVanityItem(Player *player, uint32 itemId)')),
+        ('WITHHELD_VANITY', '\n'.join([
+            (re.search(r'static constexpr std::array<uint32, \d+> MysticAltarVanityItems = [^;]+;', compat) or [''])[0],
+            method_or(compat, 'static bool IsWithheldVanityItem(uint32 itemId)',
+                      'static bool IsWithheldVanityItem(uint32) { return false; }'),
+        ])),
         ('BANK_VANITY', '\n'.join([re.search(r'static constexpr std::array<uint32, \d+> BankVanityItems = [^;]+;',
                                              compat)[0]] + [method(compat, signature) for signature in (
             'static bool IsBankVanityItem(uint32 itemId)',

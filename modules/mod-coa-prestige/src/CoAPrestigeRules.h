@@ -58,6 +58,7 @@ namespace CoAPrestige
         uint32_t level = 0;
         bool active = false;
         uint32_t specialization = 0;
+        bool signaturePending = false;
 
         bool operator==(State const&) const = default;
     };
@@ -71,12 +72,17 @@ namespace CoAPrestige
             state.active = values[1] != 0;
         if (values.size() > 2)
             state.specialization = values[2];
+        if (values.size() > 3)
+            state.signaturePending = values[3] != 0;
         return state;
     }
 
     inline std::vector<uint32_t> EncodeState(State const& state)
     {
-        return { state.level, state.active ? 1u : 0u, state.specialization };
+        std::vector<uint32_t> values{ state.level, state.active ? 1u : 0u, state.specialization };
+        if (state.signaturePending)
+            values.push_back(1);
+        return values;
     }
 
     enum class Refusal
@@ -176,7 +182,9 @@ namespace CoAPrestige
     constexpr uint32_t QuestTypeNormal = 0;
     constexpr uint32_t QuestTypeGroup = 1;
     constexpr uint32_t QuestTypeLife = 21;
+    constexpr uint32_t QuestTypeDungeon = 81;
     constexpr uint32_t QuestTypeEscort = 84;
+    constexpr int32_t ScaledQuestLevel = -1;
 
     struct QuestTraits
     {
@@ -184,17 +192,20 @@ namespace CoAPrestige
         int32_t level = 0;
         uint32_t type = QuestTypeNormal;
         bool repeatable = false;
+        uint32_t minLevel = 0;
     };
 
-    // A reset hands the zone quests of the levelling path back to the character. Class and
-    // profession quests (negative sort), dungeon, raid, PvP and event quests, anything above the
-    // Prestige level and every daily, weekly, monthly, seasonal or repeatable quest stay done.
+    // A reset hands the zone and dungeon quests of the levelling path back to the character,
+    // including quests that scale with the player (their minimum level decides). Class and
+    // profession quests (negative sort), raid, PvP and event quests, anything above the Prestige
+    // level and every daily, weekly, monthly, seasonal or repeatable quest stay done.
     inline bool IsReplayableQuest(QuestTraits const& quest, uint32_t maxLevel)
     {
         bool const ordinary = quest.type == QuestTypeNormal || quest.type == QuestTypeGroup ||
-            quest.type == QuestTypeLife || quest.type == QuestTypeEscort;
-        return ordinary && !quest.repeatable && quest.zoneOrSort > 0 && quest.level >= 1 &&
-            uint32_t(quest.level) <= maxLevel;
+            quest.type == QuestTypeLife || quest.type == QuestTypeEscort || quest.type == QuestTypeDungeon;
+        bool const levelling = quest.level == ScaledQuestLevel ? quest.minLevel <= maxLevel :
+            quest.level >= 1 && uint32_t(quest.level) <= maxLevel;
+        return ordinary && !quest.repeatable && quest.zoneOrSort > 0 && levelling;
     }
 
     struct RewardItem
