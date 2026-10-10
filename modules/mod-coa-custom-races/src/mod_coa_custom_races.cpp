@@ -44,8 +44,11 @@ public:
     }
 };
 
+void AddCoAHideArmorScripts();
+
 void Addmod_coa_custom_racesScripts()
 {
+    AddCoAHideArmorScripts();
     new CoACustomRacesConfig();
     new CoACustomRacesAccount();
 }
