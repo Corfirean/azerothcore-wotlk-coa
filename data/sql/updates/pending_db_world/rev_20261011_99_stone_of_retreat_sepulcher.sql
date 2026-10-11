@@ -1,0 +1,1 @@
+REPLACE INTO `spell_target_position` (`ID`, `EffectIndex`, `MapID`, `PositionX`, `PositionY`, `PositionZ`, `Orientation`, `VerifiedBuild`) VALUES (1777083, 0, 0, 533.8798, 1536.8212, 134.68832, 1.8692487, 0);
