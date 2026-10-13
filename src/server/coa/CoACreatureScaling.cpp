@@ -96,6 +96,13 @@ namespace
     }
 }
 
+float CreatureScaling::HealthMultiplier(Creature const* creature)
+{
+    if (!Enabled || !IsEligible(creature) || HasFlexHealth(creature))
+        return 1.0f;
+    return CreatureScaling::Multiplier(Active()->health, ContextOf(creature), creature->GetMapId());
+}
+
 CreatureScaling::TestOverride::TestOverride()
 {
     auto settings = std::make_shared<CreatureScaling::Settings>();
@@ -158,12 +165,7 @@ public:
 
     void OnCreatureSelectLevel(CreatureTemplate const*, Creature* creature) override
     {
-        if (!Enabled || !IsEligible(creature) || HasFlexHealth(creature))
-            return;
-        CreatureScaling::Context const context = ContextOf(creature);
-        if (context == CreatureScaling::Context::None)
-            return;
-        float const multiplier = CreatureScaling::Multiplier(Active()->health, context, creature->GetMapId());
+        float const multiplier = CreatureScaling::HealthMultiplier(creature);
         if (multiplier == 1.0f)
             return;
         uint32 const health = CreatureScaling::Scaled(creature->GetCreateHealth(), multiplier);
