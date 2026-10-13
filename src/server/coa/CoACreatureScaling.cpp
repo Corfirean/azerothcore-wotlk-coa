@@ -100,7 +100,7 @@ float CreatureScaling::HealthMultiplier(Creature const* creature)
 {
     if (!Enabled || !IsEligible(creature) || HasFlexHealth(creature))
         return 1.0f;
-    return CreatureScaling::Multiplier(Active()->health, ContextOf(creature), creature->GetMapId());
+    return CreatureScaling::Multiplier(Active()->health, ::ContextOf(creature), creature->GetMapId());
 }
 
 CreatureScaling::TestOverride::TestOverride()
