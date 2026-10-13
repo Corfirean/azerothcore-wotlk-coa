@@ -6013,7 +6013,8 @@ public:
       if (IsWithheldVanityItem(itemId))
         continue;
 
-      if (state->OwnedVanityItems.insert(itemId).second) {
+      if (state->OwnedVanityItems.insert(itemId).second)
+      {
         CharacterDatabasePreparedStatement *stmt =
             CharacterDatabase.GetPreparedStatement(CHAR_INS_ACCOUNT_VANITY_COLLECTION);
         stmt->SetData(0, state->AccountId);
@@ -6044,7 +6045,8 @@ public:
       if (!_vanityItems.contains(itemId))
         continue;
 
-      if (state->OwnedVanityItems.insert(itemId).second) {
+      if (state->OwnedVanityItems.insert(itemId).second)
+      {
         CharacterDatabasePreparedStatement *stmt =
             CharacterDatabase.GetPreparedStatement(CHAR_INS_ACCOUNT_VANITY_COLLECTION);
         stmt->SetData(0, state->AccountId);
