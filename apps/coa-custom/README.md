@@ -61,9 +61,16 @@ come from your 1.1 backup, so `Uninstall-Custom.bat` still puts back the true or
 
 ## Before you start
 
+### Where the repack comes from
+
+The old Discord download for the repack's batch files is gone. Two ways to get a server this package can install onto:
+
+1. **CoA Server Manager** (Windows). It already has the custom races as a module, so you do not need the old `Start_All_Server.bat` files from Discord. Use the manager's module install when that is the server you run.
+2. **This repository's GitHub release** (`CoA-Custom-*-main-*.zip`). Extract it into a CoA repack that still has `Start_All_Server.bat` and CoA Bots, then run `CoA-Custom\Install-Custom.bat`. That zip is the installer. It is not a separate set of bats you have to download from Discord.
+
 ### Prerequisites
 
-1. **The Jealous-Sound CoA repack** (Conquest of Azeroth, by Jealous Sound), started once and working.
+1. **A CoA repack** (Conquest of Azeroth, by Jealous Sound), started once and working. From CoA Server Manager, or an older repack you already have. There is no current Discord file for those bats.
 2. **CoA Bots 1.9.1** (release `main-20261007-b46a130e`) installed in it, made by the **SquidBots team**:
    - core source: https://github.com/Zyth45/azerothcore-wotlk-coa (branch `coa-bots-1.9.1`)
    - bot module: https://github.com/Zyth45/mod-playerbots
@@ -89,6 +96,8 @@ Existing bots keep their race; `CoA-Bots\Purge-Bots.bat` recreates them all with
 1. Stop the server with `Stop_All_Server.bat`.
 2. Copy your repack folder somewhere safe.
 3. Copy `Data\patch-T.MPQ` from your game folder (if you have one).
+
+Linux host: see [LINUX.md](LINUX.md). The zip's `worldserver.exe` and `Install-Custom.bat` are Windows-only.
 
 ## Install
 

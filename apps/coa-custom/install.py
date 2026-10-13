@@ -229,6 +229,17 @@ def start_servers(root):
     python(root, root / 'CoA-Bots' / 'coa_bots.py', 'start-all', cwd=root / 'CoA-Bots')
 
 
+
+def sql_order(path):
+    digits = ''
+    for ch in path.name:
+        if ch.isdigit():
+            digits += ch
+        else:
+            break
+    return (int(digits) if digits else 0, path.name)
+
+
 def install(root, bots=None, bot_races='vanilla'):
     state = json.loads(STATE.read_text(encoding='utf-8')) if STATE.exists() else {}
     client = find_client(state.get('client'))
@@ -292,7 +303,9 @@ def install(root, bots=None, bot_races='vanilla'):
     set_settings(root)
     set_bot_class_mask(root, '32')   # Death Knight (class 6) not offered
     say('Applying the database changes...')
-    for sql in sorted((FILES / 'sql').glob('*.sql')):
+    # "10_*.sql" sorts before "1_world.sql" in plain text order, so the world
+    # copy has to run first (issue #26 failed halfway through that file).
+    for sql in sorted((FILES / 'sql').glob('*.sql'), key=sql_order):
         say('  ' + sql.name)
         mysql_file(root, sql)
     STATE.write_text(json.dumps({'version': MANIFEST['version'], 'repack': str(root),
@@ -367,7 +380,7 @@ def main():
             % (len(list((FILES / 'dbc').glob('*.dbc'))),
                ('%d client files in %s' % (len(list((FILES / 'client').glob('*'))), client)) if client
                else r'no client (copy files\client\* by hand)'))
-        say('Would apply: %s' % ', '.join(p.name for p in sorted((FILES / 'sql').glob('*.sql'))))
+        say('Would apply: %s' % ', '.join(p.name for p in sorted((FILES / 'sql').glob('*.sql'), key=sql_order)))
         say('Would back up %d world tables first (%s).' % (len(MANIFEST['worldTables']),
                                                           'already done' if BACKUP.exists() else 'first install'))
         return

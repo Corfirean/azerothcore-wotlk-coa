@@ -385,7 +385,7 @@ CREATE TABLE `creature_template_add` (
   `unit_flags` int unsigned NOT NULL DEFAULT '0',
   `unit_flags2` int unsigned NOT NULL DEFAULT '0',
   `dynamicflags` int unsigned NOT NULL DEFAULT '0',
-  `family` tinyint NOT NULL DEFAULT '0',
+  `family` smallint unsigned NOT NULL DEFAULT '0',
   `type` tinyint unsigned NOT NULL DEFAULT '0',
   `type_flags` int unsigned NOT NULL DEFAULT '0',
   `lootid` int unsigned NOT NULL DEFAULT '0',
@@ -2215,6 +2215,10 @@ REPLACE INTO acore_world.`creature_model_info` (`DisplayID`,`BoundingRadius`,`Co
 REPLACE INTO acore_world.`creature_questender` (`id`,`quest`) SELECT `id`,`quest` FROM coa_custom_stage.`creature_questender_add`;
 REPLACE INTO acore_world.`creature_questitem` (`CreatureEntry`,`Idx`,`ItemId`,`VerifiedBuild`) SELECT `CreatureEntry`,`Idx`,`ItemId`,`VerifiedBuild` FROM coa_custom_stage.`creature_questitem_add`;
 REPLACE INTO acore_world.`creature_queststarter` (`id`,`quest`) SELECT `id`,`quest` FROM coa_custom_stage.`creature_queststarter_add`;
+-- CoA Bots 2.0 keeps creature_template.family as a signed tinyint (max 127).
+-- Retail creature families go past that (440 and up). Widen the column before
+-- the copy or MySQL error 1264 stops the install (issue #26).
+ALTER TABLE `creature_template` MODIFY `family` smallint unsigned NOT NULL DEFAULT '0';
 REPLACE INTO acore_world.`creature_template` (`entry`,`difficulty_entry_1`,`difficulty_entry_2`,`difficulty_entry_3`,`KillCredit1`,`KillCredit2`,`name`,`subname`,`IconName`,`gossip_menu_id`,`minlevel`,`maxlevel`,`exp`,`faction`,`npcflag`,`speed_walk`,`speed_run`,`speed_swim`,`speed_flight`,`detection_range`,`rank`,`dmgschool`,`DamageModifier`,`BaseAttackTime`,`RangeAttackTime`,`BaseVariance`,`RangeVariance`,`unit_class`,`unit_flags`,`unit_flags2`,`dynamicflags`,`family`,`type`,`type_flags`,`lootid`,`pickpocketloot`,`skinloot`,`PetSpellDataId`,`VehicleId`,`mingold`,`maxgold`,`AIName`,`MovementType`,`HoverHeight`,`HealthModifier`,`ManaModifier`,`ArmorModifier`,`ExperienceModifier`,`RacialLeader`,`movementId`,`RegenHealth`,`CreatureImmunitiesId`,`flags_extra`,`ScriptName`,`VerifiedBuild`) SELECT `entry`,`difficulty_entry_1`,`difficulty_entry_2`,`difficulty_entry_3`,`KillCredit1`,`KillCredit2`,`name`,`subname`,`IconName`,`gossip_menu_id`,`minlevel`,`maxlevel`,`exp`,`faction`,`npcflag`,`speed_walk`,`speed_run`,`speed_swim`,`speed_flight`,`detection_range`,`rank`,`dmgschool`,`DamageModifier`,`BaseAttackTime`,`RangeAttackTime`,`BaseVariance`,`RangeVariance`,`unit_class`,`unit_flags`,`unit_flags2`,`dynamicflags`,`family`,`type`,`type_flags`,`lootid`,`pickpocketloot`,`skinloot`,`PetSpellDataId`,`VehicleId`,`mingold`,`maxgold`,`AIName`,`MovementType`,`HoverHeight`,`HealthModifier`,`ManaModifier`,`ArmorModifier`,`ExperienceModifier`,`RacialLeader`,`movementId`,`RegenHealth`,`CreatureImmunitiesId`,`flags_extra`,`ScriptName`,`VerifiedBuild` FROM coa_custom_stage.`creature_template_add`;
 REPLACE INTO acore_world.`creature_template_addon` (`entry`,`path_id`,`mount`,`bytes1`,`bytes2`,`emote`,`visibilityDistanceType`,`auras`) SELECT `entry`,`path_id`,`mount`,`bytes1`,`bytes2`,`emote`,`visibilityDistanceType`,`auras` FROM coa_custom_stage.`creature_template_addon_add`;
 REPLACE INTO acore_world.`creature_template_model` (`CreatureID`,`Idx`,`CreatureDisplayID`,`DisplayScale`,`Probability`,`VerifiedBuild`) SELECT `CreatureID`,`Idx`,`CreatureDisplayID`,`DisplayScale`,`Probability`,`VerifiedBuild` FROM coa_custom_stage.`creature_template_model_add`;
