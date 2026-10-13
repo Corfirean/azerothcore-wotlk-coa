@@ -39,6 +39,7 @@ METRICS = {
     'melee_damage_count', 'melee_damage_total',
     'pet_power', 'pet_max_power', 'spell_energize_count', 'spell_energize_total',
     'xp', 'next_level_xp', 'skill_value', 'skill_maximum', 'lfg_dungeon_disabled', 'lfg_state', 'map_id',
+    'in_arena', 'arena_team_members', 'arena_team_season_games', 'arena_team_season_wins',
     'map_difficulty', 'nearby_creature_template', 'nearby_creature_max_health', 'loot_gear_item_level',
     'position_x', 'position_y', 'position_z',
     'view_level', 'sent_level', 'sent_max_health', 'creature_query_rank', 'quest_level', 'quest_xp',
@@ -166,7 +167,7 @@ ACTIONS = {
     'dungeon_difficulty_packet': ({'actor', 'value'}, {'actor', 'value'}),
     'ascension_dungeon_difficulty_packet': ({'actor', 'value'}, {'actor', 'value'}),
     'console': ({'command'}, {'command'}),
-    'command': ({'actor', 'command'}, {'actor', 'command'}),
+    'command': ({'actor', 'command'}, {'actor', 'command', 'rejected'}),
     'whisper': ({'actor', 'to', 'text'}, {'actor', 'to', 'text', 'language'}),
     'wait': ({'ms'}, {'ms'}),
     'snapshot': ({'actor', 'metric', 'save_as'}, METRIC_FIELDS | {'save_as'}),
@@ -373,6 +374,8 @@ def validate(scenario):
             if action == 'command':
                 require(step['command'].startswith('.') and len(step['command']) > 1,
                         f'{where}: player command must start with a dot')
+                if 'rejected' in step:
+                    require(type(step['rejected']) is bool, f'{where}: rejected must be boolean')
         if action == 'whisper':
             require(isinstance(step['to'], str) and step['to'].strip()
                     and isinstance(step['text'], str) and step['text'].strip(),
@@ -558,14 +561,14 @@ def validate(scenario):
                 (kind, value), = field.items()
                 require(kind in {'u8', 'u32', 'u64', 'string', 'buyback_guid', 'item_guid', 'gameobject_guid',
                                  'actor_guid', 'packed_actor_guid',
-                                 'pet_guid', 'stabled_pet', 'duel_arbiter',
+                                 'pet_guid', 'stabled_pet', 'duel_arbiter', 'invited_battleground_type',
                                  'wildcard_entry', 'wildcard_pending_cards', 'wildcard_lowest_card'},
                         f'{where}.fields[{index}]: unknown field type')
                 if kind == 'string':
                     require(isinstance(value, str), f'{where}.fields[{index}]: expected a string')
                 elif kind in {'actor_guid', 'packed_actor_guid'}:
                     require(value in actor_ids, f'{where}.fields[{index}]: expected a player or creature id')
-                elif kind in {'pet_guid', 'duel_arbiter'}:
+                elif kind in {'pet_guid', 'duel_arbiter', 'invited_battleground_type'}:
                     require(value in player_ids, f'{where}.fields[{index}]: expected a player id')
                 else:
                     maximum = {'u8': 255, 'u32': 2**32 - 1, 'u64': 2**64 - 1, 'buyback_guid': 2**31 - 1,
@@ -639,6 +642,10 @@ def validate(scenario):
                         f'{where}: creature level bounds are reversed')
             if metric == 'lfg_state':
                 require(step['actor'] in player_ids, f'{where}: LFG state metric needs a player')
+            if metric in {'in_arena', 'arena_team_members', 'arena_team_season_games', 'arena_team_season_wins'}:
+                require(step['actor'] in player_ids, f'{where}: arena metric needs a player')
+            if metric in {'arena_team_members', 'arena_team_season_games', 'arena_team_season_wins'}:
+                number(step.get('slot'), f'{where}.slot', 0, 2, True)
             if metric == 'lfg_dungeon_disabled':
                 number(step.get('dungeon'), f'{where}.dungeon', 1, 2**24 - 1, True)
             if metric in {'quest_level', 'quest_xp', 'quest_log_sent_level', 'quest_log_sent_xp',
@@ -1093,7 +1100,7 @@ class Databases:
             raise ValueError(f'MySQL operation failed for {role}: {detail or result.returncode}')
         return result.stdout.strip()
 
-    def copy(self, role, schema_only=False, tables=()):
+    def copy(self, role, schema_only=False, tables=(), where=None):
         connection = self.connections[role]
         arguments = [self.dump, f'--defaults-extra-file={self.option_files[role]}',
                      '--single-transaction', '--skip-lock-tables', '--no-tablespaces', '--skip-add-locks',
@@ -1102,6 +1109,8 @@ class Databases:
             arguments.append('--no-data')
         elif tables:
             arguments.append('--no-create-info')
+        if where:
+            arguments.append(f'--where={where}')
         arguments.extend([connection.database, *tables])
         with tempfile.TemporaryFile() as errors:
             source = subprocess.Popen(arguments, stdout=subprocess.PIPE, stderr=errors, creationflags=CREATE_FLAGS)
@@ -1137,6 +1146,8 @@ class Databases:
                 else:
                     tables += ['active_arena_season']
                 self.copy(role, tables=tables)
+                if role == 'characters':
+                    self.copy(role, tables=SEEDED_BUILD_TABLES, where=SEEDED_BUILDS)
 
     def cleanup(self):
         failures = []
@@ -1158,6 +1169,9 @@ def unused_port():
         return listener.getsockname()[1]
 
 
+SEEDED_BUILD_TABLES = ('coa_build_creator', 'coa_build_creator_spell', 'coa_build_creator_enchant',
+                       'coa_build_creator_item_type')
+SEEDED_BUILDS = 'entry IN (SELECT entry FROM coa_build_creator WHERE owner_account = 0)'
 DATABASE_SETTINGS = {'auth': 'LoginDatabaseInfo', 'characters': 'CharacterDatabaseInfo', 'world': 'WorldDatabaseInfo'}
 RUN_SETTINGS = ('DataDir', 'SourceDirectory', 'LogsDir', 'TempDir', 'WorldServerPort', 'CoAGameplayTest.RunId',
                 'CoAGameplayTest.WorldDatabaseId')
