@@ -59,9 +59,26 @@ public:
         };
         static ChatCommandTable commandTable =
         {
-            { "reset", resetCommandTable }
+            { "reset", resetCommandTable },
+            { "resettalents", HandleSelfResetTalentsCommand, rbac::RBAC_PERM_COMMAND_RESETTALENTS_SELF, Console::No }
         };
         return commandTable;
+    }
+
+    static bool HandleSelfResetTalentsCommand(ChatHandler* handler)
+    {
+        Player* player = handler->GetSession() ? handler->GetSession()->GetPlayer() : nullptr;
+        if (!player)
+            return false;
+
+        player->resetTalents(true);
+        player->SendTalentsInfoData(false);
+        Pet* pet = player->GetPet();
+        Pet::resetTalentsForAllPetsOf(player, pet);
+        if (pet)
+            player->SendTalentsInfoData(true);
+        handler->SendSysMessage(LANG_RESET_TALENTS);
+        return true;
     }
 
     static bool HandleResetAchievementsCommand(ChatHandler*, Optional<PlayerIdentifier> target)

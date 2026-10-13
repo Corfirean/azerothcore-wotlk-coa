@@ -2559,6 +2559,9 @@ AchievementGlobalMgr* AchievementGlobalMgr::instance()
 
 bool AchievementGlobalMgr::IsStatisticCriteria(AchievementCriteriaEntry const* achievementCriteria) const
 {
+    if (!achievementCriteria)
+        return false;
+
     return IsStatisticAchievement(sAchievementStore.LookupEntry(achievementCriteria->referredAchievement));
 }
 
@@ -2569,10 +2572,7 @@ bool AchievementGlobalMgr::IsStatisticAchievement(AchievementEntry const* achiev
 
     AchievementCategoryEntry const* cat = sAchievementCategoryStore.LookupEntry(achievement->categoryId);
     // The CoA client DBC has achievements whose category is missing from Achievement_Category.dbc.
-    if (!cat)
-        return false;
-
-    do
+    while (cat)
     {
         switch (cat->ID)
         {
@@ -2584,7 +2584,7 @@ bool AchievementGlobalMgr::IsStatisticAchievement(AchievementEntry const* achiev
                 cat = sAchievementCategoryStore.LookupEntry(cat->parentCategory);
                 break;
         }
-    } while (cat);
+    }
 
     return false;
 }
