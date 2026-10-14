@@ -14,6 +14,12 @@ C++20 required (`CMAKE_CXX_STANDARD 20`). Useful flags: `BUILD_TESTING=ON` (Goog
 On macOS, `verify_all.py` configures with `-DCMAKE_C_FLAGS_RELWITHDEBINFO` and `-DCMAKE_CXX_FLAGS_RELWITHDEBINFO`
 set to `-O2 -g1 -DNDEBUG`; pass the same to a manual configure to get its object sizes and link times.
 
+With localized MSVC and Ninja on Windows, run `chcp 65001 >nul` in the Developer Command Prompt before both
+configuration and builds. A mismatched `/showIncludes` encoding can leave a malformed `msvc_deps_prefix` in
+`build/CMakeFiles/rules.ninja` and prevent header dependency tracking despite a successful build. If that
+prefix is already malformed, use a fresh build directory; changing the console encoding does not repair
+previously compiled objects.
+
 ## Verification
 
 Verify with `python -B tools/verify_all.py` ([guide](../../docs/coa/verification.md)); do not run `ctest`,

@@ -25,7 +25,7 @@ World* sWorld = &world;
 struct Player;
 struct ScriptMgr
 {
-    bool OnPlayerCanRegenerate(Player*, uint32) const { return true; }
+    bool OnPlayerCanRegenerate(Player*, int32) const { return true; }
 };
 ScriptMgr scripts;
 ScriptMgr* sScriptMgr = &scripts;
@@ -70,7 +70,7 @@ struct Player
     float GetStat(Stats stat) const { return stats[stat]; }
     float GetCreateStat(Stats) const { return createAgility; }
     float GetPctModifierValue(UnitMods, UnitModifierPctType) const { return 1.0f; }
-    bool HasAuraTypeWithMiscvalue(AuraType, uint32) const { return false; }
+    bool HasAuraTypeWithMiscvalue(AuraType, int32) const { return false; }
     uint32 GetHealth() const { return 1; }
     uint32 GetMaxHealth() const { return maxHealth; }
     bool IsPolymorphed() const { return polymorphed; }

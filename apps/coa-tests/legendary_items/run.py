@@ -17,7 +17,7 @@ class LegendaryCatalogTest(unittest.TestCase):
     def test_generated_artifacts_match_the_catalog(self):
         for path, content in CATALOG.outputs().items():
             with self.subTest(path=path):
-                self.assertEqual(path.read_text(), content)
+                self.assertEqual(path.read_text(encoding='utf-8'), content)
 
     def test_stats_and_descriptions_match_a_level_29_drop(self):
         catalog = CATALOG.load_catalog()

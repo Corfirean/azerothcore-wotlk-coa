@@ -441,6 +441,8 @@ class HarnessClassificationTests(WorkspaceTest):
             self.assertEqual(classify(fallback, path)['status'], 'run')
             self.assertEqual(classify(unconditional, path)['status'], 'unavailable')
             self.assertEqual(classify(unconditional, {'VCToolsInstallDir': 'C:/VC'})['status'], 'run')
+            for key in ('VCTOOLSINSTALLDIR', 'vCtOoLsInStAlLdIr'):
+                self.assertEqual(classify(unconditional, {key: 'C:/VC'})['status'], 'run')
             self.assertIn('clang++ on PATH', classify(fallback, {'PATH': '', 'CXX': 'clang++'})['reason'])
         with patch.object(verify_all, 'WINDOWS', False):
             self.assertEqual([classify(source, {})['status'] for source in (unconditional, fallback)], ['run', 'run'])
