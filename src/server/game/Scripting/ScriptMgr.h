@@ -531,6 +531,7 @@ public: /* PlayerScript */
     void OnPlayerCoAProgress(Player* player, CoAProgressEvent event, uint32 value);
     void OnPlayerCoAPrestige(Player* player, CharacterDatabaseTransaction trans);
     void OnPlayerCoAPrestigeSaved(Player* player);
+    void OnPlayerMasterLootItem(Player* player, Item* item, uint32 count, ObjectGuid lootguid);
     std::optional<uint32> OnPlayerGetGameModeMask(Player const* player);
 
     // Anti cheat
