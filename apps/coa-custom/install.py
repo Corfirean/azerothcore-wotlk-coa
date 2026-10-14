@@ -4,7 +4,7 @@
 #   --no-client: the game runs on another PC; copy files\client\*.MPQ into its Data folder and dinput8.dll next to
 #   Ascension.exe by hand
 #   --check: report what would be done, change nothing
-import json, os, re, shutil, subprocess, sys, datetime, gzip, filecmp
+import json, os, re, shutil, subprocess, sys, datetime, gzip, filecmp, difflib
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -51,6 +51,7 @@ def find_repack():
         if folder and (Path(folder) / 'Start_All_Server.bat').exists():
             return Path(folder).resolve()
         say('  Start_All_Server.bat is not in that folder.')
+        say('  Did you mean this: the folder that contains Start_All_Server.bat (not CoA-Bots, not Downloads).')
 
 
 def find_client(previous):
@@ -67,6 +68,7 @@ def find_client(previous):
         if folder and (Path(folder) / 'Ascension.exe').exists() and (Path(folder) / 'Data').is_dir():
             return Path(folder).resolve()
         say('  Ascension.exe and its Data folder are not in that folder.')
+        say('  Did you mean this: the folder that contains Ascension.exe (the game client, not the repack).')
 
 
 def running(exe):
@@ -127,8 +129,10 @@ def check_release(root):
     if not bots.exists() or not (root / 'CoA-Bots' / 'Core' / 'worldserver.exe').exists():
         fail('CoA Bots %s must be installed first (CoA-Bots\\Installer-Bots.bat).' % MANIFEST['botsVersion'])
     version = json.loads(bots.read_text(encoding='utf-8')).get('version')
-    if version != MANIFEST['botsVersion']:
-        fail('this package needs CoA Bots %s; this repack has CoA Bots %s.' % (MANIFEST['botsVersion'], version))
+    allowed_bots = {MANIFEST['botsVersion'], '2.0', '2.2.1', str(MANIFEST.get('botsModule', ''))}
+    if version not in allowed_bots:
+        fail('this package needs CoA Bots %s (module 2.2.1); this repack has CoA Bots %s.'
+             % (MANIFEST['botsVersion'], version))
 
 
 def set_settings(root):
@@ -300,6 +304,13 @@ def install(root, bots=None, bot_races='vanilla'):
         shutil.copy2(FILES / 'bots' / 'spellbook.conf', targets['bots/spellbook.conf'])
     if not targets['bots/mod_ahbot.conf'].exists():
         shutil.copy2(FILES / 'bots' / 'mod_ahbot.conf', targets['bots/mod_ahbot.conf'])
+    launchers = FILES / 'repack_root'
+    if launchers.is_dir():
+        for item in launchers.iterdir():
+            dest = root / 'Scripts' / item.name if item.name.endswith('.py') else root / item.name
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(item, dest)
+            say('  launcher %s' % dest.name)
     set_settings(root)
     set_bot_class_mask(root, '32')   # Death Knight (class 6) not offered
     say('Applying the database changes...')

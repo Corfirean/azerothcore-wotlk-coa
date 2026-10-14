@@ -1,3 +1,7 @@
+# CoA Custom 1.7: Grummle, CoA Bots 2.2.1, easier install
+
+See `PATCH-NOTES-1.7.txt`. Linux / Wine: `LINUX.md`.
+
 # CoA Custom 1.2: custom races, vanilla classes, more incarnations
 
 An add-on for the **Jealous-Sound CoA repack of 30 September updated to CoA Bots 1.8** (release

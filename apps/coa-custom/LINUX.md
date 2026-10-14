@@ -1,6 +1,8 @@
-# Linux
+# Linux and manual download (CoA Custom 1.7)
 
-`Install-Custom.bat` and the `worldserver.exe` shipped in a CoA Custom zip are Windows programs. There is no CoA Server Manager build for Linux. A Linux host can still apply the database and data files, then run a worldserver you build from this repository.
+Download the same `CoA-Custom-1.7.zip` as Windows. There is no extra client-patch installer.
+
+`Install-Custom.bat` and the shipped `worldserver.exe` are Windows programs. There is no CoA Server Manager build for Linux. A Linux host applies the database and data files, then runs a worldserver built from this repository (or Wine for the bats).
 
 ## Apply the database
 
