@@ -1,4 +1,6 @@
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
+from concurrent.futures import ThreadPoolExecutor
+import ast
 from datetime import datetime, timezone
 import hashlib
 import io
@@ -7,6 +9,7 @@ import os
 from pathlib import Path
 import secrets
 import signal
+import subprocess
 import sys
 import tempfile
 import threading
@@ -51,8 +54,35 @@ def write(path, value):
 
 
 def log(name, value):
-    with open(Path(__file__).with_name(name), 'a') as stream:
-        stream.write(json.dumps(value) + '\n')
+    path = Path(__file__).with_name(name)
+    with open(str(path) + '.lock', 'a+b') as guard:
+        guard.seek(0)
+        if os.name == 'nt':
+            import errno
+            import msvcrt
+            deadline = time.monotonic() + 10
+            while True:
+                try:
+                    msvcrt.locking(guard.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError as error:
+                    if error.errno not in (errno.EACCES, errno.EAGAIN, errno.EDEADLK) or time.monotonic() >= deadline:
+                        raise
+                    time.sleep(0.001)
+        else:
+            import fcntl
+            fcntl.flock(guard, fcntl.LOCK_EX)
+        try:
+            row = (json.dumps(value) + '\n').encode('utf-8')
+            with open(path, 'ab', buffering=0) as stream:
+                if stream.write(row) != len(row):
+                    raise OSError('Incomplete event record')
+        finally:
+            if os.name == 'nt':
+                guard.seek(0)
+                msvcrt.locking(guard.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(guard, fcntl.LOCK_UN)
 
 
 def listen():
@@ -384,6 +414,26 @@ class BatchTests(unittest.TestCase):
     def starts(self):
         log = self.path / 'starts.log'
         return [line.split() for line in log.read_text().splitlines()] if log.exists() else []
+
+    def test_concurrent_fake_servers_preserve_complete_event_records(self):
+        tree = ast.parse(FAKE_SERVER)
+        function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'log')
+        writer = self.path / 'parallel_log.py'
+        writer.write_text('import json, os, sys, time\nfrom pathlib import Path\n' + ast.unparse(function) +
+                          "\nfor index in range(100):\n"
+                          "    log('parallel.log', {'worker': int(sys.argv[1]), 'index': index, 'padding': 'x' * 8192})\n",
+                          encoding='utf-8')
+        def run_writer(worker):
+            return subprocess.run([sys.executable, '-B', str(writer), str(worker)], capture_output=True,
+                                  text=True, timeout=30)
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            results = list(pool.map(run_writer, range(4)))
+        for result in results:
+            self.assertEqual(result.returncode, 0, result.stderr)
+        records = self.events('parallel.log')
+        self.assertEqual(len(records), 400)
+        self.assertEqual({(row['worker'], row['index']) for row in records},
+                         {(worker, index) for worker in range(4) for index in range(100)})
 
     def events(self, name):
         log = self.path / name

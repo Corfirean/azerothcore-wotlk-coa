@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "name": "Groot Coins ship disabled: Tiraxis keeps his five menus and players cannot reach .groot",
-  "contract": "GrootCoin.Enable and GrootCoin.ExchangeEnable default to 0 (modules/mod-ethereal-bazaar/conf/ethereal_bazaar.conf.dist). With the shipped config Tiraxis (900007, npc_tiraxis) offers exactly his five existing vendor menus and no exchange option. The .groot commands need RBAC 1001/1002, which no role grants, so an ordinary player is refused even with coins in the bags, and the coins stay where they are.",
+  "contract": "GrootCoin.Enable and GrootCoin.ExchangeEnable default to 0 (modules/mod-ethereal-bazaar/conf/ethereal_bazaar.conf.dist). With the shipped config Tiraxis (900007, npc_tiraxis) offers exactly his five existing vendor menus and no exchange option. The .groot commands need RBAC 1003/1002, which no role grants, so an ordinary player is refused even with coins in the bags, and the coins stay where they are.",
   "timeout_ms": 60000,
   "location": { "map": 0, "x": -8816.5, "y": 627.0, "z": 94.1, "o": 3.8 },
   "players": [
