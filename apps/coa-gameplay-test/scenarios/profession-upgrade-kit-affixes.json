@@ -58,19 +58,14 @@
     {
       "action": "add_item",
       "actor": "property",
-      "item": 13858
+      "item": 13858,
+      "property": 13202
     },
     {
       "action": "add_item",
       "actor": "property",
       "item": 135289,
       "count": 3
-    },
-    {
-      "action": "set_item_random_property",
-      "actor": "property",
-      "item": 13858,
-      "property": 13202
     },
     {
       "action": "assert",
@@ -430,19 +425,14 @@
     {
       "action": "add_item",
       "actor": "suffix",
-      "item": 13858
+      "item": 13858,
+      "property": -63
     },
     {
       "action": "add_item",
       "actor": "suffix",
       "item": 135289,
       "count": 3
-    },
-    {
-      "action": "set_item_random_property",
-      "actor": "suffix",
-      "item": 13858,
-      "property": -63
     },
     {
       "action": "assert",
@@ -796,19 +786,14 @@
     {
       "action": "add_item",
       "actor": "plain",
-      "item": 13858
+      "item": 13858,
+      "property": 0
     },
     {
       "action": "add_item",
       "actor": "plain",
       "item": 135289,
       "count": 3
-    },
-    {
-      "action": "set_item_random_property",
-      "actor": "plain",
-      "item": 13858,
-      "property": 0
     },
     {
       "action": "assert",

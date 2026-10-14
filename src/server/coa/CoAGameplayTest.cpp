@@ -5166,10 +5166,17 @@ private:
             player->SendLoot(objects.front()->GetGUID(), LOOT_SKINNING);
             Require(player->GetLootGUID() == objects.front()->GetGUID(), "The chest did not open its loot");
         }
-        else if (action == "add_item")
-            Require(player->AddItem(step.get<uint32>("item"), step.get<uint32>("count", 1)), "Item grant failed");
-        else if (action == "set_item_random_property")
+        else if (action == "add_item" || action == "set_item_random_property")
         {
+            if (action == "add_item")
+            {
+                Require(!step.get_optional<int32>("property") ||
+                    (step.get<uint32>("count", 1) == 1 && !player->GetItemByEntry(step.get<uint32>("item"))),
+                    "Affixed item grant requires one new item");
+                Require(player->AddItem(step.get<uint32>("item"), step.get<uint32>("count", 1)), "Item grant failed");
+                if (!step.get_optional<int32>("property"))
+                    return;
+            }
             Item* item = player->GetItemByEntry(step.get<uint32>("item"));
             Require(item != nullptr && !item->IsEquipped(), "Random property fixture requires an unequipped item");
             item->SetInt32Value(ITEM_FIELD_RANDOM_PROPERTIES_ID, 0);
@@ -5199,6 +5206,22 @@ private:
                 "The bags could not be filled for the full inventory fixture");
             LOG_DEBUG("coa", "gameplay test filled {} bag slots for {}",
                 filled, player->GetGUID().ToString());
+        }
+        else if (action == "unequip")
+        {
+            Item* item = player->GetItemByEntry(step.get<uint32>("item"));
+            Require(item != nullptr, "Item must be granted before unequipping");
+            if (item->IsEquipped())
+            {
+                Require(player->CanUnequipItem(item->GetPos(), false) == EQUIP_ERR_OK,
+                    "Item cannot be unequipped");
+                ItemPosCountVec destinations;
+                Require(player->CanStoreItem(NULL_BAG, NULL_SLOT, destinations, item, false) == EQUIP_ERR_OK
+                    && destinations.size() == 1, "Unequipped item requires a free bag slot");
+                player->SwapItem(item->GetPos(), destinations.front().pos);
+            }
+            Require(!item->IsEquipped() && player->IsInventoryPos(item->GetPos()),
+                "Unequipped item did not reach inventory");
         }
         else if (action == "equip")
         {

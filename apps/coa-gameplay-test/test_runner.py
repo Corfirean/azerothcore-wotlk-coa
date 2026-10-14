@@ -15,6 +15,21 @@ import run
 
 
 class RunnerTests(unittest.TestCase):
+    def test_affixed_grants_validate_property_and_single_item_count(self):
+        step = {'action': 'add_item', 'actor': 'caster', 'item': 13858, 'property': 13202}
+        self.scenario['steps'].append(step)
+        for value in (0, -13202, 13202, -(2**31), 2**31 - 1):
+            step['property'] = value
+            self.assertIs(run.validate(self.scenario), self.scenario)
+        for value in (True, 1.5, '13202', -(2**31) - 1, 2**31):
+            step['property'] = value
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                run.validate(self.scenario)
+        step['property'] = 13202
+        step['count'] = 2
+        with self.assertRaisesRegex(ValueError, 'require one item'):
+            run.validate(self.scenario)
+
     def test_player_account_sharing_requires_an_earlier_player(self):
         self.scenario['players'].append({'id': 'alt', 'race': 1, 'class': 1, 'account_of': 'caster'})
         self.assertIs(run.validate(self.scenario), self.scenario)

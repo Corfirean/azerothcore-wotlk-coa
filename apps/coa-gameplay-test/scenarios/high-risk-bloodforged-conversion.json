@@ -1,13 +1,13 @@
 {
   "schema": 1,
   "name": "High Risk Bloodforged conversion and original-item fallback",
-  "contract": "Existing High Risk loss eligibility remains unchanged. PvP death escrows both the converted Runecloth Robe and the unsupported Southshore chest. Recovery preserves item GUID, affix and enchants; unsupported gear and trade goods keep their original entries. Requires HighRisk.Losses = 1 and 100% gear/resource loss chances.",
+  "contract": "With HighRisk losses enabled and gear/resource loss chances at 100%, a victim carrying one Runecloth Robe and one trade-good stack drops both. Recovery converts the robe while preserving GUID, affix and enchantments, including after relog. One eligible gear item makes the random one-to-two gear-loss count deterministic. The victim is below the robe equip level so automatic equipment cannot bind the intended loss item.",
   "players": [
     {
       "id": "v",
       "race": 1,
       "class": 1,
-      "level": 60
+      "level": 45
     },
     {
       "id": "k",
@@ -53,6 +53,26 @@
       "stacks": 1
     },
     {
+      "action": "destroy_item",
+      "actor": "v",
+      "item": 38
+    },
+    {
+      "action": "destroy_item",
+      "actor": "v",
+      "item": 39
+    },
+    {
+      "action": "destroy_item",
+      "actor": "v",
+      "item": 40
+    },
+    {
+      "action": "destroy_item",
+      "actor": "v",
+      "item": 49778
+    },
+    {
       "action": "add_item",
       "actor": "v",
       "item": 723,
@@ -60,17 +80,6 @@
     },
     {
       "action": "add_item",
-      "actor": "v",
-      "item": 355242,
-      "count": 1
-    },
-    {
-      "action": "add_item",
-      "actor": "v",
-      "item": 13858
-    },
-    {
-      "action": "set_item_random_property",
       "actor": "v",
       "item": 13858,
       "property": 13202
@@ -81,13 +90,6 @@
       "metric": "item_guid",
       "item": 13858,
       "save_as": "converted_guid"
-    },
-    {
-      "action": "snapshot",
-      "actor": "v",
-      "metric": "item_guid",
-      "item": 355242,
-      "save_as": "fallback_guid"
     },
     {
       "action": "snapshot",
@@ -218,11 +220,6 @@
       "slot": 1
     },
     {
-      "action": "loot_slot",
-      "actor": "k",
-      "slot": 2
-    },
-    {
       "action": "assert",
       "actor": "k",
       "metric": "loot_count",
@@ -256,13 +253,6 @@
     {
       "action": "assert",
       "actor": "k",
-      "metric": "item_count",
-      "item": 355242,
-      "equals": 1
-    },
-    {
-      "action": "assert",
-      "actor": "k",
       "metric": "item_random_property",
       "item": 221578,
       "equals": 13202
@@ -273,14 +263,6 @@
       "metric": "item_guid",
       "item": 221578,
       "relative_to": "converted_guid",
-      "equals": 0
-    },
-    {
-      "action": "assert",
-      "actor": "k",
-      "metric": "item_guid",
-      "item": 355242,
-      "relative_to": "fallback_guid",
       "equals": 0
     },
     {

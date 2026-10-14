@@ -236,8 +236,9 @@ ACTIONS = {
     'relog': ({'actor'}, {'actor', 'race'}),
     'talent': ({'actor', 'talent', 'rank'}, {'actor', 'talent', 'rank', 'command'}),
     'reset_talents': ({'actor'}, {'actor'}),
-    'add_item': ({'actor', 'item'}, {'actor', 'item', 'count'}),
+    'add_item': ({'actor', 'item'}, {'actor', 'item', 'count', 'property'}),
     'set_item_random_property': ({'actor', 'item', 'property'}, {'actor', 'item', 'property'}),
+    'unequip': ({'actor', 'item'}, {'actor', 'item'}),
     'fill_bags': ({'actor'}, {'actor', 'slots'}),
     'equip': ({'actor', 'item', 'slot'}, {'actor', 'item', 'slot', 'rejected'}),
     'use_item': ({'actor', 'item', 'spell'}, {'actor', 'item', 'spell', 'target', 'target_item', 'destination'}),
@@ -462,9 +463,11 @@ def validate(scenario):
         if action == 'attack_owned_creature':
             require(step['actor'] not in player_ids and step['target'] in player_ids,
                     f'{where}: attack needs a creature and a player who owns the target')
-        if action == 'set_item_random_property':
+        if action == 'set_item_random_property' or (action == 'add_item' and 'property' in step):
             number(step['item'], f'{where}.item', 1, 2**32 - 1, True)
             number(step['property'], f'{where}.property', -(2**31), 2**31 - 1, True)
+            if action == 'add_item':
+                require(step.get('count', 1) == 1, f'{where}: affixed grants require one item')
         if action == 'group':
             require(step['target'] in player_ids and step['target'] != step['actor'],
                     f'{where}: group needs another player')
