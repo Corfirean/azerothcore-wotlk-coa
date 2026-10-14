@@ -576,26 +576,34 @@ class BatchTests(unittest.TestCase):
         self.assertFalse(self.output.exists())
 
     def test_isolated_rerun_marks_batch_sensitive_and_stages_modules_once(self):
-        with patch.object(run, 'stage_modules', wraps=run.stage_modules) as staged:
-            code, result = self.batch('--fresh-databases', '--jobs', '2', '--scenario', 'flaky', *SLOW[:2])
-        self.assertEqual(code, 0, self.stderr.getvalue())
-        self.assertEqual(staged.call_count, 1)
-        self.assertEqual(list(self.server_modules.iterdir()), [])
-        self.assertEqual(result['batch_sensitive'], ['flaky'])
-        self.assertEqual(result['isolated_only'], [])
-        self.assertEqual(result['counts']['passed_on_isolated_rerun'], 1)
-        self.assertEqual(result['failures'], [])
-        flaky = result['cases']['flaky']
-        self.assertEqual((flaky['status'], flaky['mode'], flaky['batch']['status']), ('passed', 'isolated', 'failed'))
-        isolated = self.summary('flaky', 'isolated')
-        self.assertEqual(isolated['module_config_sha256'], self.summary('slow-one')['module_config_sha256'])
-        self.assertEqual(list(isolated['module_config_sha256']), ['example.conf'])
-        evidence = catalog.read_json(self.output / 'verification.json')['evidence']
-        self.assertEqual(evidence['flaky']['directory'], str(self.output / 'isolated' / 'flaky'))
-        self.assertEqual([mode for mode, pid in self.starts()].count('single'), 1)
-        self.assertEqual({(entry['mode'], entry['Clock'], entry['Lanes']) for entry in self.events('clocks.log')},
-                         {('queue', 'real', '1'), ('single', 'real', '1')})
-        self.assertIn('PASS flaky', self.stdout.getvalue())
+        for attempt in range(4):
+            with self.subTest(attempt=attempt):
+                self.output = self.path / f'output-{attempt}'
+                starts_before = len(self.starts())
+                with patch.object(run, 'stage_modules', wraps=run.stage_modules) as staged:
+                    code, result = self.batch('--fresh-databases', '--jobs', '2', '--scenario', 'flaky', *SLOW[:2])
+                diagnostics = self.stderr.getvalue()
+                if code:
+                    diagnostics += '\n'.join(path.read_text(encoding='utf-8', errors='replace')[-6000:]
+                                             for path in self.output.rglob('worldserver.log'))
+                self.assertEqual(code, 0, diagnostics)
+                self.assertEqual(staged.call_count, 1)
+                self.assertEqual(list(self.server_modules.iterdir()), [])
+                self.assertEqual(result['batch_sensitive'], ['flaky'])
+                self.assertEqual(result['isolated_only'], [])
+                self.assertEqual(result['counts']['passed_on_isolated_rerun'], 1)
+                self.assertEqual(result['failures'], [])
+                flaky = result['cases']['flaky']
+                self.assertEqual((flaky['status'], flaky['mode'], flaky['batch']['status']), ('passed', 'isolated', 'failed'))
+                isolated = self.summary('flaky', 'isolated')
+                self.assertEqual(isolated['module_config_sha256'], self.summary('slow-one')['module_config_sha256'])
+                self.assertEqual(list(isolated['module_config_sha256']), ['example.conf'])
+                evidence = catalog.read_json(self.output / 'verification.json')['evidence']
+                self.assertEqual(evidence['flaky']['directory'], str(self.output / 'isolated' / 'flaky'))
+                self.assertEqual([mode for mode, pid in self.starts()[starts_before:]].count('single'), 1)
+                self.assertEqual({(entry['mode'], entry['Clock'], entry['Lanes']) for entry in self.events('clocks.log')},
+                                 {('queue', 'real', '1'), ('single', 'real', '1')})
+                self.assertIn('PASS flaky', self.stdout.getvalue())
 
     def test_failed_isolated_rerun_keeps_the_case_failed(self):
         code, result = self.batch('--fresh-databases', '--scenario', 'broken', 'alpha')

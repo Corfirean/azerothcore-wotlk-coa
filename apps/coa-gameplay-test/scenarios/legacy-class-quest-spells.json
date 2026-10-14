@@ -1,5 +1,6 @@
 {
   "schema": 1,
+  "timeout_ms": 180000,
   "name": "Legacy class quests: custom-class spell grants and login repair",
   "contract": [
     "Issue #91: Guardian must not receive Warrior Path of Defense abilities; other custom classes must not either.",
