@@ -21,29 +21,29 @@ SYNTAX_EXCEPTIONS = {
 
 SHIPPED_DBC_DIR = 'modules/mod-coa-custom-races/data/dbc/'
 SHIPPED_DBC_HASHES = {
-    "CharBaseInfo.dbc": "65e61ac98b46e67b948c1e94d6ee6f93358197ddaaf393e77ce3db027b500a99",
-    "CharHairGeosets.dbc": "dc814c82b6e078e9b709eef3e1735a9f194bc46b3038cbc797b0251e1e6c8dec",
-    "CharSections.dbc": "4287a2a43eba7f9a0780fe21f87f57554dacbce37d50d0d4f62c794e960aa3fa",
-    "CharStartOutfit.dbc": "0ea5eb0bb300db469ad82369b2012dbbe4d26e0b5b09a6a1d7715876e2dd3001",
+    "CharBaseInfo.dbc": "062954da4b5402500b10665ce7efe680b7f6d24e3a8fdf2d88280d12fe0a91a3",
+    "CharHairGeosets.dbc": "3169ef91b721cc5bd9ebb2ee594547b3486bdf7c3bc5d3ab2650ded512dac9e5",
+    "CharSections.dbc": "e5ea5a7a64243728f9d1f11dc455fed8562719add94686f20faf2d258506a56a",
+    "CharStartOutfit.dbc": "d2834f12dac5c0a836d6dd4d1f20dd993330cf046106bdd537ba8939289b4daa",
     "CharacterCreationArchetypeDetails.dbc": "9e8f6a27f39b1e1045f2814aac03000d4a7aceb1368e2fb64aaf1bbb052dd8c2",
-    "CharacterCreationClassDetails.dbc": "e51269696febc483e0c0851682e6af77ef4fc87b212fa6e2610a7cca2641ea30",
+    "CharacterCreationClassDetails.dbc": "31642ca622c301f2240f00726d35a832bd6cb39da8f146a66c9b41695fccdb03",
     "CharacterCreationPetDetails.dbc": "fbca248ed9654c100f0ae072e862f47b60ff969de1f414865ce94e17456c205b",
     "CharacterCreationShapeshiftDetails.dbc": "d1d906c1711e83edb77f2a79027c8f650d588b350015152cbc431d7e8d28e2d8",
-    "CharacterFacialHairStyles.dbc": "08ca28159852110b2cc3302ff2ab5f8afcb78c3aa8dd02fa22a8b65b64a1f883",
-    "ChrRaces.dbc": "358503359af5b05d16a76f61bab77b5c6221c792bcb0e11793eba8e279689ff7",
-    "CreatureDisplayInfo.dbc": "ba1b04bcbcb04161c92cc352a2e84a61e5ce6780c162023db1e0aab31bf883df",
+    "CharacterFacialHairStyles.dbc": "51727a58649de5d2e537b3d7e18fdba94bb12398b496fc2746acbea198faf36b",
+    "ChrRaces.dbc": "9a49163b9a330d844f0add5a2023f538b828bd5c57d6ecbb3cd5b4196930c5da",
+    "CreatureDisplayInfo.dbc": "928fcc43b5dadb55694aac0bbd0ab31268fd4a8fdb508165e64ca272a4e7f801",
     "CreatureDisplayInfoGeosetData.dbc": "a5864d2505b150d745037dc3f2a85db84e9027238500665bcb7a36004bf7baf0",
-    "CreatureModelData.dbc": "8503fff50a8f6abdd6973f68fd55ddb3f81340e425df4c8f17189bb9f73605d7",
+    "CreatureModelData.dbc": "1ad5af420c92fbbe18f38f37f404aaf7491411fdad23e312bd0312ab6a692706",
     "EmotesTextSound.dbc": "d917d960b80cc41ee89f2a5b23b8c86ba2a45c9cbda4d72af6e8edcc62e9fdec",
     "Faction.dbc": "31c53fe7efa27484c7cbcfe818c7237b90dcf7a5de9e0336fddf148678bb9c7c",
-    "HDCharSections.dbc": "48bca2e5b4311a5210ebf4da497be6b775791684c5354c74f335475d42380c2b",
-    "NameGen.dbc": "316d1ac29a3cae477a2b858d3efdaa6593c62efcc4140f2ee6a53a4ef2bcb2e1",
+    "HDCharSections.dbc": "92ec4f9d0e2cbf33a2ca99128e05a2bdf560d8fcedd3417d21a2022235244be6",
+    "NameGen.dbc": "fc560ee101cdb9733bc64ac9c7f027c25fa3b72cd1375527273d8bb985436717",
     "NamesProfanity.dbc": "95907fe85af598465a785437fd8c5d4a2441e18c7109bfa2112d98b7faa23a0b",
     "NamesReserved.dbc": "95907fe85af598465a785437fd8c5d4a2441e18c7109bfa2112d98b7faa23a0b",
-    "SkillLineAbility.dbc": "2143f0294371c058ee38a067a5713c09c04c2a466a87f46b8a0802f321679cbc",
+    "SkillLineAbility.dbc": "42f8f25bb8ed382ce11db560458fa303b9de80c093e0c98a8be8f1f9a80ce724",
     "SkillRaceClassInfo.dbc": "75fb54625ce0e54940e7029d77e5927eb3f25c842da20649933503328f5aa9dd",
     "Talent.dbc": "b11369fc16b208507ef75f9201fac939fca090380c2eb7a3f5d0cca70500a7a1",
-    "UICameraAppearanceChrRaces.dbc": "aed779a4709be47fac5d4b41ddefa2fd46932af75de4bd9c7365dbe625b3eccf"
+    "UICameraAppearanceChrRaces.dbc": "d29ee068d46dfb36a247f9dba77694b41401a8ea6323dd63bf3997054754ea27"
 }
 
 
