@@ -1932,7 +1932,7 @@ SpellCastResult SpellInfo::CheckTarget(Unit const* caster, WorldObject const* ta
             if (caster->IsPlayer())
             {
                 // Do not allow these spells to target creatures not tapped by us (Banish, Polymorph, many quest spells)
-                if (AttributesEx2 & SPELL_ATTR2_CANNOT_CAST_ON_TAPPED)
+                if ((AttributesEx2 & SPELL_ATTR2_CANNOT_CAST_ON_TAPPED) && !HasEffect(SPELL_EFFECT_SKINNING))
                     if (Creature const* targetCreature = unitTarget->ToCreature())
                         if (targetCreature->hasLootRecipient() && !targetCreature->isTappedBy(caster->ToPlayer()))
                             return SPELL_FAILED_CANT_CAST_ON_TAPPED;
@@ -3009,7 +3009,13 @@ uint32 SpellInfo::CalcCastTime(Unit* caster, Spell* spell) const
     int32 castTime = serpent ? 1000 : CastTimeEntry->CastTime;
     // Ascension channels ranged-slot spells without a base cast time, such as Tinker's Gatling Gun, at once.
     bool const artificersWand = SpellFamilyName == 28 && (Id == 561284 || (Id >= 561354 && Id <= 561357));
-    if (HasAttribute(SPELL_ATTR0_USES_RANGED_SLOT) && !artificersWand &&
+    bool tinkerShot = false;
+    if (SpellFamilyName == 34)
+    {
+        uint32 const firstRank = GetFirstRankSpell()->Id;
+        tinkerShot = firstRank == 500549 || firstRank == 500235;
+    }
+    if (HasAttribute(SPELL_ATTR0_USES_RANGED_SLOT) && !artificersWand && !tinkerShot &&
         (!IsAutoRepeatRangedSpell()) && (castTime || !IsChanneled()))
         castTime += 500;
 

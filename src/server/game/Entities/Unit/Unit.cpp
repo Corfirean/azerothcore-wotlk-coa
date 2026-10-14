@@ -71,6 +71,7 @@
 #include "Totem.h"
 #include "TotemAI.h"
 #include "Transport.h"
+#include "TypeContainerVisitor.h"
 #include "UpdateFieldFlags.h"
 #include "UpdateFields.h"
 #include "Util.h"
@@ -118,6 +119,52 @@ static bool IsClassicPlusCombat(Unit const* attacker, Unit const* victim)
     return sWorld->getBoolConfig(CONFIG_CLASSIC_PLUS_COMBAT_RULES) &&
         ClassicPlusCombat::IsClassicContext({ attacker->getLevelForTarget(victim), attacker->IsControlledByPlayer() },
             { victim->getLevelForTarget(attacker), victim->IsControlledByPlayer() });
+}
+
+// The level a creature is fought at by the character behind `opponent`: their own version of it when they have
+// one. Unlike getLevelForTarget it keeps a world boss's real level, which the stock armor and resistance formulas
+// read.
+static uint8 ShownCombatLevel(Unit const* unit, Unit const* opponent)
+{
+    if (Creature const* creature = unit->ToCreature())
+        if (Player const* viewer = opponent ? opponent->GetCharmerOrOwnerPlayerOrPlayerItself() : nullptr)
+            if (uint8 const view = LocalLevelScaling::ViewLevelFor(viewer, creature))
+                return view;
+    return unit->GetLevel();
+}
+
+// Real max health over the max health of the version of `creature` the character behind `source` sees, or 0 when
+// they see the creature itself.
+static double PoolFactor(Unit const* source, Creature const* creature)
+{
+    Player const* viewer = source ? source->GetCharmerOrOwnerPlayerOrPlayerItself() : nullptr;
+    if (!viewer || !creature)
+        return 0.0;
+
+    uint32 const viewMaxHealth = LocalLevelScaling::ViewMaxHealthFor(viewer, creature);
+    if (!viewMaxHealth)
+        return 0.0;
+
+    return double(std::max<uint32>(creature->GetMaxHealth(), 1)) / double(viewMaxHealth);
+}
+
+float LocalLevelScaling::PoolThreatFor(Unit const* source, Unit const* threatOwner, float threat)
+{
+    if (threat == 0.0f || !source || !threatOwner || source == threatOwner)
+        return threat;
+
+    double const factor = PoolFactor(source, threatOwner->ToCreature());
+    return factor > 0.0 ? float(double(threat) * factor) : threat;
+}
+
+uint32 LocalLevelScaling::ShownHealthFor(Unit const* attacker, Unit const* victim)
+{
+    uint32 const health = victim ? victim->GetHealth() : 0;
+    double const factor = health ? PoolFactor(attacker, victim->ToCreature()) : 0.0;
+    if (factor <= 0.0)
+        return health;
+
+    return uint32(std::min<double>(std::round(double(health) / factor), double(std::numeric_limits<uint32>::max())));
 }
 
 static float ClassicCreatureAvoidanceChance(Unit const* creature, AuraType aura)
@@ -1204,7 +1251,8 @@ uint32 Unit::DealDamage(Unit* attacker, Unit* victim, uint32 damage, CleanDamage
             return 0;
 
         // prevent kill only if killed in duel and killed by opponent or opponent controlled creature
-        if (victim->ToPlayer()->duel->Opponent == attacker || victim->ToPlayer()->duel->Opponent->GetGUID() == attacker->GetOwnerGUID())
+        if (victim->ToPlayer()->duel->Opponent == attacker ||
+            victim->ToPlayer()->duel->Opponent->GetGUID() == attacker->GetCharmerOrOwnerGUID())
             damage = health - 1;
 
         duel_hasEnded = true;
@@ -2226,6 +2274,9 @@ void Unit::DealMeleeDamage(CalcDamageInfo* damageInfo, bool durabilityLoss)
         uint32 VictimDefense = victim->GetDefenseSkillValue();
         uint32 VictimAuraDefense = -victim->GetTotalAuraModifier(SPELL_AURA_MOD_ATTACKER_MELEE_CRIT_CHANCE) * 25;
         uint32 AttackerMeleeSkill = GetUnitMeleeSkill();
+        if (Player const* viewer = victim->GetCharmerOrOwnerPlayerOrPlayerItself())
+            if (uint8 const view = LocalLevelScaling::ViewLevelFor(viewer, ToCreature()))
+                AttackerMeleeSkill = view * 5;
 
         // xinef: fix daze mechanics
         float const chancePerSkillPoint = IsClassicPlusCombat(this, victim) ?
@@ -2437,12 +2488,13 @@ uint32 Unit::CalcArmorReducedDamage(Unit const* attacker, Unit const* victim, co
         if (attacker->IsPlayer() || bonusPct)
         {
             float maxArmorPen = 0;
+            uint8 const victimLevel = ShownCombatLevel(victim, attacker);
             if (classic)
                 maxArmorPen = ClassicPlusCombat::ArmorConstant(victim->getLevelForTarget(attacker));
-            else if (victim->GetLevel() < 60)
-                maxArmorPen = float(400 + 85 * victim->GetLevel());
+            else if (victimLevel < 60)
+                maxArmorPen = float(400 + 85 * victimLevel);
             else
-                maxArmorPen = 400 + 85 * victim->GetLevel() + 4.5f * 85 * (victim->GetLevel() - 59);
+                maxArmorPen = 400 + 85 * victimLevel + 4.5f * 85 * (victimLevel - 59);
 
             // Cap armor penetration to this number
             maxArmorPen = std::min((armor + maxArmorPen) / 3, armor);
@@ -2456,7 +2508,7 @@ uint32 Unit::CalcArmorReducedDamage(Unit const* attacker, Unit const* victim, co
     if (armor < 0.0f)
         armor = 0.0f;
 
-    float levelModifier = attacker ? attacker->GetLevel() : attackerLevel;
+    float levelModifier = attacker ? ShownCombatLevel(attacker, victim) : attackerLevel;
     if (levelModifier > 59)
         levelModifier = levelModifier + (4.5f * (levelModifier - 59));
 
@@ -2501,10 +2553,11 @@ float Unit::GetEffectiveResistChance(Unit const* owner, SpellSchoolMask schoolMa
             int32(victim->getLevelForTarget(owner)) - int32(casterLevel), casterLevel, levelBased);
     }
 
+    uint8 const victimLevel = owner ? ShownCombatLevel(victim, owner) : victim->GetLevel();
     if (owner && (!spellInfo || !spellInfo->HasAttribute(SPELL_ATTR0_CU_BINARY_SPELL)))
-        victimResistance += std::max(static_cast<float>(victim->GetLevel() - owner->GetLevel()) * 5.0f, 0.0f);
+        victimResistance += std::max(static_cast<float>(victimLevel - ShownCombatLevel(owner, victim)) * 5.0f, 0.0f);
 
-    float level = static_cast<float>(victim->GetLevel());
+    float level = static_cast<float>(victimLevel);
     float resistanceConstant = 0.0f;
 
     if (level > 60.0f)
@@ -6596,6 +6649,36 @@ bool Unit::HasAuras(SearchMethod sm, std::vector<uint32>& spellIds) const
     }
 }
 
+bool Unit::HasAuraOrTwin(uint32 spellId, ObjectGuid casterGUID) const
+{
+    for (uint32 relative : sSpellMgr->GetSpellAndRelatives(spellId))
+        if (HasAura(relative, casterGUID))
+            return true;
+    return false;
+}
+
+Aura* Unit::GetAuraOfRankedSpellOrTwin(uint32 spellId, ObjectGuid casterGUID) const
+{
+    for (uint32 relative : sSpellMgr->GetSpellAndRelatives(spellId))
+        if (Aura* aura = GetAuraOfRankedSpell(relative, casterGUID))
+            return aura;
+    return nullptr;
+}
+
+AuraEffect* Unit::GetAuraEffectOfRankedSpellOrTwin(uint32 spellId, uint8 effIndex, ObjectGuid casterGUID) const
+{
+    for (uint32 relative : sSpellMgr->GetSpellAndRelatives(spellId))
+        if (AuraEffect* effect = GetAuraEffectOfRankedSpell(relative, effIndex, casterGUID))
+            return effect;
+    return nullptr;
+}
+
+void Unit::RemoveAurasDueToSpellOrTwin(uint32 spellId)
+{
+    for (uint32 relative : sSpellMgr->GetSpellAndRelatives(spellId))
+        RemoveAurasDueToSpell(relative);
+}
+
 bool Unit::HasAura(uint32 spellId, ObjectGuid casterGUID, ObjectGuid itemCasterGUID, uint8 reqEffMask) const
 {
     if (GetAuraApplication(spellId, casterGUID, itemCasterGUID, reqEffMask))
@@ -7305,7 +7388,7 @@ void Unit::SendSpellNonMeleeReflectLog(SpellNonMeleeDamage* log, Unit* attacker)
     data << attacker->GetPackGUID();
     data << uint32(log->spellInfo->Id);
     data << uint32(damage);                                 // damage amount
-    int32 overkill = damage - log->target->GetHealth();
+    int32 overkill = damage - LocalLevelScaling::ShownHealthFor(attacker, log->target);
     data << uint32(overkill > 0 ? overkill : 0);            // overkill
     data << uint8 (log->schoolMask);                        // damage school
     data << uint32(absorb);                                 // AbsorbedDamage
@@ -7333,7 +7416,7 @@ void Unit::SendSpellNonMeleeDamageLog(SpellNonMeleeDamage* log)
     data << log->attacker->GetPackGUID();
     data << uint32(log->spellInfo->Id);
     data << uint32(damage);                                 // damage amount
-    int32 overkill = damage - log->target->GetHealth();
+    int32 overkill = damage - LocalLevelScaling::ShownHealthFor(log->attacker, log->target);
     data << uint32(overkill > 0 ? overkill : 0);            // overkill
     data << uint8 (log->schoolMask);                        // damage school
     data << uint32(absorb);                                 // AbsorbedDamage
@@ -7539,7 +7622,8 @@ void Unit::SendAttackStateUpdate(CalcDamageInfo* damageInfo)
     data << damageInfo->attacker->GetPackGUID();
     data << damageInfo->target->GetPackGUID();
     data << uint32(tmpDamage[0] + tmpDamage[1]);                    // Full damage
-    int32 overkill = tmpDamage[0] + tmpDamage[1] - damageInfo->target->GetHealth();
+    int32 overkill = tmpDamage[0] + tmpDamage[1]
+        - LocalLevelScaling::ShownHealthFor(damageInfo->attacker, damageInfo->target);
     data << uint32(overkill < 0 ? 0 : overkill);                    // Overkill
     data << uint8(count);                                           // Sub damage count
 
@@ -12144,6 +12228,12 @@ void Unit::UpdateSpeed(UnitMoveType mtype, bool forced)
     if (mtype == MOVE_RUN && !IsMounted())
         if (AuraEffect const* hellknight = GetAuraEffect(ASCENSION_SPELL_HELLKNIGHT, EFFECT_0))
             main_speed_mod = std::max(main_speed_mod, -hellknight->GetAmount());
+    if (IsPlayer() && IsMounted() && HasAura(1005000) && (mtype == MOVE_RUN || mtype == MOVE_FLIGHT))
+    {
+        main_speed_mod = 0;
+        stack_bonus = 1.0f;
+        non_stack_bonus = 1.0f;
+    }
     float speed = std::max(non_stack_bonus, stack_bonus);
     if (main_speed_mod)
         AddPct(speed, main_speed_mod);
@@ -15047,6 +15137,61 @@ bool Unit::HandleAuraRaidProcFromCharge(AuraEffect* triggeredByAura)
     return true;
 }
 
+namespace
+{
+    struct BossSummonCollector
+    {
+        std::vector<Creature*> summons;
+
+        void Visit(std::unordered_map<ObjectGuid, Creature*>& creatures)
+        {
+            for (auto const& [guid, creature] : creatures)
+                if (creature->IsSummon())
+                    summons.push_back(creature);
+        }
+
+        template<class T>
+        void Visit(std::unordered_map<ObjectGuid, T*>&) { }
+    };
+
+    // CoA: when a boss dies in an instance, the adds and totems it summoned (and
+    // what those summoned in turn) despawn with it. Runs before the boss's
+    // JustDied, so anything its script summons on death stays.
+    void DespawnBossSummons(Creature* boss)
+    {
+        Map* map = boss->GetMap();
+        if (!map || !map->Instanceable() || boss->IsCharmedOwnedByPlayerOrPlayer())
+            return;
+        if (!boss->IsDungeonBoss() && !boss->isWorldBoss() && boss->GetCreatureTemplate()->rank != CREATURE_ELITE_WORLDBOSS)
+            return;
+
+        BossSummonCollector collector;
+        TypeContainerVisitor<BossSummonCollector, MapStoredObjectTypesContainer> visitor(collector);
+        visitor.Visit(map->GetObjectsStore());
+
+        std::set<ObjectGuid> parents{ boss->GetGUID() };
+        std::vector<Creature*> despawn;
+        bool added;
+        do
+        {
+            added = false;
+            for (Creature* summon : collector.summons)
+            {
+                if (summon->IsCharmedOwnedByPlayerOrPlayer() || summon->IsDungeonBoss() || !summon->IsHostileToPlayers())
+                    continue;
+                if (parents.count(summon->ToTempSummon()->GetSummonerGUID()) && parents.insert(summon->GetGUID()).second)
+                {
+                    despawn.push_back(summon);
+                    added = true;
+                }
+            }
+        } while (added);
+
+        for (Creature* summon : despawn)
+            summon->DespawnOrUnsummon();
+    }
+}
+
 void Unit::Kill(Unit* killer, Unit* victim, bool durabilityLoss, WeaponAttackType attackType, SpellInfo const* /*spellProto*/, Spell const* /*spell*/ /*= nullptr*/)
 {
     // Prevent killing unit twice (and giving reward from kill twice)
@@ -15198,7 +15343,11 @@ void Unit::Kill(Unit* killer, Unit* victim, bool durabilityLoss, WeaponAttackTyp
     bool spiritOfRedemption = false;
     if (victim->IsPlayer() && victim->IsClass(CLASS_PRIEST, CLASS_CONTEXT_ABILITY) && !victim->ToPlayer()->HasPlayerFlag(PLAYER_FLAGS_IS_OUT_OF_BOUNDS))
     {
-        if (AuraEffect* aurEff = victim->GetAuraEffectDummy(20711))
+        AuraEffect* aurEff = victim->GetAuraEffectDummy(20711);
+        auto const [twinBegin, twinEnd] = sSpellMgr->GetSpellTwins().equal_range(20711);
+        for (auto twin = twinBegin; !aurEff && twin != twinEnd; ++twin)
+            aurEff = victim->GetAuraEffectDummy(twin->second);
+        if (aurEff)
         {
             // Xinef: aura_spirit_of_redemption is triggered by 27827 shapeshift
             if (victim->HasSpiritOfRedemptionAura() || victim->HasAura(27827))
@@ -15297,6 +15446,8 @@ void Unit::Kill(Unit* killer, Unit* victim, bool durabilityLoss, WeaponAttackTyp
         // Call KilledUnit for creatures, this needs to be called after the lootable flag is set
         if (killer && killer->IsCreature() && killer->IsAIEnabled)
             killer->ToCreature()->AI()->KilledUnit(victim);
+
+        DespawnBossSummons(creature);
 
         // Call creature just died function
         if (CreatureAI* ai = creature->AI())
@@ -17211,7 +17362,7 @@ void Unit::RewardRage(uint32 damage, uint32 weaponSpeedHitFactor, bool attacker)
         addRage = damage / rageconversion * 2.5f;
 
         // Berserker Rage effect
-        if (HasAura(18499))
+        if (HasAuraOrTwin(18499))
             addRage *= 3.0f;
     }
 
@@ -17996,7 +18147,8 @@ void Unit::BuildValuesUpdate(uint8 updateType, ByteBuffer* data, Player* target)
             }
             else
             {
-                if (sScriptMgr->ShouldTrackValuesUpdatePosByIndex(this, updateType, index))
+                if (sScriptMgr->ShouldTrackValuesUpdatePosByIndex(this, updateType, index) ||
+                    (index == UNIT_FIELD_LEVEL && IsCreature() && LocalLevelScaling::ItemPreviewActive()))
                     cacheValue.posPointers.other[index] = static_cast<uint32>(fieldBuffer.wpos());
 
                 // send in current format (float as float, uint32 as uint32)
@@ -18163,6 +18315,20 @@ void Unit::PatchValuesUpdate(ByteBuffer& valuesUpdateBuf, BuildValuesCachePosPoi
     }
 
     sScriptMgr->OnPatchValuesUpdate(this, valuesUpdateBuf, posPointers, target);
+
+    if (uint32 corpseLevel = LocalLevelScaling::CorpsePreviewLevel(target, creature))
+        if (auto const level = posPointers.other.find(UNIT_FIELD_LEVEL); level != posPointers.other.end())
+            valuesUpdateBuf.put(level->second, corpseLevel);
+}
+
+void Unit::ReplaceAllDynamicFlags(uint32 flag)
+{
+    // A lootable corpse shows each character allowed to loot it a level of their own (the loot preview), so the
+    // level is re-sent whenever the lootable bit changes.
+    if (IsCreature() && LocalLevelScaling::ItemPreviewActive() &&
+        ((GetUInt32Value(UNIT_DYNAMIC_FLAGS) ^ flag) & UNIT_DYNFLAG_LOOTABLE))
+        ForceValuesUpdateAtIndex(UNIT_FIELD_LEVEL);
+    SetUInt32Value(UNIT_DYNAMIC_FLAGS, flag);
 }
 
 void Unit::BuildCooldownPacket(WorldPacket& data, uint8 flags, uint32 spellId, uint32 cooldown)

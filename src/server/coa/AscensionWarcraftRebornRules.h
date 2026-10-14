@@ -7,8 +7,11 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <optional>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace AscensionWarcraftReborn
@@ -18,6 +21,7 @@ constexpr std::uint32_t REBORN_SKILL_OFFSET = 11000;
 constexpr std::uint32_t ROW_ALTERNATE = 0x80000;
 constexpr std::size_t REQUIRED_ABILITY_COUNT = 3;
 constexpr std::uint32_t DARK_APOTHEOSIS = 1154321;
+constexpr std::array<std::uint32_t, 2> DARK_APOTHEOSIS_PASSIVES = { 1154322, 1154323 };
 constexpr std::array<std::uint32_t, 3> DARK_APOTHEOSIS_SPELLS = { 1159674, 1161363, 1161294 };
 
 struct Grant
@@ -65,6 +69,27 @@ using SpellExists = std::function<bool(std::uint32_t spellId)>;
 using RebornRow = std::function<TrainerSpell(std::uint32_t spellId)>;
 
 std::uint32_t RebornSpell(std::uint32_t spellId, SpellExists const& exists);
+
+struct SpellLayout
+{
+    std::string Name;
+    std::array<std::uint32_t, 3> Effects{};
+    std::array<std::uint32_t, 3> Auras{};
+
+    bool operator==(SpellLayout const&) const = default;
+};
+
+using SpellLayoutOf = std::function<std::optional<SpellLayout>(std::uint32_t spellId)>;
+
+std::vector<std::pair<std::uint32_t, std::uint32_t>> SpellTwins(std::uint32_t spellCount, SpellLayoutOf const& layout);
+
+std::vector<std::pair<std::uint32_t, std::uint32_t>> SpellNamesakes(std::uint32_t spellCount, SpellLayoutOf const& layout);
+
+using LaterRanks = std::function<std::vector<std::uint32_t>(std::uint32_t spellId)>;
+using FirstRank = std::function<std::uint32_t(std::uint32_t spellId)>;
+
+std::vector<std::pair<std::uint32_t, std::uint32_t>> RankTwins(std::vector<std::pair<std::uint32_t, std::uint32_t>> const& twins,
+    LaterRanks const& laterRanks, FirstRank const& firstRank, SpellLayoutOf const& layout);
 
 std::vector<TrainerSpell> TrainerSpells(Data const& data, AscensionFreepick::Realm const& realm, std::uint32_t classId,
     std::vector<TrainerSpell> const& stock, SpellExists const& exists, RebornRow const& reborn);

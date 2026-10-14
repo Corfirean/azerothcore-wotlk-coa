@@ -2,7 +2,8 @@ CLI_DESCRIPTION = """Check the free-pick Hero's Character Advancement rules with
 
 Compiles the free-pick rule code against the client DBC set the server loads (--dbc-dir), then checks the Hero
 essence budget, class and realm admission, masteries, choice groups, investments, the unit rules, and how a
-known-entries upload is accepted, reordered, refused and charged.
+known-entries upload is accepted, reordered, refused and charged, and which entries a followed Hero Architect
+build asks for at a level.
 No database, server build or game client is needed.
 """
 
@@ -27,6 +28,7 @@ MAIN = r"""
 #include "DBCStores.h"
 #include <cstdio>
 #include <string>
+#include <unordered_map>
 
 using namespace AscensionFreepick;
 
@@ -46,6 +48,9 @@ constexpr std::uint32_t TAME_BEAST_ABILITIES = 40308;
 constexpr std::uint32_t DOMINATE_UNDEAD = 41916;
 constexpr std::uint32_t PATH_OF_STRENGTH = 1149;
 constexpr std::uint32_t PATH_OF_AGILITY = 1150;
+constexpr std::uint32_t BLOOD_GORGED_RANK_5 = 61158;
+constexpr std::uint32_t WILL_OF_THE_NECROPOLIS_RANK_3 = 50150;
+constexpr std::uint32_t PURIFY_SPELL = 1152;
 
 bool Holds(std::vector<Entry> const& entries, std::uint32_t id, std::uint32_t rank)
 {
@@ -172,6 +177,55 @@ int main(int, char** argv)
     applied = CheckApply(Build(catalog, realm, 10, { { PURIFY, 1 } }), {}, nullptr, {});
     Check(applied.Result == UPDATE_OK && !applied.Money && !applied.Marks, "unlearning is free up to level 10");
 
+    Row const* bySpell = RowBySpell(catalog, realm, HERO_CLASS, PURIFY_SPELL);
+    Check(bySpell && bySpell->EntryId == PURIFY, "a Hero Architect build spell finds the entry that teaches it");
+    Check(!RowBySpell(catalog, realm, HERO_CLASS, 999999), "a spell no entry teaches finds nothing");
+    std::uint32_t const bearSpell = bear->Spells[0];
+    Row const* bearTeacher = RowBySpell(catalog, realm, HERO_CLASS, bearSpell);
+    Check(bearTeacher && bearTeacher->EntryId <= BEAR_FORM && ClassAdmits(catalog, *bearTeacher, HERO_CLASS),
+        "a spell several entries teach finds the lowest visible entry the Hero may learn, as the client does");
+    std::vector<GuideSpell> const guide = { { PURIFY_SPELL, 12 }, { bearSpell, 10 }, { 999999, 1 } };
+    std::vector<Entry> guided = GuideEntries(catalog, realm, 12, HERO_CLASS, guide, 0);
+    Check(bearTeacher && Holds(guided, PURIFY, 1) && Holds(guided, bearTeacher->EntryId, 1),
+        "a followed build at level 12 takes every spell of level 12 or below");
+    Check(Holds(guided, PATH_OF_STRENGTH, 1), "a Strength build also takes the Path of Strength");
+    Check(guided.size() == 3, "a spell no entry teaches adds nothing");
+    guided = GuideEntries(catalog, realm, 11, HERO_CLASS, guide, 1);
+    Check(!Holds(guided, PURIFY, 1) && guided.size() == 2 && Holds(guided, PATH_OF_AGILITY, 1),
+        "at level 11 the level 12 spell waits, and an Agility build takes the Path of Agility");
+    std::vector<Entry> const twice = GuideEntries(catalog, realm, 12, HERO_CLASS,
+        { { PURIFY_SPELL, 1 }, { PURIFY_SPELL, 2 } }, 2);
+    Check(twice.size() == 1 && Holds(twice, PURIFY, 2),
+        "a spell listed twice adds a second rank, and a Stamina build takes no path");
+    std::vector<Entry> fitted = FitGuide(catalog, realm, 9, HERO_CLASS, { { PURIFY, 1 }, { PATH_OF_STRENGTH, 1 } }, {});
+    Check(fitted.size() == 1 && Holds(fitted, PATH_OF_STRENGTH, 1),
+        "a followed entry the level does not allow yet waits, and the rest is still learned");
+    fitted = FitGuide(catalog, realm, 12, HERO_CLASS, { { BEAR_FORM, 1 }, { FERAL_SHAPESHIFT_MASTERY, 1 } }, {});
+    Check(Holds(fitted, FERAL_SHAPESHIFT_MASTERY, 1) && Holds(fitted, BEAR_FORM, 1) &&
+            PositionOf(fitted, FERAL_SHAPESHIFT_MASTERY) < PositionOf(fitted, BEAR_FORM),
+        "a followed entry listed before its requirement is learned after it");
+    fitted = FitGuide(catalog, realm, 12, HERO_CLASS, { { PATH_OF_AGILITY, 1 } }, { { PATH_OF_STRENGTH, 1 } });
+    Check(fitted.size() == 1 && Holds(fitted, PATH_OF_AGILITY, 1),
+        "the followed build's path replaces the path the character kept");
+    fitted = FitGuide(catalog, realm, 12, HERO_CLASS, { { PURIFY, 1 } }, { { PATH_OF_STRENGTH, 1 } });
+    Check(fitted.size() == 2 && Holds(fitted, PATH_OF_STRENGTH, 1), "a kept entry the build does not replace stays");
+    applied = CheckApply(base, GuideEntries(catalog, realm, 12, HERO_CLASS, { { PURIFY_SPELL, 12 } }, 0), nullptr, {});
+    Check(applied.Result == UPDATE_OK && Holds(applied.Entries, PURIFY, 1) && Holds(applied.Entries, PATH_OF_STRENGTH, 1),
+        "the followed build applies through the upload rules");
+
+    std::unordered_map<std::uint32_t, std::vector<std::uint32_t>> const learnEffects = { LEARN_EFFECTS };
+    LearnedSpells const learned = [&learnEffects](std::uint32_t spellId)
+    {
+        auto const itr = learnEffects.find(spellId);
+        return itr == learnEffects.end() ? std::vector<std::uint32_t>() : itr->second;
+    };
+    Check(TaughtSpells(BLOOD_GORGED_RANK_5, learned) == std::vector<std::uint32_t>({ 50111, 61278 }),
+        "a rank that only teaches spells grants the spells it teaches");
+    Check(TaughtSpells(WILL_OF_THE_NECROPOLIS_RANK_3, learned) == std::vector<std::uint32_t>({ 52286 }),
+        "a rank with a learn effect beside other effects grants only the taught spell");
+    Check(TaughtSpells(PURIFY_SPELL, learned) == std::vector<std::uint32_t>({ PURIFY_SPELL }),
+        "a rank with no learn effect grants itself");
+
     return failures ? 1 : 0;
 }
 """
@@ -209,6 +263,25 @@ def check_path_passives(dbc):
     return ok
 
 
+LEARN_SPELL_EFFECT = 36
+SPELL_EFFECT, SPELL_TRIGGER = 71, 116
+
+
+def learn_effects(directory):
+    raw = (directory / "Spell.dbc").read_bytes()
+    count, fields, size = struct.unpack_from("<III", raw, 4)
+    rows = {row[0]: row for row in struct.iter_unpack(f"<{fields}I", raw[20:20 + count * size])}
+    entries = []
+    for spell in (61158, 50150, 1152):
+        row = rows[spell]
+        taught = [row[SPELL_TRIGGER + i] for i in range(3) if row[SPELL_EFFECT + i] == LEARN_SPELL_EFFECT]
+        if taught:
+            entries.append("{ %d, { %s } }" % (spell, ", ".join(map(str, taught))))
+    source = (ROOT / "src/server/coa/AscensionFreepick.cpp").read_text(encoding="utf-8")
+    assert source.count("RankSpells(row->Spells[") == 2, "free-pick grants and removals both expand rank spells"
+    return ", ".join(entries)
+
+
 def main():
     parser = argparse.ArgumentParser(description=CLI_DESCRIPTION)
     parser.add_argument("--dbc-dir", type=Path)
@@ -221,7 +294,8 @@ def main():
         out = Path(directory)
         for name, text in STUBS.items():
             (out / name).write_text(text, encoding="utf-8")
-        (out / "main.cpp").write_text(MAIN, encoding="utf-8")
+        (out / "main.cpp").write_text(MAIN.replace("LEARN_EFFECTS", learn_effects(args.dbc_dir.resolve())),
+                                      encoding="utf-8")
         includes = [out, ROOT / "src/server/coa", ROOT / "src/server/shared/DataStores", ROOT / "src/common"]
         sources = [out / "main.cpp", ROOT / "src/server/coa/AscensionFreepickRules.cpp",
                    ROOT / "src/server/shared/DataStores/ClientDBC.cpp"]

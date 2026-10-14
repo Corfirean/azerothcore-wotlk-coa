@@ -639,6 +639,58 @@ std::string QualityTier(std::uint32_t quality)
         "ARTIFACT", "" };
     return TIERS[quality];
 }
+
+bool GuideFits(Catalog const& catalog, Character const& character, Slots const& slots, std::uint32_t spell)
+{
+    Enchant const* enchant = catalog.FindSpell(spell);
+    if (!enchant || !character.Knows(spell) || !RealmAllows(*enchant, character.RealmGates) || character.Wildcard() ||
+        !ClassAllowed(*enchant, character.Class) || character.Level < enchant->RequiredLevel ||
+        !InvestmentMet(character, *enchant, false) || !InvestmentMet(character, *enchant, true))
+        return false;
+    std::uint32_t const quality = QualityOf(*enchant, character.Class);
+    std::uint32_t sameSpell = 1;
+    std::uint32_t sameQuality = 1;
+    std::uint32_t rareWorldforged = quality == QUALITY_RARE && enchant->Worldforged;
+    for (std::uint32_t held : slots)
+    {
+        sameSpell += held == spell;
+        if (Enchant const* other = held ? catalog.FindSpell(held) : nullptr)
+        {
+            sameQuality += QualityOf(*other, character.Class) == quality;
+            rareWorldforged += QualityOf(*other, character.Class) == QUALITY_RARE && other->Worldforged;
+        }
+    }
+    std::uint32_t const stackLimit = character.StackLimit ? character.StackLimit(spell) : 0;
+    return sameSpell <= stackLimit && sameQuality <= QualityCap(character, quality) &&
+        !(quality == QUALITY_RARE && enchant->Worldforged && rareWorldforged > RARE_WORLDFORGED_LIMIT);
+}
+}
+
+Slots GuideSlots(Catalog const& catalog, Character const& character, Slots const& current,
+    std::vector<GuideEnchant> const& guide)
+{
+    bool const fusion = character.Fusion();
+    std::vector<std::uint32_t> open;
+    for (std::uint32_t slot = 0; slot < SLOT_COUNT; ++slot)
+        if (SlotValid(slot, fusion))
+            open.push_back(slot);
+    Slots slots{};
+    std::size_t next = 0;
+    auto place = [&](std::uint32_t spell)
+    {
+        if (next >= open.size() || !GuideFits(catalog, character, slots, spell))
+            return false;
+        slots[open[next++]] = spell;
+        return true;
+    };
+    for (GuideEnchant const& enchant : guide)
+        if (enchant.Level <= character.Level)
+            for (std::uint32_t stack = 0; stack < enchant.Stacks && place(enchant.Spell); ++stack)
+                ;
+    for (std::uint32_t slot : open)
+        if (current[slot])
+            place(current[slot]);
+    return slots;
 }
 
 bool Character::Knows(std::uint32_t spell) const
@@ -870,6 +922,60 @@ Enchant const* Roll(std::vector<Enchant const*> const& pool, double unit)
             return enchant;
     }
     return pool.empty() ? nullptr : pool.back();
+}
+
+std::vector<Enchant const*> RevealPool(Catalog const& catalog, Character const& character,
+    std::function<bool(std::uint32_t item)> const& itemExists)
+{
+    if (!IsStockClass(character.Class))
+        return ReforgePool(catalog, character, itemExists);
+    std::vector<Enchant const*> pool;
+    for (Enchant const& enchant : catalog.Rows)
+        if (enchant.Item && enchant.Weight > 0.0f && !enchant.Worldforged && (enchant.ClassMask & STOCK_CLASS_MASK) &&
+            RealmAllows(enchant, character.RealmGates) && (!itemExists || itemExists(enchant.Item)))
+            pool.push_back(&enchant);
+    return pool;
+}
+
+Enchant const* RollReveal(Catalog const& catalog, Character const& character,
+    std::function<bool(std::uint32_t item)> const& itemExists, std::function<bool(Enchant const&)> const& favored,
+    double qualityUnit, double favoredUnit, double pickUnit)
+{
+    std::array<double, QUALITY_MAX> weights{};
+    double total = 0.0;
+    for (Enchant const* enchant : ReforgePool(catalog, character, itemExists))
+    {
+        std::uint32_t const quality = QualityOf(*enchant, character.Class);
+        if (quality < QUALITY_MAX)
+        {
+            weights[quality] += enchant->Weight;
+            total += enchant->Weight;
+        }
+    }
+    if (total <= 0.0)
+        return nullptr;
+
+    std::uint32_t quality = QUALITY_MAX;
+    double target = std::clamp(qualityUnit, 0.0, 1.0) * total;
+    for (std::uint32_t index = 0; index < QUALITY_MAX && quality == QUALITY_MAX; ++index)
+    {
+        target -= weights[index];
+        if (weights[index] > 0.0 && target < 0.0)
+            quality = index;
+    }
+    if (quality == QUALITY_MAX)
+        for (std::uint32_t index = QUALITY_MAX; index > 0 && quality == QUALITY_MAX; --index)
+            if (weights[index - 1] > 0.0)
+                quality = index - 1;
+
+    std::vector<Enchant const*> chosen;
+    std::vector<Enchant const*> others;
+    for (Enchant const* enchant : RevealPool(catalog, character, itemExists))
+        if (QualityOf(*enchant, character.Class) == quality)
+            (favored && favored(*enchant) ? chosen : others).push_back(enchant);
+    if (favoredUnit >= REVEAL_FAVORED_CHANCE)
+        std::swap(chosen, others);
+    return Roll(chosen.empty() ? others : chosen, pickUnit);
 }
 
 std::uint64_t LevelProgress(std::uint32_t level)

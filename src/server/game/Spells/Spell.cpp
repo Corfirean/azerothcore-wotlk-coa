@@ -31,6 +31,7 @@
 #include "GridNotifiers.h"
 #include "Group.h"
 #include "InstanceScript.h"
+#include "LocalLevelScaling.h"
 #include "Log.h"
 #include "LootMgr.h"
 #include "ObjectAccessor.h"
@@ -5725,6 +5726,7 @@ void Spell::HandleThreatSpells()
         {
             if (!target->CanHaveThreatList())
                 continue;
+            threatToAdd = LocalLevelScaling::PoolThreatFor(unitCaster, target, threatToAdd);
             target->GetThreatMgr().AddThreat(unitCaster, threatToAdd, m_spellInfo, true);
         }
     }
@@ -7737,7 +7739,8 @@ SpellCastResult Spell::CheckItems(uint32* param1, uint32* param2)
                     if (m_targets.GetItemTarget()->GetOwnerGUID() != m_caster->GetGUID())
                         return SPELL_FAILED_CANT_BE_DISENCHANTED;
 
-                    ItemTemplate const* itemProto = m_targets.GetItemTarget()->GetTemplate();
+                    ItemTemplate const* itemProto = LocalLevelScaling::InstanceTemplateFor(m_targets.GetItemTarget(),
+                        m_targets.GetItemTarget()->GetTemplate());
                     if (!itemProto)
                         return SPELL_FAILED_CANT_BE_DISENCHANTED;
 

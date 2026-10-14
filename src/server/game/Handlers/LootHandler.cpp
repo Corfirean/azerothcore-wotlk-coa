@@ -19,6 +19,7 @@
 #include "Creature.h"
 #include "GameObject.h"
 #include "Group.h"
+#include "LocalLevelScaling.h"
 #include "LootItemStorage.h"
 #include "LootMgr.h"
 #include "Object.h"
@@ -577,7 +578,9 @@ void WorldSession::HandleLootMasterGiveOpcode(WorldPacket& recvData)
     // not move item from loot to target inventory
     Item* newitem = target->StoreNewItem(dest, item.itemid, true, item.randomPropertyId, looters);
     target->SendNewItem(newitem, uint32(item.count), false, false, true);
+    LocalLevelScaling::NotifyMasterLoot(target, newitem);
     target->UpdateLootAchievements(&item, loot);
+    sScriptMgr->OnPlayerMasterLootItem(target, newitem, uint32(item.count), lootguid);
 
     // mark as looted
     item.count = 0;

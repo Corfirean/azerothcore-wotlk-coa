@@ -3,6 +3,7 @@
 #include "AscensionItemScaling.h"
 #include "AscensionItemScalingPolicy.h"
 #include "AscensionItemStatData.h"
+#include "AscensionNativeItemScaling.h"
 #include "Config.h"
 #include "Creature.h"
 #include "DBCStores.h"
@@ -73,7 +74,10 @@ struct Curves
     CurveSet block;
     CurveSet sellPrice;
     std::map<CurveKey, std::map<uint32, int32>> randomProperties;
+    std::map<CurveKey, DisenchantLadder> disenchantLadders;
 };
+
+constexpr uint32 AnySubClass = UINT32_MAX;
 
 bool Eligible(ItemTemplate const& proto)
 {
@@ -94,6 +98,13 @@ CurveKey KeyOf(ItemTemplate const& proto)
 {
     uint32 const inventoryType = proto.InventoryType == INVTYPE_ROBE ? INVTYPE_CHEST : proto.InventoryType;
     return { proto.Class, proto.SubClass, inventoryType, proto.Quality };
+}
+
+CurveKey SlotKeyOf(ItemTemplate const& proto)
+{
+    CurveKey key = KeyOf(proto);
+    std::get<1>(key) = AnySubClass;
+    return key;
 }
 
 double DamagePerSecond(ItemTemplate const& proto)
@@ -145,6 +156,9 @@ std::unique_ptr<Curves> BuildCurves()
         curves->sellPrice[key].Add(proto->ItemLevel, proto->SellPrice);
         if (proto->RandomProperty)
             curves->randomProperties[key].emplace(proto->ItemLevel, proto->RandomProperty);
+        for (CurveKey const& ladder : { key, SlotKeyOf(*proto) })
+            curves->disenchantLadders[ladder].Add(proto->ItemLevel, proto->DisenchantID,
+                proto->RequiredDisenchantSkill);
     }
 
     for (CurveSet* set : { &curves->armor, &curves->damagePerSecond, &curves->block, &curves->sellPrice })
@@ -154,10 +168,37 @@ std::unique_ptr<Curves> BuildCurves()
     return curves;
 }
 
+Curves const& SampleCurves()
+{
+    static std::unique_ptr<Curves> const curves = BuildCurves();
+    return *curves;
+}
+
 double SetRatio(CurveSet const& set, CurveKey const& key, uint32 fromLevel, uint32 toLevel, double fallback)
 {
     auto const curve = set.find(key);
     return curve == set.end() ? fallback : CurveRatio(curve->second, fromLevel, toLevel, fallback);
+}
+
+DisenchantBracket BracketAtOrBelow(Curves const& curves, CurveKey const& key, uint32 itemLevel)
+{
+    auto const ladder = curves.disenchantLadders.find(key);
+    return ladder == curves.disenchantLadders.end() ? DisenchantBracket{} : ladder->second.AtOrBelow(itemLevel);
+}
+
+void RebracketDisenchant(ItemTemplate& proto, ItemTemplate const& base, uint32 itemLevel, Curves const& curves)
+{
+    if (!Disenchantable(base.DisenchantID, base.RequiredDisenchantSkill))
+        return;
+
+    DisenchantBracket const bracket = NearestDisenchantBracket(
+        BracketAtOrBelow(curves, KeyOf(base), itemLevel),
+        BracketAtOrBelow(curves, SlotKeyOf(base), itemLevel));
+    if (!bracket.disenchantId)
+        return;
+
+    proto.DisenchantID = bracket.disenchantId;
+    proto.RequiredDisenchantSkill = std::max(base.RequiredDisenchantSkill, bracket.requiredSkill);
 }
 
 std::unique_ptr<ItemTemplate> BuildTemplate(uint32 entry, ItemTemplate const& base, uint32 lift, Curves const& curves)
@@ -166,6 +207,7 @@ std::unique_ptr<ItemTemplate> BuildTemplate(uint32 entry, ItemTemplate const& ba
     uint32 const itemLevel = base.ItemLevel + lift;
     proto->ItemId = entry;
     proto->ItemLevel = itemLevel;
+    RebracketDisenchant(*proto, base, itemLevel, curves);
     if (CapturedStats::Record const* record = capturedStats.Find(base.ItemId, itemLevel))
     {
         record->Apply(*proto);
@@ -283,9 +325,7 @@ public:
             ItemTemplate const* base = sObjectMgr->GetItemTemplate(record->second.baseEntry);
             if (!base)
                 return nullptr;
-            if (!_curves)
-                _curves = BuildCurves();
-            record->second.proto = BuildTemplate(entry, *base, record->second.lift, *_curves);
+            record->second.proto = BuildTemplate(entry, *base, record->second.lift, SampleCurves());
         }
         return record->second.proto.get();
     }
@@ -362,7 +402,6 @@ private:
     std::shared_mutex _mutex;
     std::map<uint32, Record> _records;
     std::map<std::pair<uint32, uint32>, uint32> _entries;
-    std::unique_ptr<Curves> _curves;
     uint32 _nextEntry = FirstScaledEntry;
 };
 
@@ -371,23 +410,29 @@ ItemTemplate const* ScaledTemplate(uint32 entry)
     return Registry::Instance().Template(entry);
 }
 
+bool LiftsActive()
+{
+    return liftsEnabled.load(std::memory_order_relaxed) && !NativeItemScaling::Active();
+}
+
 uint32 EligibleLift(uint32 itemId, uint32 rawLift)
 {
     uint32 const lift = SteppedLift(rawLift);
-    if (!lift || !liftsEnabled.load(std::memory_order_relaxed))
+    if (!lift || !LiftsActive())
         return itemId;
 
     ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
-    return proto && Liftable(*proto) ? Registry::Instance().Acquire(itemId, lift) : itemId;
+    if (!proto || !Liftable(*proto))
+        return itemId;
+    return Registry::Instance().Acquire(itemId, lift);
 }
 
-uint32 QuestRewardItem(Player const* player, uint32 itemId, int32 questLevel)
+uint32 QuestRewardItem(Player const* player, uint32 itemId, Quest const* quest)
 {
-    if (!player || !LocalLevelScaling::QuestScalingEnabled(player))
+    if (!player)
         return itemId;
 
-    uint8 const scaledLevel = LocalLevelScaling::ScaleQuestLevel(questLevel, player->GetLevel());
-    return EligibleLift(itemId, QuestLift(questLevel, scaledLevel));
+    return EligibleLift(itemId, QuestLift(quest->GetQuestLevel(), uint32(player->GetQuestLevel(quest))));
 }
 
 uint32 CreatureViewerLift(Player const* player, Creature const* creature)
@@ -397,7 +442,8 @@ uint32 CreatureViewerLift(Player const* player, Creature const* creature)
 
 uint32 ChestViewerLift(Player const* player, uint32 itemLevel)
 {
-    if (!LocalLevelScaling::ScalingChoiceEnabled(player))
+    if (!LocalLevelScaling::ScalingChoiceEnabled(player) ||
+        (LocalLevelScaling::ScalingBlocksFor(player) & LocalLevelScaling::ChallengeBlocksCreatureScaling))
         return 0;
     return ContentLift(itemLevel, player->GetLevel(),
         LocalLevelScaling::CreatureOffset.load(std::memory_order_relaxed));
@@ -471,7 +517,7 @@ public:
     void OnAfterLootTemplateProcess(Loot* loot, LootTemplate const*, LootStore const& store, Player* owner,
         bool personal, bool, uint16) override
     {
-        if (!loot || !owner || !liftsEnabled.load(std::memory_order_relaxed) ||
+        if (!loot || !owner || !LiftsActive() ||
             (&store != &LootTemplates_Creature && &store != &LootTemplates_Gameobject))
             return;
 
@@ -519,6 +565,17 @@ std::optional<ClientItemRow> ClientRow(uint32 entry)
     return std::nullopt;
 }
 
+void RebracketDisenchant(ItemTemplate& scaled, ItemTemplate const& base, uint32 itemLevel)
+{
+    RebracketDisenchant(scaled, base, itemLevel, SampleCurves());
+}
+
+bool LiftableEntry(uint32 entry)
+{
+    ItemTemplate const* proto = sObjectMgr->GetItemTemplate(entry);
+    return proto && Liftable(*proto);
+}
+
 void HandleStatQuery(WorldSession* session, WorldPacket const& packet)
 {
     if (!session || packet.size() != sizeof(uint64) || !capturedStats.Size())
@@ -527,7 +584,7 @@ void HandleStatQuery(WorldSession* session, WorldPacket const& packet)
     uint32 const item = packet.read<uint32>(0);
     uint32 const level = packet.read<uint32>(sizeof(uint32));
     ItemTemplate const* proto = sObjectMgr->GetItemTemplate(item);
-    if (!proto)
+    if (!proto || NativeItemScaling::Handles(item))
         return;
     CapturedStats::Record const* record = capturedStats.Find(BaseEntry(item), level);
     if (!record)
