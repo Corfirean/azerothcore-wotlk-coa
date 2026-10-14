@@ -167,7 +167,7 @@ TEST(AscensionRacialAbilitiesTest, RejectsUnrelatedSkillsClassesAndNonDefaultAbi
 
 TEST(AscensionRacialAbilitiesTest, AddedRacesReceiveFourUniqueRacialsByExactRaceId)
 {
-    for (uint8 race : {uint8(78), uint8(82), uint8(83), uint8(97)})
+    for (uint8 race : {uint8(78), uint8(82), uint8(83), uint8(97), uint8(103)})
     {
         auto const* racial = GetCoaCustomRacial(race);
         ASSERT_NE(racial, nullptr);
