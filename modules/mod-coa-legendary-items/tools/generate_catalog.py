@@ -36,7 +36,7 @@ CONDITIONS = {
 
 
 def load_catalog():
-    catalog = json.loads((MODULE / 'data/catalog.json').read_text())
+    catalog = json.loads((MODULE / 'data/catalog.json').read_text(encoding='utf-8'))
     if [item['id'] for item in catalog] != list(range(64)):
         raise ValueError('The catalog must have exactly 64 consecutive design IDs')
     counts = Counter(item['class_id'] for item in catalog)
@@ -251,7 +251,7 @@ def outputs(sql_output=None):
     generated = {
         MODULE / 'src/CoALegendaryCatalog.h': render_header(catalog),
         MODULE / 'CATALOG.md': render_catalog(catalog),
-        MODULE / 'preview.html': (MODULE / 'tools/preview.template.html').read_text().replace(
+        MODULE / 'preview.html': (MODULE / 'tools/preview.template.html').read_text(encoding='utf-8').replace(
             '__CATALOG__', json.dumps(catalog, ensure_ascii=False, indent=2)),
     }
     if sql_output:
@@ -272,7 +272,7 @@ def main():
     stale = []
     for path, content in outputs(args.sql_output).items():
         if args.check:
-            if not path.exists() or path.read_text() != content:
+            if not path.exists() or path.read_text(encoding='utf-8') != content:
                 stale.append(str(path.relative_to(ROOT)))
         else:
             path.parent.mkdir(parents=True, exist_ok=True)

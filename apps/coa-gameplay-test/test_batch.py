@@ -1,4 +1,6 @@
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
+from concurrent.futures import ThreadPoolExecutor
+import ast
 from datetime import datetime, timezone
 import hashlib
 import io
@@ -7,6 +9,7 @@ import os
 from pathlib import Path
 import secrets
 import signal
+import subprocess
 import sys
 import tempfile
 import threading
@@ -41,6 +44,7 @@ DATABASE_KEYS = ('LoginDatabase.WorkerThreads', 'CharacterDatabase.WorkerThreads
                  'CharacterDatabase.TransactionIsolation', 'WorldDatabase.TransactionIsolation')
 SCENARIO_SHUTDOWN = 'Server shut down before the scenario completed'
 TEARDOWN_SHUTDOWN = 'Server shut down before the case teardown completed'
+WINDOWS_ACCESS_VIOLATION = 0xC0000005 - (1 << 32)
 
 
 def write(path, value):
@@ -50,8 +54,35 @@ def write(path, value):
 
 
 def log(name, value):
-    with open(Path(__file__).with_name(name), 'a') as stream:
-        stream.write(json.dumps(value) + '\n')
+    path = Path(__file__).with_name(name)
+    with open(str(path) + '.lock', 'a+b') as guard:
+        guard.seek(0)
+        if os.name == 'nt':
+            import errno
+            import msvcrt
+            deadline = time.monotonic() + 10
+            while True:
+                try:
+                    msvcrt.locking(guard.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError as error:
+                    if error.errno not in (errno.EACCES, errno.EAGAIN, errno.EDEADLK) or time.monotonic() >= deadline:
+                        raise
+                    time.sleep(0.001)
+        else:
+            import fcntl
+            fcntl.flock(guard, fcntl.LOCK_EX)
+        try:
+            row = (json.dumps(value) + '\n').encode('utf-8')
+            with open(path, 'ab', buffering=0) as stream:
+                if stream.write(row) != len(row):
+                    raise OSError('Incomplete event record')
+        finally:
+            if os.name == 'nt':
+                guard.seek(0)
+                msvcrt.locking(guard.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(guard, fcntl.LOCK_UN)
 
 
 def listen():
@@ -63,8 +94,7 @@ def listen():
 def crash():
     if hasattr(signal, 'SIGKILL'):
         os.kill(os.getpid(), signal.SIGKILL)
-    import ctypes
-    ctypes.string_at(0)
+    os._exit(WINDOWS_ACCESS_VIOLATION)
 
 
 def measures(item, lane, seconds):
@@ -385,6 +415,26 @@ class BatchTests(unittest.TestCase):
         log = self.path / 'starts.log'
         return [line.split() for line in log.read_text().splitlines()] if log.exists() else []
 
+    def test_concurrent_fake_servers_preserve_complete_event_records(self):
+        tree = ast.parse(FAKE_SERVER)
+        function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'log')
+        writer = self.path / 'parallel_log.py'
+        writer.write_text('import json, os, sys, time\nfrom pathlib import Path\n' + ast.unparse(function) +
+                          "\nfor index in range(100):\n"
+                          "    log('parallel.log', {'worker': int(sys.argv[1]), 'index': index, 'padding': 'x' * 8192})\n",
+                          encoding='utf-8')
+        def run_writer(worker):
+            return subprocess.run([sys.executable, '-B', str(writer), str(worker)], capture_output=True,
+                                  text=True, timeout=30)
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            results = list(pool.map(run_writer, range(4)))
+        for result in results:
+            self.assertEqual(result.returncode, 0, result.stderr)
+        records = self.events('parallel.log')
+        self.assertEqual(len(records), 400)
+        self.assertEqual({(row['worker'], row['index']) for row in records},
+                         {(worker, index) for worker in range(4) for index in range(100)})
+
     def events(self, name):
         log = self.path / name
         return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
@@ -526,26 +576,34 @@ class BatchTests(unittest.TestCase):
         self.assertFalse(self.output.exists())
 
     def test_isolated_rerun_marks_batch_sensitive_and_stages_modules_once(self):
-        with patch.object(run, 'stage_modules', wraps=run.stage_modules) as staged:
-            code, result = self.batch('--fresh-databases', '--jobs', '2', '--scenario', 'flaky', *SLOW[:2])
-        self.assertEqual(code, 0, self.stderr.getvalue())
-        self.assertEqual(staged.call_count, 1)
-        self.assertEqual(list(self.server_modules.iterdir()), [])
-        self.assertEqual(result['batch_sensitive'], ['flaky'])
-        self.assertEqual(result['isolated_only'], [])
-        self.assertEqual(result['counts']['passed_on_isolated_rerun'], 1)
-        self.assertEqual(result['failures'], [])
-        flaky = result['cases']['flaky']
-        self.assertEqual((flaky['status'], flaky['mode'], flaky['batch']['status']), ('passed', 'isolated', 'failed'))
-        isolated = self.summary('flaky', 'isolated')
-        self.assertEqual(isolated['module_config_sha256'], self.summary('slow-one')['module_config_sha256'])
-        self.assertEqual(list(isolated['module_config_sha256']), ['example.conf'])
-        evidence = catalog.read_json(self.output / 'verification.json')['evidence']
-        self.assertEqual(evidence['flaky']['directory'], str(self.output / 'isolated' / 'flaky'))
-        self.assertEqual([mode for mode, pid in self.starts()].count('single'), 1)
-        self.assertEqual({(entry['mode'], entry['Clock'], entry['Lanes']) for entry in self.events('clocks.log')},
-                         {('queue', 'real', '1'), ('single', 'real', '1')})
-        self.assertIn('PASS flaky', self.stdout.getvalue())
+        for attempt in range(4):
+            with self.subTest(attempt=attempt):
+                self.output = self.path / f'output-{attempt}'
+                starts_before = len(self.starts())
+                with patch.object(run, 'stage_modules', wraps=run.stage_modules) as staged:
+                    code, result = self.batch('--fresh-databases', '--jobs', '2', '--scenario', 'flaky', *SLOW[:2])
+                diagnostics = self.stderr.getvalue()
+                if code:
+                    diagnostics += '\n'.join(path.read_text(encoding='utf-8', errors='replace')[-6000:]
+                                             for path in self.output.rglob('worldserver.log'))
+                self.assertEqual(code, 0, diagnostics)
+                self.assertEqual(staged.call_count, 1)
+                self.assertEqual(list(self.server_modules.iterdir()), [])
+                self.assertEqual(result['batch_sensitive'], ['flaky'])
+                self.assertEqual(result['isolated_only'], [])
+                self.assertEqual(result['counts']['passed_on_isolated_rerun'], 1)
+                self.assertEqual(result['failures'], [])
+                flaky = result['cases']['flaky']
+                self.assertEqual((flaky['status'], flaky['mode'], flaky['batch']['status']), ('passed', 'isolated', 'failed'))
+                isolated = self.summary('flaky', 'isolated')
+                self.assertEqual(isolated['module_config_sha256'], self.summary('slow-one')['module_config_sha256'])
+                self.assertEqual(list(isolated['module_config_sha256']), ['example.conf'])
+                evidence = catalog.read_json(self.output / 'verification.json')['evidence']
+                self.assertEqual(evidence['flaky']['directory'], str(self.output / 'isolated' / 'flaky'))
+                self.assertEqual([mode for mode, pid in self.starts()[starts_before:]].count('single'), 1)
+                self.assertEqual({(entry['mode'], entry['Clock'], entry['Lanes']) for entry in self.events('clocks.log')},
+                                 {('queue', 'real', '1'), ('single', 'real', '1')})
+                self.assertIn('PASS flaky', self.stdout.getvalue())
 
     def test_failed_isolated_rerun_keeps_the_case_failed(self):
         code, result = self.batch('--fresh-databases', '--scenario', 'broken', 'alpha')

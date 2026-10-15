@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "name": "Grummle characters receive their four racials and class action bar",
+  "contract": "With custom races enabled and the matching race DBC overlay, Alliance Grummle race 103 starts with Pack Toss, Trail Snack, Lucky Foot and Heavy Pack. Its custom class action bar and a standard Human racial remain available.",
+  "timeout_ms": 60000,
+  "players": [
+    {
+      "id": "grummle",
+      "race": 103,
+      "class": 21,
+      "level": 1
+    },
+    {
+      "id": "human",
+      "race": 1,
+      "class": 21,
+      "level": 1
+    }
+  ],
+  "steps": [
+    {
+      "action": "wait",
+      "ms": 2000
+    },
+    {
+      "action": "assert",
+      "label": "Grummle knows racial 14001031",
+      "actor": "grummle",
+      "metric": "knows_spell",
+      "spell": 14001031,
+      "equals": 1
+    },
+    {
+      "action": "assert",
+      "label": "Grummle knows racial 14001032",
+      "actor": "grummle",
+      "metric": "knows_spell",
+      "spell": 14001032,
+      "equals": 1
+    },
+    {
+      "action": "assert",
+      "label": "Grummle knows racial 14001033",
+      "actor": "grummle",
+      "metric": "knows_spell",
+      "spell": 14001033,
+      "equals": 1
+    },
+    {
+      "action": "assert",
+      "label": "Grummle knows racial 14001034",
+      "actor": "grummle",
+      "metric": "knows_spell",
+      "spell": 14001034,
+      "equals": 1
+    },
+    {
+      "action": "assert",
+      "label": "Grummle starts with Attack",
+      "actor": "grummle",
+      "metric": "action_button",
+      "button": 0,
+      "equals": 6603
+    },
+    {
+      "action": "assert",
+      "label": "Human retains Every Man for Himself",
+      "actor": "human",
+      "metric": "knows_spell",
+      "spell": 59752,
+      "equals": 1
+    }
+  ]
+}

@@ -1,11 +1,15 @@
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 STUBS = {
+    "ItemTemplate.h": "#pragma once\n" + re.search(
+        r"enum ItemModType\b.*?\n};",
+        (ROOT / "src/server/game/Entities/Item/ItemTemplate.h").read_text(encoding="utf-8"), re.S)[0] + "\n",
     "Define.h": """#pragma once
 #include <cstddef>
 #include <cstdint>
