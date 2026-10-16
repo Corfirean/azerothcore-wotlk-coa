@@ -930,7 +930,8 @@ void Spell::EffectSchoolDMG(SpellEffIndex effIndex)
                         if (found)
                             damage += m_spellInfo->Effects[EFFECT_1].CalcValue();
 
-                        if (Player* caster = m_caster->ToPlayer())
+                        Player* caster = m_caster->ToPlayer();
+                        if (caster && !m_spellInfo->HasEffect(SPELL_EFFECT_WEAPON_PERCENT_DAMAGE))
                         {
                             // Add Ammo and Weapon damage plus RAP * 0.1
                             float dmg_min = 0.f;
@@ -3372,7 +3373,8 @@ void Spell::EffectEnchantItemTmp(SpellEffIndex effIndex)
     // Rockbiter Weapon apply to both weapon
     if (!itemTarget)
         return;
-    if (m_spellInfo->SpellFamilyName == SPELLFAMILY_SHAMAN && m_spellInfo->SpellFamilyFlags[0] & 0x400000)
+    if (m_spellInfo->SpellFamilyName == SPELLFAMILY_SHAMAN && m_spellInfo->SpellFamilyFlags[0] & 0x400000 &&
+        sSpellMgr->GetSpellTwinSource(m_spellInfo->Id) == m_spellInfo->Id)
     {
         uint32 spell_id = 0;
 

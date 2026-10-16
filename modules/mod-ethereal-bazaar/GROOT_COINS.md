@@ -11,8 +11,8 @@ for **Bazaar Tokens** (item 975001). The feature lives in this module:
 | --- | --- | --- |
 | Coin item | 910001 | `GrootCoin::COIN_ITEM`, world migration `rev_20261012_60_groot_coin_item.sql` |
 | Coin display | 990001, custom icon `INV_GrootCoin` (needs the client patch) | same, plus `client-art/` |
-| RBAC: issue awards | 1003 `Command: groot award` | auth migration `rev_20261012_60_groot_coin_rbac.sql`, `RBAC.h` |
-| RBAC: read the audit | 1004 `Command: groot audit` | same |
+| RBAC: issue awards | 1005 `Command: groot award` | auth migration `rev_20261012_60_groot_coin_rbac.sql`, `RBAC.h` |
+| RBAC: read the audit | 1006 `Command: groot audit` | same |
 | Tiraxis gossip actions | 9100-9199 (existing menus use 1-5) | `GrootCoinScripts.cpp` |
 | Exchange NPC | Tiraxis, entry 900007, script `npc_tiraxis` | unchanged |
 | Audit tables | `grootcoin_award`, `grootcoin_award_mail`, `grootcoin_exchange` (plus the queue `groot_coin_award_queue`) | characters migration `rev_20261012_60_groot_coin_audit.sql` |
@@ -28,7 +28,7 @@ for **Bazaar Tokens** (item 975001). The feature lives in this module:
   `ItemDisplayInfo.dbc` (129,695 records, highest id 171,126) has 30015 but not 990001. `Spell.dbc` has a
   spell 910001, which is a separate namespace.
 - Source: no other use of 910001 or 990001; `RBAC.h` custom block ended at 1000; no pending auth migration
-  used 1001/1002; Tiraxis gossip uses actions 1-5. This fork already stores Command: resettalents at 1001, so the permissions here are 1003 and 1004.
+  used 1001/1002; Tiraxis gossip uses actions 1-5. This fork stores Command: resettalents at 1001, and 1002 and 1003 stay open for jealous-sound, so the permissions here are 1005 and 1006.
 - The world and auth migrations only delete their own definitions (`name = 'Groot Coin'`,
   `name LIKE 'Command: groot %'`), so a row that took one of these ids in the meantime makes the update fail
   instead of being overwritten. Check the live PTR databases the same way before deploying there.
@@ -69,12 +69,12 @@ Nothing is granted by the migrations. An administrator grants each designated st
 the realm in question (check `.help rbac account grant` first; `-1` means every realm):
 
 ```
-.rbac account grant <staff-account> 1003 <realm-id>
-.rbac account grant <staff-account> 1004 <realm-id>
+.rbac account grant <staff-account> 1005 <realm-id>
+.rbac account grant <staff-account> 1006 <realm-id>
 ```
 
 `.groot award` additionally requires Game Master security (level 2+) on the session and is not available from the
-console. Staff may award their own characters; every award row records the awarding account. 1004 alone gives read-only access, also from the
+console. Staff may award their own characters; every award row records the awarding account. 1006 alone gives read-only access, also from the
 console. Ordinary `.additem` access remains a separate administrative power this module cannot restrict.
 
 ## Commands
@@ -124,7 +124,7 @@ the queue is not read and rows wait unchanged.
 | `character_guid` | requester | `characters.guid` of the character that receives the mail. |
 | `amount` | requester | Coins, 1 to `GrootCoin.MaxAward`. |
 | `reason` | requester | Shown in the mail and stored in the audit; 1-255 printable characters. |
-| `requested_by_account` | requester | Auth account id of the staff member approving it. Must pass the same gates as `.groot award` on this realm: Game Master (security 2+) and RBAC 1003 granted and not denied. It may own the character. Stored as the awarding account. |
+| `requested_by_account` | requester | Auth account id of the staff member approving it. Must pass the same gates as `.groot award` on this realm: Game Master (security 2+) and RBAC 1005 granted and not denied. It may own the character. Stored as the awarding account. |
 | `status` | server | `pending` (default), `done` or `failed`. |
 | `error` | server | Why a row failed. |
 | `award_id` | server | The `grootcoin_award` id that paid it; use `.groot inspect <award_id>`. |
@@ -154,7 +154,7 @@ How rows settle:
 - `done`: the coins are in the recipient's mailbox. The row is set `done` in the same transaction that writes
   the coin, the mail and the audit row, so `done` and the award exist together or not at all.
 - `failed`: nothing was sent. `error` says why: invalid source, reference, amount or reason; the character does
-  not exist or was deleted; the requester is not a Game Master or lacks RBAC 1003; or the reference was
+  not exist or was deleted; the requester is not a Game Master or lacks RBAC 1005; or the reference was
   already used for a different character or amount. Fix the cause and queue a new reference; failed rows are
   never retried.
 - `pending` after a poll: still being processed, or the outcome was unknown (database error, server stopped

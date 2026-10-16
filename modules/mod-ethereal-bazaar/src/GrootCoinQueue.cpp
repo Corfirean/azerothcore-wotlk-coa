@@ -11,7 +11,7 @@
  *
  * Trust: anyone who can INSERT into groot_coin_award_queue can mint coins for
  * any character, up to MaxAward per row. The requested_by_account checks
- * (Game Master and RBAC 1003) only stop rows naming an account that could
+ * (Game Master and RBAC 1005) only stop rows naming an account that could
  * not award in game; they do not authenticate the inserter. Grant INSERT on
  * that table only to the trusted website or bot account.
  */
@@ -78,7 +78,7 @@ namespace GrootCoin
                 return;
             }
 
-            // The same two gates as `.groot award`: Game Master security and RBAC 1003 (with its denials) on
+            // The same two gates as `.groot award`: Game Master security and RBAC 1005 (with its denials) on
             // this realm. The queue cannot authenticate the inserter, so this only names who approved the row.
             if (AccountMgr::GetSecurity(requester, realm.Id.Realm) < SEC_GAMEMASTER)
             {
@@ -87,7 +87,7 @@ namespace GrootCoin
             }
             if (!AccountMgr::HasPermission(requester, rbac::RBAC_PERM_COMMAND_GROOT_AWARD, realm.Id.Realm))
             {
-                MarkFailed(id, "requested_by_account lacks RBAC 1003 (Command: groot award) on this realm");
+                MarkFailed(id, "requested_by_account lacks RBAC 1005 (Command: groot award) on this realm");
                 return;
             }
 
