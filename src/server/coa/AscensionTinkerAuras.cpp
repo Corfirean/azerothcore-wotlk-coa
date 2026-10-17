@@ -181,7 +181,9 @@ class aura_ascension_tinker_lifecycle : public AuraScript
         }
         if (GetId() == 560709 && effect->GetEffIndex() == EFFECT_0)
         {
-            amount += int32(GetTarget()->GetStat(STAT_STAMINA));
+            // GetTarget() is not available while the effect amount is calculated (null pointer: Overcharge on a Shield Beacon crashed the server).
+            if (Unit* owner = GetUnitOwner())
+                amount += int32(owner->GetStat(STAT_STAMINA));
             recalculate = false;
         }
         if (GetId() == 808008 && effect->GetEffIndex() < EFFECT_2)
