@@ -3562,7 +3562,7 @@ bool Player::IsNeedCastPassiveSpellAtLearn(SpellInfo const* spellInfo) const
     // note: form passives activated with shapeshift spells be implemented by HandleShapeshiftBoosts instead of spell_learn_spell
     // talent dependent passives activated at form apply have proper stance data
     ShapeshiftForm form = GetShapeshiftForm();
-    return (!spellInfo->Stances || (form && (spellInfo->Stances & (1 << (form - 1)))) ||
+    return (!spellInfo->Stances || (form && (spellInfo->Stances & (uint64(1) << (form - 1)))) ||
             (!form && spellInfo->HasAttribute(SPELL_ATTR2_ALLOW_WHILE_NOT_SHAPESHIFTED)));
 }
 
@@ -3859,6 +3859,22 @@ void Player::removeSpell(uint32 spell_id, uint8 removeSpecMask, bool onlyTempora
     }
 }
 
+void Player::CastRidingMount(uint32 spellId)
+{
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    if (!spellInfo)
+        return;
+
+    CustomSpellValues values;
+    if (GetBaseSkillValue(SKILL_RIDING) < RIDING_SKILL_APPRENTICE)
+        for (SpellEffectInfo const& effect : spellInfo->GetEffects())
+            if (effect.ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_SPEED)
+                values.AddSpellMod(SpellValueMod(SPELLVALUE_BASE_POINT0 + effect.EffectIndex),
+                    NOVICE_RIDING_MOUNT_SPEED);
+
+    CastCustomSpell(spellId, values, this, TRIGGERED_FULL_MASK);
+}
+
 bool Player::Has310Flyer(bool checkAllSpells, uint32 excludeSpellId)
 {
     if (!checkAllSpells)
@@ -3956,6 +3972,17 @@ void Player::RemoveArenaSpellCooldowns(bool removeActivePetCooldowns)
             // actually clear cooldowns
             pet->m_CreatureSpellCooldowns.clear();
         }
+}
+
+void Player::RemoveActivePetSpellCooldowns()
+{
+    if (Pet* pet = GetPet())
+    {
+        for (auto const& cooldown : pet->m_CreatureSpellCooldowns)
+            SendClearCooldown(cooldown.first, pet);
+
+        pet->m_CreatureSpellCooldowns.clear();
+    }
 }
 
 void Player::RemoveAllSpellCooldown()
@@ -11593,10 +11620,6 @@ uint32 Player::GetMaxPersonalArenaRatingRequirement(uint32 minarenaslot) const
     return max_personal_rating;
 }
 
-// Item spell category shared by potions and potion-like consumables (ranger waterskins declare the
-// same category and cooldown as classic potions). The client enforces this pool across spell families.
-static constexpr uint32 SPELL_CATEGORY_SHARED_POTION_COOLDOWN = 5004;
-
 void Player::AddSpellAndCategoryCooldowns(SpellInfo const* spellInfo, uint32 itemId, Spell* spell, bool infinityCooldown)
 {
     if (spell && !itemId && !infinityCooldown && spellInfo->MaxCharges)
@@ -14552,7 +14575,18 @@ LootItem* Player::StoreLootItem(uint8 lootSlot, Loot* loot, InventoryResult& msg
     }
 
     ItemPosCountVec dest;
-    msg = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, item->itemid, item->count);
+    uint32 storedCount = item->count;
+    uint32 noSpaceForCount = 0;
+    msg = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, item->itemid, storedCount, &noSpaceForCount);
+    // A quest drop stack can exceed what the item's carry limit still allows; take what fits
+    // instead of refusing the whole stack while the quest still needs items.
+    if (msg == EQUIP_ERR_CANT_CARRY_MORE_OF_THIS && item->needs_quest && noSpaceForCount < storedCount)
+    {
+        storedCount -= noSpaceForCount;
+        dest.clear();
+        msg = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, item->itemid, storedCount);
+    }
+
     if (msg == EQUIP_ERR_OK)
     {
         AllowedLooterSet looters = item->GetAllowedLooters();
@@ -14590,14 +14624,14 @@ LootItem* Player::StoreLootItem(uint8 lootSlot, Loot* loot, InventoryResult& msg
 
         --loot->unlootedCount;
 
-        SendNewItem(newitem, uint32(item->count), false, false, true);
+        SendNewItem(newitem, storedCount, false, false, true);
         UpdateLootAchievements(item, loot);
 
         // LootItem is being removed (looted) from the container, delete it from the DB.
         if (loot->containerGUID)
             sLootItemStorage->RemoveStoredLootItem(loot->containerGUID, item->itemid, item->count, loot, item->itemIndex);
 
-        sScriptMgr->OnPlayerLootItem(this, newitem, item->count, this->GetLootGUID());
+        sScriptMgr->OnPlayerLootItem(this, newitem, storedCount, this->GetLootGUID());
     }
     else
     {
@@ -15918,13 +15952,13 @@ void Player::_SaveCharacter(bool create, CharacterDatabaseTransaction trans)
         stmt->SetData(index++, GetByteValue(PLAYER_BYTES_2, 3));
         stmt->SetData(index++, GetPlayerFlags());
 
-        if (_scriptedPrivateMapId && (GetMapId() == _scriptedPrivateMapId
-            || (IsBeingTeleported() && GetTeleportDest().GetMapId() == _scriptedPrivateMapId)))
+        if (_scriptedPrivateMapId != MAPID_INVALID)
         {
             // Private-instance IDs are process-local. Crash recovery always starts outside.
             stmt->SetData(index++, uint16(_scriptedPrivateReturn.GetMapId()));
             stmt->SetData(index++, uint32(0));
-            stmt->SetData(index++, uint8(GetDungeonDifficulty()) | uint8(GetRaidDifficulty()) << 4);
+            stmt->SetData(index++, uint8(_scriptedPrivateReturnDungeonDifficulty)
+                | uint8(_scriptedPrivateReturnRaidDifficulty) << 4);
             stmt->SetData(index++, finiteAlways(_scriptedPrivateReturn.GetPositionX()));
             stmt->SetData(index++, finiteAlways(_scriptedPrivateReturn.GetPositionY()));
             stmt->SetData(index++, finiteAlways(_scriptedPrivateReturn.GetPositionZ()));
@@ -17619,7 +17653,10 @@ void Player::SendAllSpellChargeStates() const
     GetSession()->SendPacket(&clear);
 
     if (partialPools.empty())
+    {
+        sScriptMgr->OnPlayerSendSpellChargeStates(this);
         return;
+    }
 
     WorldPacket packet(SMSG_SEND_SPELL_CHARGES, 4 + partialPools.size() * 9);
     packet << uint32(partialPools.size());
@@ -17630,6 +17667,7 @@ void Player::SendAllSpellChargeStates() const
         packet << uint8(pool.second);
     }
     GetSession()->SendPacket(&packet);
+    sScriptMgr->OnPlayerSendSpellChargeStates(this);
 }
 
 std::string Player::GetDebugInfo() const

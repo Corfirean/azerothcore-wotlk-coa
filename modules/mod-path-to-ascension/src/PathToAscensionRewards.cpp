@@ -206,8 +206,8 @@ namespace PathToAscension
             return false;
 
         for (uint32 id : trackingQuests.at(questId))
-            if (Tutorial const* tutorial = GetCatalog().Find(id);
-                tutorial && !Claimed(player, id) && Eligible(player, *tutorial))
+            if (Tutorial const* tutorial = GetCatalog().Find(id); tutorial && !Claimed(player, id)
+                && Eligible(player, *tutorial))
                 return true;
 
         return false;

@@ -127,7 +127,21 @@ void WorldDatabaseConnection::DoPrepareStatements()
     // 0: uint8
     PrepareStatement(WORLD_SEL_REQ_XP, "SELECT Experience FROM player_xp_for_level WHERE Level = ?", CONNECTION_SYNCH);
     PrepareStatement(WORLD_UPD_VERSION, "UPDATE version SET core_version = ?, core_revision = ?", CONNECTION_ASYNC);
+    PrepareStatement(WORLD_SEL_XP_HOTSPOTS, "SELECT id, payload FROM xp_hotspot_location", CONNECTION_SYNCH);
+    PrepareStatement(WORLD_REP_XP_HOTSPOT, "REPLACE INTO xp_hotspot_location (id, payload) VALUES (?, ?)", CONNECTION_BOTH);
+    PrepareStatement(WORLD_DEL_XP_HOTSPOT, "DELETE FROM xp_hotspot_location WHERE id = ?", CONNECTION_BOTH);
+    PrepareStatement(WORLD_SEL_XP_HOTSPOT_SETTING, "SELECT id, value FROM xp_hotspot_setting", CONNECTION_SYNCH);
+    PrepareStatement(WORLD_UPD_XP_HOTSPOT_SETTING, "REPLACE INTO xp_hotspot_setting (id, value) VALUES (?, ?)", CONNECTION_BOTH);
     PrepareStatement(WORLD_DEL_SPAWNGROUP_MEMBER, "DELETE FROM spawn_group WHERE spawnType = ? AND spawnId = ?", CONNECTION_ASYNC);
+#ifdef MOD_MANASTORM_ENDLESS
+    PrepareStatement(WORLD_SEL_MANASTORM_PRIVATE_CREATURES,
+        "SELECT guid, id, map, phaseMask, equipment_id, position_x, position_y, position_z, orientation, "
+        "spawntimesecs, wander_distance, currentwaypoint, curhealth, curmana, MovementType, npcflag, unit_flags, "
+        "dynamicflags FROM manastorm_private_creature ORDER BY guid", CONNECTION_SYNCH);
+
+    PrepareStatement(WORLD_SEL_MANASTORM_FLOOR_XP,
+        "SELECT enabled, rdf_dungeon_id, multiplier FROM manastorm_floor_experience WHERE id = 1", CONNECTION_SYNCH);
+#endif
     PrepareStatement(WORLD_SEL_CLIENT_SPELL_PATCHES, "SELECT * FROM spell_dbc WHERE ID = ?", CONNECTION_SYNCH);
     PrepareStatement(WORLD_SEL_CLIENT_SPELL_DESCRIPTIONS,
         "SELECT ID, Description, ToolTip FROM coa_client_spell_description", CONNECTION_SYNCH);

@@ -39,7 +39,7 @@ class RunnerTests(unittest.TestCase):
                 run.validate(self.scenario)
 
     def test_nearby_creature_count_filters_require_valid_scope_and_ranges(self):
-        for filters in ({}, {'min_level': 16, 'max_level': 17}, {'min_home_distance': 1}):
+        for filters in ({}, {'min_level': 16, 'max_level': 17}, {'min_home_distance': 1}, {'spell': 210866}):
             scenario = copy.deepcopy(self.scenario)
             scenario['steps'].append({'action': 'assert', 'actor': 'caster',
                                      'metric': 'nearby_creature_count', 'entry': 2070, 'equals': 2, **filters})
@@ -48,7 +48,8 @@ class RunnerTests(unittest.TestCase):
         for filters in ({'min_level': 0}, {'max_level': 256}, {'min_level': 17, 'max_level': 16},
                         {'min_level': '16'}, {'min_level': True}, {'max_level': 16.5},
                         {'min_home_distance': -1}, {'min_home_distance': float('nan')},
-                        {'min_home_distance': float('inf')}, {'min_home_distance': True}):
+                        {'min_home_distance': float('inf')}, {'min_home_distance': True},
+                        {'spell': 0}, {'spell': '210866'}, {'spell': True}):
             scenario = copy.deepcopy(self.scenario)
             scenario['steps'].append({'action': 'assert', 'actor': 'caster',
                                      'metric': 'nearby_creature_count', 'entry': 2070, 'equals': 2, **filters})
@@ -264,6 +265,20 @@ class RunnerTests(unittest.TestCase):
             scenario = copy.deepcopy(self.scenario)
             scenario['creature_scaling'] = value
             with self.subTest(value=value), self.assertRaisesRegex(ValueError, 'creature_scaling must be boolean'):
+                run.validate(scenario)
+
+    def test_game_event_needs_an_event_id_and_a_boolean_state(self):
+        for step in ({'action': 'game_event', 'event': 12, 'active': True},
+                     {'action': 'game_event', 'event': 12, 'active': False}):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['steps'].insert(0, step)
+            self.assertIs(run.validate(scenario), scenario)
+        for step, error in (({'action': 'game_event', 'event': 12, 'active': 1}, 'active must be boolean'),
+                            ({'action': 'game_event', 'event': 0, 'active': True}, r'\.event'),
+                            ({'action': 'game_event', 'event': 12}, 'step 0')):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['steps'].insert(0, step)
+            with self.subTest(step=step), self.assertRaisesRegex(ValueError, error):
                 run.validate(scenario)
 
     def test_hour_timezone_is_a_posix_offset_placing_local_time_at_the_start_of_that_hour(self):
