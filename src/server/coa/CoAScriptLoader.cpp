@@ -45,7 +45,6 @@ void AddSC_AscensionTreeOfLife();
 void AddSC_CoALfgStartPoint();
 void AddSC_CoABossProbe();
 void AddSC_CoADungeonSpellDamage();
-void AddSC_CoASpellDamageAudit();
 void AddSC_CoaEsteriaRacials();
 void AddSC_CoACreatureScaling();
 void AddSC_CoADungeonBossKit();
@@ -703,7 +702,6 @@ void AddCoAScripts()
     AddSC_CoALfgStartPoint();
     AddSC_CoABossProbe();
     AddSC_CoADungeonSpellDamage();
-    AddSC_CoASpellDamageAudit();
     AddSC_CoaEsteriaRacials();
     AddSC_CoACreatureScaling();
     AddSC_CoADungeonBossKit();
