@@ -206,7 +206,10 @@ def insert_delete_safety_check(file: io, file_path: str) -> None:
         temporary = re.match(r"CREATE\s+TEMPORARY\s+TABLE\s+`([^`]+)`", statement, re.I)
         if temporary:
             temporary_tables.add(temporary[1].lower())
-        deletion = re.match(r"DELETE\s+FROM\s+`([^`]+)`", statement, re.I)
+        delete_statement = re.sub(
+            r"^DELETE\s+`([^`]+)`\s+FROM\s+`([^`]+)`\s+(?:AS\s+)?`\1`(?=\s|$)",
+            r"DELETE FROM `\2`", statement, flags=re.I)
+        deletion = re.match(r"DELETE\s+FROM\s+`([^`]+)`", delete_statement, re.I)
         insertion = re.match(r"INSERT\s+INTO\s+`([^`]+)`", statement, re.I)
         if deletion and deletion[1].lower() in protected:
             print(f"❌ Entries from {deletion[1]} should not be deleted! {file_path} at line {line_number}")
@@ -214,10 +217,12 @@ def insert_delete_safety_check(file: io, file_path: str) -> None:
         if insertion:
             table = insertion[1].lower()
             upsert = re.search(r"\bON\s+DUPLICATE\s+KEY\s+UPDATE\b", statement, re.I)
-            if previous_delete != table and not upsert and table not in temporary_tables:
+            guarded = re.search(r"\bWHERE\s+NOT\s+EXISTS\s*\([^;]*?\bFROM\s+`" + re.escape(table) + r"`", statement, re.I | re.S)
+            if previous_delete != table and not upsert and not guarded and table not in temporary_tables:
                 print(f"❌ No matching DELETE before the INSERT in {file_path} at line {line_number}")
                 check_failed = True
-        previous_delete = deletion[1].lower() if deletion else None
+        previous_delete = (deletion[1].lower() if deletion else
+                           previous_delete if insertion and previous_delete == insertion[1].lower() else None)
     if check_failed:
         error_handler = True
         results["INSERT & DELETE safety usage check"] = "Failed"
@@ -300,7 +305,7 @@ def semicolon_check(file: io, file_path: str) -> None:
         # Remove inline comments after SQL (ignoring "--" inside string literals)
         stripped_line = strip_inline_comment(stripped_line)
 
-        if not query_open and stripped_line.upper().startswith("SET") and not stripped_line.endswith(";"):
+        if not query_open and stripped_line.upper().startswith("SET") and not stripped_line.endswith(";") and open_paren_balance(stripped_line) == 0:
             print(f"❌ Missing semicolon in {file_path} at line {line_number}")
             check_failed = True
 
@@ -414,7 +419,9 @@ def backtick_check(file: io, file_path: str) -> None:
                                     "WITH", "RECURSIVE", "COLUMN", "ENGINE", "CHARSET", "COLLATE",
                                     "IF", "ELSEIF", "LOOP", "WHILE", "DO", "HANDLER", "LEAVE",
                                     "ITERATE", "DECLARE", "CURSOR", "FETCH", "OPEN", "CLOSE",
-                                    "ABS", "LEAST"}:
+                                    "ABS", "LEAST", "COUNT", "COALESCE", "MIN", "MAX", "CONCAT", "FIELD",
+                                    "CURRENT_TIMESTAMP", "BINARY", "USING", "EXECUTE", "DEALLOCATE",
+                                    "PREPARE", "MESSAGE_TEXT"}:
                     continue
 
                 # Make sure the word is enclosed in backticks
