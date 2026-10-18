@@ -26,7 +26,7 @@ AzerothCore is a C++ MMORPG server emulator for World of Warcraft 3.3.5a (WotLK)
 ## Investigating reported defects
 
 Follow this sequence within the task's authorized scope:
-**Report → inspect effective data → establish expected behavior → reproduce → minimal fix → verification → PR.**
+**Report в†’ inspect effective data в†’ establish expected behavior в†’ reproduce в†’ minimal fix в†’ verification в†’ PR.**
 
 - Treat the report as evidence to investigate. For spells and quests, inspect effective DBC/SQL data, acquisition
   and the execution path using the inspector and mechanic map. Derive expectations independently of the current
@@ -82,46 +82,46 @@ Follow this sequence within the task's authorized scope:
 
 Read the relevant sections when needed for the work. Do not read every guide or turn examples into extra tasks.
 
-- CMake configuration/build → `.agents/docs/build.md`
-- Verification setup, stages, selection, outputs and gameplay queue-mode limits → `docs/coa/verification.md`
-- Writing or modifying C++ → `.agents/docs/cpp-guidelines.md`
-  - Script work (under `src/server/scripts/`) → also `.agents/docs/cpp-scripts.md`
-- Creating or modifying SQL → `.agents/docs/sql-guidelines.md`
-  - SmartAI work (`smart_scripts` data) → also `.agents/docs/cpp-scripts.md`
-- Reviewing a changeset or PR → `.agents/docs/code-review.md`
-- Preparing an actual PR → `.agents/docs/self-review-rules.md`
-- Requested issue queue or topic fixes (class mechanics, quests, crashes, etc.) →
+- CMake configuration/build в†’ `.agents/docs/build.md`
+- Verification setup, stages, selection, outputs and gameplay queue-mode limits в†’ `docs/coa/verification.md`
+- Writing or modifying C++ в†’ `.agents/docs/cpp-guidelines.md`
+  - Script work (under `src/server/scripts/`) в†’ also `.agents/docs/cpp-scripts.md`
+- Creating or modifying SQL в†’ `.agents/docs/sql-guidelines.md`
+  - SmartAI work (`smart_scripts` data) в†’ also `.agents/docs/cpp-scripts.md`
+- Reviewing a changeset or PR в†’ `.agents/docs/code-review.md`
+- Preparing an actual PR в†’ `.agents/docs/self-review-rules.md`
+- Requested issue queue or topic fixes (class mechanics, quests, crashes, etc.) в†’
   `.agents/skills/coa-fix-issues/SKILL.md` (topic requests default to 32 issues and one PR per batch)
-- Subsystem-specific questions → the relevant section in `.agents/docs/systems/`
-- Ascension damage/healing, AP/RAP/SP coefficients, triggered spells or tooltip parity →
+- Subsystem-specific questions в†’ the relevant section in `.agents/docs/systems/`
+- Ascension damage/healing, AP/RAP/SP coefficients, triggered spells or tooltip parity в†’
   `.agents/docs/systems/ascension-spell-parity.md`
-- DBC record retrieval, links, provenance or data comparison → `apps/coa-dbc/README.md` (`coa-dbc-viewer`, JSON CLI)
-- Spell/quest ranks, acquisition, expected behavior, execution paths and regression links →
+- DBC record retrieval, links, provenance or data comparison в†’ `apps/coa-dbc/README.md` (`coa-dbc-viewer`, JSON CLI)
+- Spell/quest ranks, acquisition, expected behavior, execution paths and regression links в†’
   `apps/coa-mechanics/README.md` (compact mechanic maps)
-- Finding gameplay regression scenarios or checking recorded results → `apps/coa-gameplay-test/README.md`
-- Scoped source checks (boundaries, registrations, tooling regressions) →
+- Finding gameplay regression scenarios or checking recorded results в†’ `apps/coa-gameplay-test/README.md`
+- Scoped source checks (boundaries, registrations, tooling regressions) в†’
   `python -B tools/verify_all.py --stages source --base <ref>`; `report.json` and `source.log` list the suites
   it selected (`--plan` shows only the command).
-- SQL change boundaries → the `source` stage against `--base <ref>`; CI exceptions need a maintainer's
+- SQL change boundaries в†’ the `source` stage against `--base <ref>`; CI exceptions need a maintainer's
   `sql-change-authorized` PR label. A label does not replace the task's explicit SQL authorization.
-- Ascension race/class availability or character creation → `.agents/docs/systems/ascension-character-creation.md`
-- CoA talent points, ranks, specializations or the talent window's state → `.agents/docs/systems/ascension-talents.md`
-- Capturing a lesson or adding/updating agent docs → `.agents/docs/README.md`
+- Ascension race/class availability or character creation в†’ `.agents/docs/systems/ascension-character-creation.md`
+- CoA talent points, ranks, specializations or the talent window's state в†’ `.agents/docs/systems/ascension-talents.md`
+- Capturing a lesson or adding/updating agent docs в†’ `.agents/docs/README.md`
 
 ## Repository layout
 
-- `src/common/` — networking (Asio), crypto, config, logging, shared utilities.
-- `src/server/game/` — core gameplay; compiled into worldserver.
-- `src/server/scripts/` — content scripts grouped by region (`EasternKingdoms/`, `Northrend/`, …), class (`Spells/spell_mage.cpp`, …), and domain (`Commands/`, `Pet/`, `OutdoorPvP/`, `World/`).
-- `src/server/database/` — DB abstraction and schema updater.
-- `src/server/shared/` — code shared by auth and world servers.
-- `src/server/apps/{authserver,worldserver}/` — entry points (ports 3724 and 8085).
-- `src/test/` — unit tests + mocks.
-- `data/sql/` — `base/` (historical schema), `updates/db_*/` (merged), `updates/pending_db_*/` (in-flight), `custom/` (gitignored).
-- `modules/` — external modules (see below).
-- `apps/` — helper scripts; `apps/codestyle/` holds the lint scripts.
-- `conf/dist/` — distributed config templates; `conf/*.conf` is gitignored.
-- `deps/` — vendored third-party dependencies.
+- `src/common/` вЂ” networking (Asio), crypto, config, logging, shared utilities.
+- `src/server/game/` вЂ” core gameplay; compiled into worldserver.
+- `src/server/scripts/` вЂ” content scripts grouped by region (`EasternKingdoms/`, `Northrend/`, вЂ¦), class (`Spells/spell_mage.cpp`, вЂ¦), and domain (`Commands/`, `Pet/`, `OutdoorPvP/`, `World/`).
+- `src/server/database/` вЂ” DB abstraction and schema updater.
+- `src/server/shared/` вЂ” code shared by auth and world servers.
+- `src/server/apps/{authserver,worldserver}/` вЂ” entry points (ports 3724 and 8085).
+- `src/test/` вЂ” unit tests + mocks.
+- `data/sql/` вЂ” `base/` (historical schema), `updates/db_*/` (merged), `updates/pending_db_*/` (in-flight), `custom/` (gitignored).
+- `modules/` вЂ” external modules (see below).
+- `apps/` вЂ” helper scripts; `apps/codestyle/` holds the lint scripts.
+- `conf/dist/` вЂ” distributed config templates; `conf/*.conf` is gitignored.
+- `deps/` вЂ” vendored third-party dependencies.
 
 ## Modules
 
@@ -168,3 +168,13 @@ Optional: one short paragraph in plain English for the reader (at most 300 chara
   `python changelog.py new --area bots --type fixed --audience players --title "..."`.
 - Full guide with examples: https://github.com/Corfirean/coa-server-build/blob/main/changelog/GUIDE.md
 <!-- changelog:end -->
+
+## Server build and release handoff
+
+The cross-repository build/release workflow lives in `Corfirean/coa-server-build`:
+`AGENTS.md` and `docs/server-release.md`. Read that runbook when asked to integrate or release a server.
+Freeze upstream, custom-race release, both bot systems, Content Scaling and Manager revisions before building.
+Use an isolated integration branch and pass exact SHAs to GitHub Actions. A requested build for later release must
+use `publish_candidate=false`; preserve the successful build run, source lock, snapshot, artifacts and actual test
+coverage for the next agent. Publishing a GitHub release or changing stable requires the owner's separate command
+for that candidate. Do not advance the production branch while an automatic release could publish unapproved work.
