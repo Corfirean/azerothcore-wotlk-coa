@@ -172,6 +172,23 @@ for rid, (src, side, label, _) in RACES.items():
         off = t.string(label)
         for k in list(range(14, 30)) + list(range(31, 47)) + list(range(48, 64)):
             row[k] = off
+    # fields 65/67 (facial hair / hair style label) and 66 (extra feature label) are lookup KEYS the client
+    # resolves against its own global string table (e.g. "NORMAL", "PIERCINGS", "EARRINGS"), not display text.
+    # Several of Ascension's own donor race slots (35 and others cloned from it) ship these mixed-case ("Normal")
+    # instead of the real uppercase token; the client can't resolve that key, so it hides the whole Hair / Facial
+    # Hair / Extra Feature customize buttons entirely (issue #34: only Skin Color and Face showed for Naga).
+    # Force the two we know the client always accepts; leave 66 alone only if it already looks like a real token.
+    def _tok(o):
+        if not o:
+            return ''
+        end = t.sb.index(b'\0', o)
+        return t.sb[o:end].decode('utf-8', 'replace')
+    if _tok(row[65]) and not _tok(row[65]).isupper():
+        row[65] = t.string('NORMAL')
+    if _tok(row[67]) and not _tok(row[67]).isupper():
+        row[67] = t.string('NORMAL')
+    if _tok(row[66]) and not _tok(row[66]).isupper():
+        row[66] = t.string('NORMAL')
 recs.sort(key=lambda r: r[0])
 t.set_recs(recs)
 t.save('ChrRaces.dbc')

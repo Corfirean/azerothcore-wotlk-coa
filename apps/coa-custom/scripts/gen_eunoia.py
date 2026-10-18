@@ -295,7 +295,7 @@ print('eunoia.sql: %d statements; new race ids %s (mask twins %s)' % (len(sql), 
 # ---------------------------------------------------------------- Naga (21): Sirus's HD player Naga (open source)
 # Character/NagaSirusHD (Snaga_male, Snaga_Female): player models with 199 / 153 animations and the cape and hair
 # texture slots; their appearance rows are Sirus's race 13. Files in patch-ZE5.MPQ.
-SIRUS = 'C:/Users/ilusi/Downloads/Naga_Extract_2026-10-03/Naga_Extract_2026-10-03/Race13LinkedTables/ByArchive/ruRU/patch-ruRU-4.mpq/DBFilesClient/'
+SIRUS = 'C:/CoA-Build/sources/Naga_Extract_2026-10-03/Naga_Extract_2026-10-03/Race13LinkedTables/ByArchive/ruRU/patch-ruRU-4.mpq/DBFilesClient/'
 NAGA, SIRUS_NAGA = 21, 13
 BSL = chr(92)
 NAGA_MODELS = (BSL.join(['Character', 'NagaSirusHD', 'Male', 'Snaga_male.mdx']),
@@ -360,7 +360,7 @@ print('Naga: Sirus rows and displays %s' % naga_displays)
 # Alpha Worgen and Alpha Goblin (alpha models, with their own textures moved to Character/WorgenA and GoblinA so they
 # do not replace ours), Furbolg (Project Reforged). Files in patch-ZE6.MPQ. Same id rule as the Eunoia races: ids
 # <= 63, each sharing the race-mask bit of a race of its own faction.
-WORGEN_SRC = 'C:/Users/ilusi/Downloads/worgen/New folder (4)/DBFilesClient/'
+WORGEN_SRC = 'C:/CoA-Build/sources/worgen/New folder (4)/DBFilesClient/'
 THIN_SRC = 'C:/CoA-Build/esteria/thin_dbc/'        # Esteria's Thin Human (Kalibros), tables from make_thin_dbc.py
 FURBOLG_SRC = 'C:/Users/ilusi/Downloads/Playable_Races_Isolated_2026-10-04/Playable_Races_Isolated_2026-10-04/ReadyToPort/Shared/DBFilesClient/'
 BS = chr(92)
@@ -404,10 +404,7 @@ EXTRA = {
     50: (FURBOLG_SRC, 18, A, 'Furbolg', 6, 6, (P('Character', 'Furbolg', 'FurbolgRace.mdx'),
          P('Character', 'Furbolg', 'FurbolgRace.mdx')), 'ReforgedFurbolg', 'Ta', None),
     # Esteria races on 66+ (EsteriaAppearance.dll translates them back to Esteria's ids); a mask twin of the same faction
-    72: (SKY_SRC, 53, H, 'Windshaper Skyborne', 10, 10, (P('custom', 'skyborne', 'runtime', 'male', '7478487.m2'),
-         P('custom', 'skyborne', 'runtime', 'female', '7478494.m2')), 'SkyborneHorde', None, None),
-    77: (SKY_SRC, 52, A, 'High Order Skyborne', 10, 10, (P('custom', 'skyborne', 'runtime', 'male', '7478487.m2'),
-         P('custom', 'skyborne', 'runtime', 'female', '7478494.m2')), 'Skyborne', None, None),
+    # Skyborne 72/77 removed 2026-10-16: no working model (checker squares in client test), race ids retired for good
     67: (MECHA_SRC, 47, A, 'Mechagnome', 7, 7, (P('custom', 'mechagnome', 'native', 'male', 'mechagnomemale.m2'),
          P('custom', 'mechagnome', 'native', 'female', 'mechagnomefemale.m2')), 'Mechagnome', None, None),
     66: (ESTERIA_TABLES + 'highmountain/', 46, H, 'Highmountain Tauren', 6, 6, (P('custom', 'highmountain', 'native', 'male', 'highmountaintaurenmale.m2'),
@@ -420,8 +417,11 @@ EXTRA = {
          P('custom', 'haranir', 'native', 'female', 'harronirfemale.m2')), 'HaranirHorde', None, None),
     71: (ESTERIA_TABLES + 'haranir/', 50, A, 'Haranir', 4, 4, (P('custom', 'haranir', 'native', 'male', 'harronirmale.m2'),
          P('custom', 'haranir', 'native', 'female', 'harronirfemale.m2')), 'Haranir', None, None),
+    # prefix 'Vu': confirmed from Esteria's own mod-custom-server fix (chrraces_dbc.ClientPrefix = 'Vu' for race
+    # 20); this source table's own ChrRaces.dbc has no row for race 20 to read it from automatically, so it is
+    # given explicitly here - without it Vulpera inherited its look-twin's prefix, breaking item geosets (vanity).
     74: (ESTERIA_TABLES + 'vulpera/', 20, H, 'Vulpera', 19, 19, (P('custom', 'vulpera', 'native', 'male', 'vulperamale.m2'),
-         P('custom', 'vulpera', 'native', 'female', 'vulperafemale.m2')), 'VulperaEsteria', None, None),
+         P('custom', 'vulpera', 'native', 'female', 'vulperafemale.m2')), 'VulperaEsteria', 'Vu', None),
 }
 
 
@@ -458,6 +458,35 @@ for rid, (src, srace, side, name, look, stats, models, fname, prefix, move) in E
 cdi.save(OUT + 'CreatureDisplayInfo.dbc')
 cmd.save(OUT + 'CreatureModelData.dbc')
 
+def _source_prefix(src, srace):
+    """The race's OWN ClientPrefix (item/geoset model code) from its source table, when that table has one -
+    confirmed against Esteria's own mod-custom-server fix for Vulpera (chrraces_dbc.ClientPrefix = 'Vu'): without
+    this, most of EXTRA below left `prefix` as None, so the race silently inherited its look-twin's prefix instead
+    (e.g. Human's 'Hu') and every item whose armor/robe geoset is keyed by race-specific prefix came up as a
+    missing-texture checker square on these races - the "a lot of vanity items are broken" report for Vulpera and
+    friends. Only used when it actually differs from nothing: a source with no prefix of its own (not every source
+    pack defines one) falls back to the explicit `prefix` tuple field, then to the look-twin's as before.
+    """
+    try:
+        import struct as _struct
+        d = open(src + 'ChrRaces.dbc', 'rb').read()
+    except (FileNotFoundError, IsADirectoryError):
+        return None
+    _, n, fc, rs, ss = _struct.unpack('<4s4I', d[:20])
+    sb = d[20 + n * rs:]
+    for i in range(n):
+        r = _struct.unpack('<%dI' % (rs // 4), d[20 + i * rs:20 + (i + 1) * rs])
+        if r[0] != srace:
+            continue
+        off = r[6]
+        if not off:
+            return None
+        end = sb.index(b'\0', off)
+        text = sb[off:end].decode('utf-8', 'replace')
+        return text or None
+    return None
+
+
 for name in ('ChrRaces.dbc', 'client_ChrRaces.dbc'):
     t = DBC(OUT + name)
     by = {r[0]: r for r in t.rows}
@@ -466,8 +495,9 @@ for name in ('ChrRaces.dbc', 'client_ChrRaces.dbc'):
         base[0], base[1] = rid, 0xC
         base[2], base[13], base[7] = FACTION[side]
         base[4], base[5] = extra_displays[rid][0][0], extra_displays[rid][1][0]
-        if prefix:
-            base[6] = t.string(prefix)
+        own_prefix = _source_prefix(src, srace) or prefix
+        if own_prefix:
+            base[6] = t.string(own_prefix)
         base[11] = t.string(fname)
         base[12] = 0
         for k in list(range(14, 30)) + list(range(31, 47)) + list(range(48, 64)):
@@ -485,9 +515,21 @@ def merge_extra(name, race_field, id_field=0, strings=()):
     ours.rows = [r for r in ours.rows if r[race_field] not in EXTRA]
     next_id = max(r[id_field] for r in ours.rows) + 1 if id_field is not None else None
     for rid, (src, srace, side, rname, look, stats, models, fname, prefix, move) in EXTRA.items():
-        theirs = DBC(src + name)
+        try:
+            theirs = DBC(src + name)
+            theirs_srace, theirs_already_final = srace, False
+        except FileNotFoundError:
+            # Furbolg's one-off external source pack (Playable_Races_Isolated_2026-10-04, downloaded straight into
+            # Downloads and since cleaned up) is gone from disk; it is already correctly merged into the currently
+            # deployed client (confirmed working in-game), so fall back to reading ITS rows back out of the live
+            # patch-T.MPQ instead of re-deriving them - already filed under the final race id, not `srace`.
+            theirs = DBC('live_client_dbc/' + name.lower())
+            theirs_srace, theirs_already_final = rid, True
         for r in theirs.rows:
-            if r[race_field] != srace:
+            if r[race_field] != theirs_srace:
+                continue
+            if theirs_already_final:
+                ours.rows.append(list(r))
                 continue
             nr = list(r)
             nr[race_field] = rid
@@ -982,12 +1024,24 @@ print('Undead Gnome: %d rows, %d textures to recolour' % (sum(1 for r in _t.rows
 
 
 # ---------------------------------------------------------------- creature races: model scale of their displays
-# (the female Eredar model is small and shown at 3x by its creature displays)
+# (the female Eredar model is small and shown at 3x by its creature displays). Eredar was race 56 before a
+# renumbering (it is 55 now, see RACES above); this loop still said 56 only, so the "55_1": 3.0 correction in
+# scales.json was never actually applied - fixed to drive the loop from scales.json's own keys instead of a
+# hardcoded id that can go stale again. `extra_displays` only covers the EXTRA dict (Esteria native races) -
+# Eredar is in the earlier, Eunoia-donor RACES dict, which tracks its own displays in a differently-shaped
+# `display_ids` map ({their_old_id: our_new_id}, not race-keyed), so it was never found there either (the loop
+# body silently never ran for it). Reading each race's male/female display straight back out of the just-saved
+# ChrRaces.dbc instead works for both systems - and any later one - since that is the one place every race's
+# final display ids are guaranteed to already be resolved, regardless of which path built them.
 _sc = _js.load(open('C:/CoA-Build/creatures/scales.json'))
 _cdi = DBC(OUT + 'CreatureDisplayInfo.dbc')
 _by = {r[0]: r for r in _cdi.rows}
-for _rid in (56,):
-    for _disp, _old, _sex in extra_displays.get(_rid, []):
+_races_now = {r[0]: r for r in DBC(OUT + 'ChrRaces.dbc').rows}
+for _rid in sorted({int(_k.split('_')[0]) for _k in _sc}):
+    _race_row = _races_now.get(_rid)
+    if not _race_row:
+        continue
+    for _sex, _disp in ((0, _race_row[4]), (1, _race_row[5])):
         _v = _sc.get('%d_%d' % (_rid, _sex), 1.0)
         if _disp in _by and _v != 1.0:
             _by[_disp][4] = struct.unpack('<I', struct.pack('<f', _v))[0]
@@ -1000,7 +1054,7 @@ print('creature races: display scales set', _sc)
 for name in ('ChrRaces.dbc', 'client_ChrRaces.dbc'):
     t = DBC(OUT + name)
     for r in t.rows:
-        if r[0] in (19, 27, 65, 72, 77):    # + Skyborne 72/77: crashed the client, removed 2026-10-07 (to retry later)            # + Test Race 65 (the 128-race test), removed 2026-10-07
+        if r[0] in (19, 27, 65):    # + Test Race 65 (the 128-race test), removed 2026-10-07
             r[1] |= 0x1
     t.save(OUT + name)
 print('old Earthen 27 / Vulpera 19 hidden from creation')
