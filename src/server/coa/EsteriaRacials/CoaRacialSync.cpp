@@ -1,8 +1,3 @@
-// Every login, an added race (12 and up, CoaCustomRacials.h) ends up with exactly its own racials: the ones it should
-// have are learned, racials of other races (Esteria's, or our older CoA set it used to have) are removed, and the
-// borrowed vanilla racial lines are stripped. Creation only covers new characters; this covers the existing ones too,
-// for every class (AscensionCompat's own sync only runs for the CoA classes).
-
 #include "CoaCustomRacials.h"
 #include "DBCStores.h"
 #include "Config.h"
@@ -68,16 +63,6 @@ public:
 
 void AddSC_CoaEsteriaRacials()
 {
-    void AddSC_race_racials();
-    void AddSC_drakkin_racials();
-    void AddSC_drakonid_racials();
-    void AddSC_darkfallen_racials();
-    void AddSC_broken_racials();
 
     new CoaRacialSync();
-    AddSC_race_racials();
-    AddSC_drakkin_racials();
-    AddSC_drakonid_racials();
-    AddSC_darkfallen_racials();
-    AddSC_broken_racials();
 }

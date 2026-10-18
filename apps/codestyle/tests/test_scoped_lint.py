@@ -73,6 +73,10 @@ class ScopedLintTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("unrelated.sql", result.stdout)
 
+    def test_sql_builtin_functions_do_not_require_identifier_quotes(self):
+        self.put(self.pending + "functions.sql", "SELECT ABS(`spell_id`), LEAST(`level` * 5, 400) FROM `characters`;\n")
+        self.assert_passes(self.lint("sql", "--files", self.pending + "functions.sql"))
+
     def test_sql_selected_file_keeps_style_checks(self):
         result = self.lint("sql", "--files", self.pending + "unrelated.sql")
         self.assertNotEqual(result.returncode, 0)

@@ -41,7 +41,6 @@ Realm ReadRealm()
     }
     if (!realm.Live && !realm.Seasonal && !realm.League && !realm.Ptr && !realm.Development)
         realm.Live = true;
-    // CoA.ClassModel accepts one model or a space-separated list ("coa wcr").
     std::string const model = sConfigMgr->GetOption<std::string>("CoA.ClassModel", "coa");
     for (std::string_view entry : Acore::Tokenize(model, ' ', false))
     {
@@ -259,7 +258,6 @@ bool IsFreepickHero(Player const* player)
 
 bool IsRebornCharacter(Player const* player)
 {
-    // On "coa wcr" the stock classes use CoA Character Advancement, not free-pick Reborn.
     if (CurrentRealm.ConquestOfAzeroth)
         return false;
     uint8 const classId = player->getClass();
