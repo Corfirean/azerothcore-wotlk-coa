@@ -1,5 +1,6 @@
-CREATE TABLE IF NOT EXISTS `custom_race_display` (`race` `TINYINT` `UNSIGNED` NOT NULL, `gender` `TINYINT` `UNSIGNED` NOT NULL, `idx` `TINYINT` `UNSIGNED` NOT NULL, `displayId` `INT` `UNSIGNED` NOT NULL, PRIMARY KEY (`race`, `gender`, `idx`)) `COMMENT`='NPC look worn in game by custom races, chosen by skin colour (skin index modulo count)';
-DELETE FROM `custom_race_display` WHERE `race` IN (21,30,31),
+CREATE TABLE IF NOT EXISTS `custom_race_display` (`race` TINYINT UNSIGNED NOT NULL, `gender` TINYINT UNSIGNED NOT NULL, `idx` TINYINT UNSIGNED NOT NULL, `displayId` INT UNSIGNED NOT NULL, PRIMARY KEY (`race`, `gender`, `idx`)) ENGINE=InnoDB COMMENT='NPC look worn in game by custom races, chosen by skin colour (skin index modulo count)';
+DELETE FROM `custom_race_display` WHERE `race` IN (21,30,31);
+INSERT INTO `custom_race_display` (`race`, `gender`, `idx`, `displayId`) VALUES
 (30,0,0,977392),
 (30,0,1,977393),
 (30,0,2,977394),
