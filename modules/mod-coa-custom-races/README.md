@@ -55,10 +55,14 @@ It checks fresh Grummle racials and the action bar alongside an unchanged stock 
 
 ## Credits
 
-* **Kalibros** вЂ” Esteria races and the Esteria appearance runtime.
-* **Uncle Snowzo** (SnowzoCraft) вЂ” Jinyu.
-* **Furioz, Corruption and the Eunoia team** вЂ” Eunoia races.
-* **SQUID / Zyth45** вЂ” CoA playerbots.
-* **Corfirean** вЂ” CoA Server Manager, CoA Companions and the `coa-bots` core fork.
-* **jealous-sound** вЂ” the Conquest of Azeroth AzerothCore core.
-* **ilusixn** вЂ” CoA Custom.
+* **Kalibros** — Esteria races and the Esteria appearance runtime.
+* **Uncle Snowzo** (SnowzoCraft) — Jinyu.
+* **Dex** — Drakkin (female).
+* **Kalibros** — also Drakkin (male) and Drakonid.
+* **Westen** — race lore texts.
+* **romaindnd89-cmd** — Prof-bard, the Bard profession module and addon (https://github.com/romaindnd89-cmd/Prof-bard).
+* **Furioz, Corruption and the Eunoia team** — Eunoia races.
+* **SQUID / Zyth45** — CoA playerbots.
+* **Corfirean** — CoA Server Manager, CoA Companions and the `coa-bots` core fork.
+* **jealous-sound** — the Conquest of Azeroth AzerothCore core.
+* **ilusixn** — CoA Custom.

@@ -9135,7 +9135,7 @@ void Unit::EnergizeBySpell(Unit* victim, uint32 spellID, uint32 damage, Powers p
 
     victim->ModifyPower(powerType, damage, false);
 
-    // Happiness is internal hunter pet state, not combat assistance вЂ” energizing it must not generate threat
+    // Happiness is internal hunter pet state, not combat assistance — energizing it must not generate threat
     if (powerType != POWER_HAPPINESS && !(powerType == POWER_MANA && victim->GainsManaWithoutThreat()))
         if (SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellID))
         {
@@ -12563,7 +12563,7 @@ Unit* Creature::SelectVictim()
         return target;
     }
 
-    // Don't evade if another unit has us on their threat list вЂ” evading would
+    // Don't evade if another unit has us on their threat list — evading would
     // end the bidirectional combat reference and remove us from their threat list,
     // causing them to lose their target (e.g. an NPC fighting a guardian whose
     // CanAIAttack rejects the NPC).
