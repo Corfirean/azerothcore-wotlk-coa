@@ -168,7 +168,8 @@ for _count in ('100', '200', '500', '1000', '2000'):
 BOT_MODES['recommended'] = BOT_MODES['500']
 
 
-HIDDEN_RACES = '19,27,65,72,77'                  # hidden from creation: old Vulpera / Earthen, test race, Skyborne
+HIDDEN_RACES = '19,27,65'                  # hidden from creation: old Vulpera / Earthen, test race
+                                           # (Skyborne 72/77 removed entirely 2026-10-16, no longer generated at all)
 BOT_RACES = {
     'vanilla': HIDDEN_RACES + ',' + ','.join(str(race) for race in range(32, 128)),  # the original races only
     # every race but the retail-converted models that crash the client when bots spawn around you (Kul Tiran 16,

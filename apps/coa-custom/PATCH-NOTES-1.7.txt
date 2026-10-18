@@ -1,59 +1,90 @@
-=====================================================================
-  CoA Custom 1.7 - Grummle, CoA Bots 2.2.1, easier install
-  for the Jealous-Sound CoA repack + CoA Bots 2.0 (module 2.2.1)
-=====================================================================
+CoA Custom 1.7 — Patch notes
+https://github.com/ilusixn/azerothcore-wotlk-coa/releases/tag/coa-custom-1.7
 
-NEW
----------------------------------------------------------------------
-  - Grummle (race 103, Alliance). Playable on the character screen with its
-    own portrait, gnome-size motion, and four racials:
-      Pack Toss, Trail Snack, Lucky Foot, Heavy Pack
-    Client files: patch-ZZU (create UI), patch-ZZV (voices), patch-ZZW (model).
-    One baked look; female uses the male mesh. Armor geosets are limited.
-  - CoA Bots 2.2.1 on the shipped worldserver: rated Join as Group with bots,
-    rated solo-queue fills, rotation fixes, arena ready pylon, gathering and
-    dungeon behaviour from https://github.com/Zyth45/mod-playerbots (branch coa,
-    tag v2.2.1). Your accounts and characters are not replaced.
+Base: Jealous-Sound CoA repack main-20261011-a543922b with CoA Bots 2.0.
+The shipped worldserver is CoA Bots 2.2.1 (Zyth45 tag v2.2.1).
+
+
+DOWNLOAD
+--------
+Get BOTH zips. Extract them into THE SAME folder. Then run Install-Custom.bat.
+
+  CoA-Custom-1.7-main.zip
+    SHA-256  6aca7204e76568e9818a3c9f76af09c07c1e4bc0f8a1d2376f62350dd7a70c46
+
+  CoA-Custom-1.7-client.zip
+    SHA-256  ad389ef486f44f269445f80807b25b214c39fc5d21272b5708bfeac8b1efefa0
+
+Linux / Wine: LINUX.md in the zip. Same download. No extra MPQ-patch installer.
+
+
+NEW RACE
+--------
+- Grummle (Alliance, race 103).
+  Portrait, gnome-size motion, racials:
+    Pack Toss, Trail Snack, Lucky Foot, Heavy Pack
+  Client files: patch-ZZU.MPQ (create UI), patch-ZZV.MPQ (voices),
+  patch-ZZW.MPQ (model).
+  One baked look; female uses the male mesh. Armor geosets are limited.
+
+
+BOTS
+----
+- CoA Bots 2.2.1 on the shipped worldserver:
+  rated Join as Group with bots, rated solo-queue fills, arena ready pylon,
+  rotation / dungeon / gathering fixes.
+- Changelog:
+  https://github.com/Zyth45/mod-playerbots/blob/coa/CHANGELOG_COA.md
+- Accounts and characters are not replaced.
+  Install-Custom.bat dumps them first.
+
 
 INSTALL / LAUNCH
----------------------------------------------------------------------
-  Start without bots:  Start_All_Server.bat
-  Start with bots:     CoA-Bots\Start_All_Bots.bat
-  Same, from the root: StartAllServer.bat / StartAllServerWithBots.bat
-  Wrong name:          Did_You_Mean.bat startallserverwithbots
-                       prints  Did you mean this: CoA-Bots\Start_All_Bots.bat
+----------------
+Close the game first. Stop_All_Server.bat.
 
-  Extract CoA-Custom-1.7 inside the repack (next to Start_All_Server.bat) and
-  run CoA-Custom\Install-Custom.bat. It backs up accounts and characters first.
-  Close the game first.
+1. Extract both zips into the repack (next to Start_All_Server.bat).
+2. Run CoA-Custom\Install-Custom.bat
+3. Play.
 
-  Linux / Wine: LINUX.md. Manual download is this zip. There is no extra
-  client-patch installer for Linux; copy files\client\*.MPQ onto the Windows
-  (or Wine) client Data folder. Apply SQL with files\sql\apply.sh.
+  Without bots:     Start_All_Server.bat
+  With bots:        CoA-Bots\Start_All_Bots.bat
+  Root aliases:     StartAllServer.bat
+                    StartAllServerWithBots.bat
+  Typos:            Did_You_Mean.bat startallserverwithbots
+                    prints  Did you mean this: CoA-Bots\Start_All_Bots.bat
+
+Wrong folder during install:
+  Did you mean this: the folder that contains Start_All_Server.bat
+
 
 FIXES
----------------------------------------------------------------------
-  - Install no longer dies on creature_template.family (retail families > 127).
-    SQL files run in numeric order (1_world.sql before 10_*.sql).
-  - Grummle create-screen glue uses the Alliance hall (no PlayGlueAmbience error).
-  - Installer typo hints: "Did you mean this: ..." if the folder you pick is not
-    the repack or the Ascension client.
+-----
+- Install no longer dies on creature_template.family (retail families above 127).
+  SQL files run in numeric order (1_world.sql before 10_*.sql).
+- Grummle create-screen uses the Alliance hall (no PlayGlueAmbience error).
+
 
 KNOWN
----------------------------------------------------------------------
-  - Sethrak, Vulpera eyes/head, Realm First, trainer "Show available" are still
-    open. Grummle has no dedicated dress-up background.
+-----
+- Sethrak, Vulpera eyes / white head, Realm First, trainer Show available
+  are still open.
+- Grummle has no dedicated dress-up background.
+- Custom-race bots can still crash a 32-bit client in crowded towns.
 
-HOW TO UPDATE
----------------------------------------------------------------------
-  Prerequisites: CoA repack main-20261011-a543922b with CoA Bots 2.0 already
-  installed (this package ships the 2.2.1 bot worldserver on top of that).
-  1. Stop_All_Server.bat, close the game.
-  2. Extract this zip into the repack so you have CoA-Custom\.
-  3. CoA-Custom\Install-Custom.bat
-  4. Play with CoA-Bots\Start_All_Bots.bat (or StartAllServerWithBots.bat).
 
 CREDITS
----------------------------------------------------------------------
-  Same as 1.4 / 1.5, plus SquidBots / Zyth45 for CoA Bots 2.2.1.
-  Grummle model from the Ascension / retail Sherpa assets, converted for WotLK.
+-------
+- Kalibros | Lord of Wen (STRHercules) — Esteria races. Wardens of Wen on Steam.
+- Yami — Arakkoa.
+- Uncle Snowzo (SnowzoCraft) — Jinyu.
+- Furioz, Corruption and the Eunoia team — Eunoia races.
+- Medviten (Mattiks, Amarion, Baercraft) — Dark Iron, Mag'har, Ogre.
+- Project Reforged — Furbolg.
+- Sirus — Naga animations.
+- WXL / Dokman — race tooling.
+- SQUID / Zyth45 — CoA playerbots 2.2.1.
+- Corfirean — CoA Server Manager, CoA Companions, coa-bots core.
+- jealous-sound — Conquest of Azeroth AzerothCore.
+- ilusixn — CoA Custom.
+- Grummle model from Ascension / retail Sherpa assets, converted for WotLK.

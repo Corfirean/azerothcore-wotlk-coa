@@ -38,6 +38,10 @@ The races themselves need the rest of the CoA Custom package:
 
 * **Kalibros** — Esteria races and the Esteria appearance runtime.
 * **Uncle Snowzo** (SnowzoCraft) — Jinyu.
+* **Dex** — Drakkin (female).
+* **Kalibros** — also Drakkin (male) and Drakonid.
+* **Westen** — race lore texts.
+* **romaindnd89-cmd** — Prof-bard, the Bard profession module and addon (https://github.com/romaindnd89-cmd/Prof-bard).
 * **Furioz, Corruption and the Eunoia team** — Eunoia races.
 * **SQUID / Zyth45** — CoA playerbots.
 * **Corfirean** — CoA Server Manager, CoA Companions and the `coa-bots` core fork.

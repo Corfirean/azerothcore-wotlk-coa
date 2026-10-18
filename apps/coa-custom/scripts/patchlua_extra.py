@@ -226,14 +226,14 @@ if src2 != src:
     open(p, 'wb').write(src2.encode('utf-8')); print('Broken not male-only')
 
 
-# Esteria races (Kalibros | Lord of Wen) on ids 66+: Skyborne Windshaper 72 (Horde), High Order 77 (Alliance)
+# Esteria races (Kalibros | Lord of Wen) on ids 66+ (Skyborne 72/77 removed entirely 2026-10-16, no model)
 p = 'out/Interface/GlueXML/CharacterCreate.lua'
 src = open(p, 'rb').read().decode('utf-8')
 nl = '\r\n' if '\r\n' in src else '\n'
 SKEY = '-- Local server: Esteria races (2)'
 if SKEY not in src:
     bs = chr(92) * 2
-    races = (('Mechagnome', 67, 'INV_Misc_Gear_08'),)   # Skyborne 72/77 removed 2026-10-07 (client crash)
+    races = (('Mechagnome', 67, 'INV_Misc_Gear_08'),)
     code = SKEY + nl
     for name, rid, icon in races:
         code += 'CHAR_CREATE_RACE_IDS["%s"] = {%d}' % (name, rid) + nl
