@@ -28,7 +28,7 @@ class ReviewRegressions(unittest.TestCase):
             (directory / "fixture.cpp").write_text(source, encoding="utf-8")
             if os.name == "nt":
                 installs = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Microsoft Visual Studio"
-                vcvars = next(installs.glob("2022/*/VC/Auxiliary/Build/vcvars64.bat"), None)
+                vcvars = next(installs.glob("*/*/VC/Auxiliary/Build/vcvars64.bat"), None)
                 self.assertIsNotNone(vcvars)
                 flags = " ".join("/D" + value for value in defines)
                 command = (f'cmd.exe /d /c call "{vcvars}" >nul && '

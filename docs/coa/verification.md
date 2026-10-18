@@ -632,11 +632,11 @@ documented, pre-existing or acceleration-specific is not `PASSED`; say which cla
 
 ### Authorized SQL outside pending updates
 
-`verify_all.py` has no option that allows historical SQL. When the task explicitly authorizes an edit outside
-`data/sql/updates/pending_db_*/`, the source stage fails in `tools/check_change_boundaries.py`. Confirm in
-`source.log` that its `sql_outside_pending` list names only the authorized files and that every other source
-command passed, then report that failure as the authorized exception with those file names. On the pull
-request, a maintainer's `sql-change-authorized` label covers the exception in CI.
+When the task explicitly authorizes SQL outside `data/sql/updates/pending_db_*/`, such as importing a reviewed
+upstream module history, pass `--allow-historical-sql` to `verify_all.py`. The exception is recorded by the source
+boundary check. Review the SQL diff to confirm it contains only authorized files, and keep new CoA migrations
+in pending directories. Leave this option unset for ordinary tasks. On the pull request, a maintainer's
+`sql-change-authorized` label covers the same exception in CI; the label does not grant SQL authorization.
 
 ## Coverage boundaries
 

@@ -145,7 +145,7 @@ int main() {
             (temporary / "fixture.cpp").write_text(fixture, encoding="utf-8")
             if os.name == "nt":
                 installs = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Microsoft Visual Studio"
-                vcvars = next(installs.glob("2022/*/VC/Auxiliary/Build/vcvars64.bat"), None)
+                vcvars = next(installs.glob("*/*/VC/Auxiliary/Build/vcvars64.bat"), None)
                 self.assertIsNotNone(vcvars)
                 command = f'cmd.exe /d /c call "{vcvars}" >nul && cl /nologo /std:c++20 /EHsc fixture.cpp /Fe:fixture.exe /Fo:fixture.obj'
                 executable = temporary / "fixture.exe"
