@@ -656,7 +656,8 @@ void ObserveExtensionPacket(Actor& actor, WorldPacket const& packet)
         packet.GetOpcode() != SMSG_ITEM_QUERY_SINGLE_RESPONSE && packet.GetOpcode() != SMSG_MOVE_KNOCK_BACK &&
         packet.GetOpcode() != SMSG_DUEL_REQUESTED && packet.GetOpcode() != SMSG_DUEL_COUNTDOWN &&
         packet.GetOpcode() != SMSG_DUEL_COMPLETE && packet.GetOpcode() != SMSG_FRIEND_STATUS &&
-        packet.GetOpcode() != SMSG_SEND_MAIL_RESULT && packet.GetOpcode() != SMSG_GOSSIP_MESSAGE)
+        packet.GetOpcode() != SMSG_SEND_MAIL_RESULT && packet.GetOpcode() != SMSG_GOSSIP_MESSAGE &&
+        packet.GetOpcode() != SMSG_BINDPOINTUPDATE)
         return;
 
     ++actor.extensionPackets[packet.GetOpcode()];
@@ -2715,6 +2716,16 @@ private:
             GameObject* object = player->FindNearestGameObject(step.get<uint32>("entry"), 20.0f);
             return object ? uint32(object->GetGoState()) : 99;
         }
+        if (metric == "nearby_gameobject_scale")
+        {
+            GameObject* object = player->FindNearestGameObject(step.get<uint32>("entry"), 20.0f);
+            return object ? object->GetObjectScale() : 0.0f;
+        }
+        if (metric == "nearby_gameobject_at_client")
+        {
+            GameObject* object = player->FindNearestGameObject(step.get<uint32>("entry"), 20.0f);
+            return object && player->HaveAtClient(object) ? 1.0 : 0.0;
+        }
         if (metric == "loot_bloodforged")
         {
             Loot* window = nullptr;
@@ -2828,6 +2839,15 @@ private:
                             || creature->GetExactDist2d(creature->GetHomePosition()) >= minHomeDistance)
                         && (!auraSpell || creature->HasAura(auraSpell));
                 });
+        }
+        if (metric == "map_creature_count")
+        {
+            uint32 const entry = step.get<uint32>("entry");
+            auto const& spawns = player->GetMap()->GetCreatureBySpawnIdStore();
+            return std::count_if(spawns.begin(), spawns.end(), [entry](auto const& spawn)
+            {
+                return spawn.second->GetEntry() == entry && spawn.second->IsInWorld() && spawn.second->IsAlive();
+            });
         }
         if (metric == "carried_money")
             return player->GetMoney();
@@ -4740,6 +4760,11 @@ private:
                 return !creature->IsInWorld() || (action == "attack_nearby") != creature->IsAlive();
             });
             Require(!creatures.empty(), "No matching nearby creature among " + std::to_string(found));
+            if (action == "loot_nearby")
+                creatures.sort([player](Creature* left, Creature* right)
+                {
+                    return player->isAllowedToLoot(left) && !player->isAllowedToLoot(right);
+                });
             WorldPacket packet(action == "attack_nearby" ? CMSG_ATTACKSWING : CMSG_LOOT, 8);
             packet << creatures.front()->GetGUID();
             if (action == "attack_nearby")

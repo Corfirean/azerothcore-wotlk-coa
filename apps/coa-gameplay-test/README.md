@@ -921,8 +921,14 @@ all 19 map/mode pairs per tier and a real VanCleef killing blow, without a GM ac
 60 yards. Optional `min_level` and `max_level` filter their native levels; `min_home_distance` keeps creatures
 at least that many yards from their own home positions (2D), and `spell` those carrying that aura. This can
 observe movement and auras of native summons without creating or controlling them.
+`map_creature_count` requires a player and `entry`, and counts living spawned creatures of that entry loaded
+anywhere on the player's map, in any phase; a spawn whose grid is not loaded is not counted.
 `nearby_gameobject_state` takes `entry` and returns the state of the nearest such gameobject within 20 yards
 (0 open, 1 closed, 99 none).
+`nearby_gameobject_scale` takes `entry` and returns the object scale of the nearest such gameobject within
+20 yards (0 when none).
+`nearby_gameobject_at_client` takes `entry` and is 1 while the nearest such gameobject within 20 yards is in
+the player's client-visible set. Owners always see their own objects, so per-player visibility needs a world spawn.
 ## Evidence boundaries
 
 ### Optional character names
