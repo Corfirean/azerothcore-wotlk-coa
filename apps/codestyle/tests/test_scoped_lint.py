@@ -118,12 +118,26 @@ class ScopedLintTests(unittest.TestCase):
                        "INSERT INTO `creature_template` (`entry`, `name`) VALUES (557911, 'Soulstone Lure');\n")
         self.assertNotEqual(self.lint("sql", "--files", path).returncode, 0)
 
+    def test_sql_fresh_temporary_table_accepts_initial_rows(self):
+        path = self.pending + "temporary.sql"
+        self.put(path, "CREATE TEMPORARY TABLE `migration_guard` (`id` INT NOT NULL);\n"
+                       "INSERT INTO `migration_guard` (`id`) VALUES (1);\n")
+        self.assert_passes(self.lint("sql", "--files", path))
+
+    def test_sql_module_upsert_preserves_existing_rows(self):
+        path = self.pending + "module_upsert.sql"
+        self.put(path, "INSERT INTO `manastorm_segment` (`segment_id`, `name`)\n"
+                       "VALUES (7, 'Seven')\n"
+                       "ON DUPLICATE KEY UPDATE `name` = VALUES(`name`);\n")
+        self.assert_passes(self.lint("sql", "--files", path))
+
     def test_sql_unrelated_delete_and_quoted_upsert_do_not_bypass_safety(self):
         path = self.pending + "selected.sql"
         for text in [
             "DELETE FROM `spell_proc` WHERE `SpellId` = 123;\n"
             "INSERT INTO `spell_script_names` (`spell_id`, `ScriptName`) VALUES (123, 'example');\n",
             "INSERT INTO `creature_template` (`entry`, `name`) VALUES (557911, 'ON DUPLICATE KEY UPDATE');\n",
+            "INSERT INTO `manastorm_segment` (`segment_id`, `name`) VALUES (7, 'ON DUPLICATE KEY UPDATE');\n",
         ]:
             with self.subTest(text=text):
                 self.put(path, text)

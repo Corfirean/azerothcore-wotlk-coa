@@ -200,8 +200,12 @@ def insert_delete_safety_check(file: io, file_path: str) -> None:
                 statements.append((statement, text.count("\n", 0, start) + 1))
             start = token.end()
     previous_delete = None
+    temporary_tables = set()
     check_failed = False
     for statement, line_number in statements:
+        temporary = re.match(r"CREATE\s+TEMPORARY\s+TABLE\s+`([^`]+)`", statement, re.I)
+        if temporary:
+            temporary_tables.add(temporary[1].lower())
         deletion = re.match(r"DELETE\s+FROM\s+`([^`]+)`", statement, re.I)
         insertion = re.match(r"INSERT\s+INTO\s+`([^`]+)`", statement, re.I)
         if deletion and deletion[1].lower() in protected:
@@ -209,8 +213,8 @@ def insert_delete_safety_check(file: io, file_path: str) -> None:
             check_failed = True
         if insertion:
             table = insertion[1].lower()
-            protected_upsert = table in protected and re.search(r"\bON\s+DUPLICATE\s+KEY\s+UPDATE\b", statement, re.I)
-            if previous_delete != table and not protected_upsert:
+            upsert = re.search(r"\bON\s+DUPLICATE\s+KEY\s+UPDATE\b", statement, re.I)
+            if previous_delete != table and not upsert and table not in temporary_tables:
                 print(f"❌ No matching DELETE before the INSERT in {file_path} at line {line_number}")
                 check_failed = True
         previous_delete = deletion[1].lower() if deletion else None
