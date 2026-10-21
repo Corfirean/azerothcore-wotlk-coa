@@ -736,6 +736,7 @@ class PlayerDumpReader;
 class ObjectMgr
 {
     friend class PlayerDumpReader;
+    friend class CoAPortableImportAccess;
 
 private:
     ObjectMgr();

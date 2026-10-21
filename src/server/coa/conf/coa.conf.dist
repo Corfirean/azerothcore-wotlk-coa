@@ -613,3 +613,10 @@ XPHotspots.Enable = 0
 XPHotspots.MaxContinent = 2
 XPHotspots.ActiveCount = 3
 XPHotspots.BuffSpell = 993945
+# Portable character sessions (Manager-driven checkpoints of one character while it plays).
+# The pending SQL `coa_portable_session` must be applied. Needs CharacterDatabase.WorkerThreads = 1.
+PortableSession.Enable = 0
+
+# How long a portable character is held at login until the Manager has captured its baseline.
+# A character that is not released in time is disconnected; it never plays before the baseline exists. 1-600.
+PortableSession.GateTimeoutSeconds = 30

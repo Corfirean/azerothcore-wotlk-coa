@@ -78,6 +78,7 @@ void AddCoABugReportScripts();
 void AddAscensionArenaQueueScripts();
 void AddCoAPlayerTicketScripts();
 void AddCoARotationAssistScripts();
+void AddCoAPortableSessionScripts();
 void AddAscensionWildcardScripts();
 void AddSC_AscensionWildcardRecuperate();
 void AddSC_AscensionWildcardArcane();
@@ -685,6 +686,7 @@ void AddCoAScripts()
     AddAscensionArenaQueueScripts();
     AddCoAPlayerTicketScripts();
     AddCoARotationAssistScripts();
+    AddCoAPortableSessionScripts();
     AddAscensionWildcardScripts();
     AddSC_AscensionWildcardRecuperate();
     AddSC_AscensionWildcardArcane();
