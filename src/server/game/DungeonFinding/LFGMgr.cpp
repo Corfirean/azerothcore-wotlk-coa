@@ -501,6 +501,11 @@ namespace lfg
                 continue;
             MapEntry const* mapEntry = sMapStore.LookupEntry(dungeon->map);
             DungeonProgressionRequirements const* ar = sObjectMgr->GetAccessRequirement(dungeon->map, Difficulty(dungeon->difficulty));
+            bool const dbcOverride = sWorld->getBoolConfig(CONFIG_DUNGEON_ACCESS_REQUIREMENTS_LFG_DBC_LEVEL_OVERRIDE);
+            uint8 minLevel = dbcOverride ? (ar ? ar->levelMin : 0) : dungeon->minlevel;
+            uint8 maxLevel = dbcOverride ? (ar ? ar->levelMax : 0) : dungeon->maxlevel;
+            sScriptMgr->OnResolveDungeonAccessLevels(player, dungeon->map,
+                Difficulty(dungeon->difficulty), minLevel, maxLevel);
 
             uint32 lockData = 0;
 
@@ -512,9 +517,9 @@ namespace lfg
                 lockData = LFG_LOCKSTATUS_RAID_LOCKED;
             else if (dungeon->difficulty > DUNGEON_DIFFICULTY_NORMAL && (!mapEntry || !mapEntry->IsRaid()) && sInstanceSaveMgr->PlayerIsPermBoundToInstance(player->GetGUID(), dungeon->map, Difficulty(dungeon->difficulty)))
                 lockData = LFG_LOCKSTATUS_RAID_LOCKED;
-            else if ((dungeon->minlevel > level && !sWorld->getBoolConfig(CONFIG_DUNGEON_ACCESS_REQUIREMENTS_LFG_DBC_LEVEL_OVERRIDE)) || (sWorld->getBoolConfig(CONFIG_DUNGEON_ACCESS_REQUIREMENTS_LFG_DBC_LEVEL_OVERRIDE) && ar && ar->levelMin > 0 && ar->levelMin > level))
+            else if (minLevel > level)
                 lockData = LFG_LOCKSTATUS_TOO_LOW_LEVEL;
-            else if ((dungeon->maxlevel < level && !sWorld->getBoolConfig(CONFIG_DUNGEON_ACCESS_REQUIREMENTS_LFG_DBC_LEVEL_OVERRIDE)) || (sWorld->getBoolConfig(CONFIG_DUNGEON_ACCESS_REQUIREMENTS_LFG_DBC_LEVEL_OVERRIDE) && ar && ar->levelMax > 0 && ar->levelMax < level))
+            else if ((maxLevel > 0 || !dbcOverride) && maxLevel < level)
                 lockData = LFG_LOCKSTATUS_TOO_HIGH_LEVEL;
             else if (dungeon->seasonal && !IsSeasonActive(dungeon->id))
                 lockData = LFG_LOCKSTATUS_NOT_IN_SEASON;
