@@ -46,6 +46,7 @@
 #include "AscensionCollectibleSpellData.h"
 #include "AscensionCustomClassData.h"
 #include "AscensionAuraAmounts.h"
+#include "AscensionMountSpeed.h"
 #include "AscensionClientSpellPatches.h"
 #include "DBCfmt.h"
 #include "AscensionClassTuning.h"
@@ -198,6 +199,7 @@ constexpr uint16 SMSG_PATCH_ITEM_DISPLAY_INFO = 0x096B;
 constexpr uint16 SMSG_PATCH_CHARACTER_ADVANCEMENT = 0x064A;
 constexpr uint16 SMSG_PATCH_SPELL = 0x092A;
 constexpr uint16 SMSG_PATCH_SUPER_TRACK = 0x06BE;
+constexpr uint16 SMSG_PATCH_QUEST_SUPER_TRACK = 0x06BF;
 constexpr uint16 SMSG_PATCH_SKILL_LINE_ABILITY = 0x0934;
 constexpr uint16 SMSG_PATCH_SPELL_SHAPESHIFT_FORM = 0x0949;
 constexpr uint16 SMSG_PATCH_CREATURE_MODEL_DATA = 0x0974;
@@ -573,6 +575,7 @@ struct AppearanceInfo {
   uint32 CreatureDisplay = 0;
   uint32 CreatureEntry = 0;
   uint32 CreatureWeapon = 0;
+  uint32 IncarnationSpell = 0;
 };
 
 constexpr uint32 INCARNATION_KIND_FORM = 1;
@@ -617,6 +620,7 @@ struct PlayerCollectionState {
   uint32 CompanionSkinningTimer = 0;
   uint32 CosmeticTimer = 0;
   std::unordered_set<uint32> AppliedCosmeticSpells;
+  uint32 AppliedIncarnationSpell = 0;
   bool CanSeeItemAppearances = true;
   bool CanSeeSpellAppearances = true;
 };
@@ -3801,11 +3805,11 @@ public:
     PreparedPatchRows const &rows = GetPreparedPatchRows();
     LOG_INFO("coa",
              "Prepared {} CreatureModelData, {} CreatureDisplayInfo, {} ItemDisplayInfo, {} Item, "
-             "{} Spell, {} SuperTrack, {} SkillLineAbility and {} SpellShapeshiftForm patch rows "
-             "for the client stream",
+             "{} Spell, {} SuperTrack, {} QuestSuperTrack, {} SkillLineAbility and {} SpellShapeshiftForm "
+             "patch rows for the client stream",
              rows.CreatureModels.size(), rows.CreatureDisplayIds.size(), rows.ItemDisplayInfos.size(),
-             rows.Items.size(), rows.Spells.size(), rows.SuperTracks.size(), rows.SkillLineAbilities.size(),
-             rows.ShapeshiftForms.size());
+             rows.Items.size(), rows.Spells.size(), rows.SuperTracks.size(), rows.QuestSuperTracks.size(),
+             rows.SkillLineAbilities.size(), rows.ShapeshiftForms.size());
     IndexClientSpells();
     IndexClientSpellRanks();
     IndexAdvancementEntryIds();
@@ -4046,6 +4050,9 @@ public:
     for (SuperTrackPatchRow const &row : rows.SuperTracks)
       bytes += SendSuperTrackRow(player, row);
 
+    for (QuestSuperTrackPatchRow const &row : rows.QuestSuperTracks)
+      bytes += SendQuestSuperTrackRow(player, row);
+
     for (SkillLineAbilityPatchRow const& row : rows.SkillLineAbilities)
         bytes += SendSkillLineAbilityRow(player, row);
 
@@ -4057,12 +4064,12 @@ public:
 
     LOG_INFO("coa",
              "Streamed {} CreatureModelData, {} CreatureDisplayInfo, {} ItemDisplayInfo, {} of {} Item, "
-             "{} Spell, {} SuperTrack, {} SkillLineAbility, {} SpellShapeshiftForm and {} VanityCollection "
-             "patch rows ({} bytes) to {} in {} ms",
+             "{} Spell, {} SuperTrack, {} QuestSuperTrack, {} SkillLineAbility, {} SpellShapeshiftForm and "
+             "{} VanityCollection patch rows ({} bytes) to {} in {} ms",
              rows.CreatureModels.size(), sent, rows.ItemDisplayInfos.size(), sentItems.Rows,
-             rows.Items.size(), sentSpells, rows.SuperTracks.size(), rows.SkillLineAbilities.size(),
-             rows.ShapeshiftForms.size(), rows.VanityCollections.size(), bytes, player->GetName(),
-             GetMSTimeDiffToNow(startTime));
+             rows.Items.size(), sentSpells, rows.SuperTracks.size(), rows.QuestSuperTracks.size(),
+             rows.SkillLineAbilities.size(), rows.ShapeshiftForms.size(), rows.VanityCollections.size(), bytes,
+             player->GetName(), GetMSTimeDiffToNow(startTime));
   }
 
 private:
@@ -4083,6 +4090,12 @@ private:
 
   using ItemPatchRow = std::array<uint32, 8>;
   using SuperTrackPatchRow = std::array<uint32, 8>;
+  static constexpr uint32 QUEST_SUPER_TRACK_OBJECTIVE_COUNT = 4;
+  static constexpr uint32 QUEST_SUPER_TRACK_NODES_PER_SLOT = 20;
+  static constexpr uint32 QUEST_SUPER_TRACK_FIRST_NODE_FIELD = 2;
+  static constexpr uint32 QUEST_SUPER_TRACK_DBC_FIELD_COUNT = QUEST_SUPER_TRACK_FIRST_NODE_FIELD +
+      (QUEST_SUPER_TRACK_OBJECTIVE_COUNT + 1) * QUEST_SUPER_TRACK_NODES_PER_SLOT;
+  using QuestSuperTrackPatchRow = std::array<uint32, QUEST_SUPER_TRACK_DBC_FIELD_COUNT>;
     static constexpr uint32 SKILL_LINE_ABILITY_DBC_FIELD_COUNT = 14;
     using SkillLineAbilityPatchRow = std::array<uint32, SKILL_LINE_ABILITY_DBC_FIELD_COUNT>;
 
@@ -4176,6 +4189,7 @@ private:
     std::vector<SpellPatchRow> Spells;
     std::unordered_map<uint32, std::size_t> SpellRowIndexById;
     std::vector<SuperTrackPatchRow> SuperTracks;
+    std::vector<QuestSuperTrackPatchRow> QuestSuperTracks;
     std::vector<SkillLineAbilityPatchRow> SkillLineAbilities;
     std::vector<ShapeshiftFormPatchRow> ShapeshiftForms;
     std::vector<CreatureModelPatchRow> CreatureModels;
@@ -4578,6 +4592,14 @@ private:
     return SendRowPacket(player, packet);
   }
 
+  std::size_t SendQuestSuperTrackRow(Player *player,
+                                     QuestSuperTrackPatchRow const &row) const {
+    WorldPacket packet(SMSG_PATCH_QUEST_SUPER_TRACK, row.size() * sizeof(uint32));
+    for (uint32 value : row)
+      packet << value;
+    return SendRowPacket(player, packet);
+  }
+
     static std::size_t SendSkillLineAbilityRow(Player* player, SkillLineAbilityPatchRow const& row)
     {
         WorldPacket packet(SMSG_PATCH_SKILL_LINE_ABILITY, row.size() * sizeof(uint32));
@@ -4606,31 +4628,29 @@ private:
                 LOG_ERROR("coa", "coa_client_skill_line_ability {} has unknown SkillLine {}", id, skillLine);
         } while (result->NextRow());
 
-        ClientDBC abilities;
-        std::filesystem::path const serverDbc =
-            std::filesystem::path(sWorld->GetDataPath()) / "dbc" / "SkillLineAbility.dbc";
-        if (!abilities.Load(serverDbc.string(), SKILL_LINE_ABILITY_DBC_FIELD_COUNT))
+        for (auto skillLine = skillLines.begin(); skillLine != skillLines.end();)
         {
-            LOG_ERROR("coa", "Cannot read {}; skill line ability patches are not streamed", serverDbc.generic_string());
-            return rows;
-        }
-
-        for (uint32 index = 0; index < abilities.GetRecordCount(); ++index)
-        {
-            ClientDBC::Record const record = abilities.GetRecord(index);
-            auto const skillLine = skillLines.find(record.GetUInt32(0));
-            if (skillLine == skillLines.end())
+            SkillLineAbilityEntry const* entry = sSkillLineAbilityStore.LookupEntry(skillLine->first);
+            if (!entry || !entry->Spell)
+            {
+                LOG_ERROR("coa", "coa_client_skill_line_ability {} has no SkillLineAbility row", skillLine->first);
+                skillLine = skillLines.erase(skillLine);
                 continue;
+            }
 
             SkillLineAbilityPatchRow& row = rows.emplace_back();
-            for (uint32 field = 0; field < row.size(); ++field)
-                row[field] = record.GetUInt32(field);
+            row[0] = entry->ID;
             row[1] = skillLine->second;
-            skillLines.erase(skillLine);
+            row[2] = entry->Spell;
+            row[3] = entry->RaceMask;
+            row[4] = entry->ClassMask;
+            row[7] = entry->MinSkillLineRank;
+            row[8] = entry->SupercededBySpell;
+            row[9] = entry->AcquireMethod;
+            row[10] = entry->TrivialSkillLineRankHigh;
+            row[11] = entry->TrivialSkillLineRankLow;
+            skillLine = skillLines.erase(skillLine);
         }
-
-        for (auto const& [id, skillLine] : skillLines)
-            LOG_ERROR("coa", "coa_client_skill_line_ability {} has no SkillLineAbility.dbc row", id);
         return rows;
     }
 
@@ -4760,6 +4780,48 @@ private:
     return rows;
   }
 
+  static std::vector<QuestSuperTrackPatchRow> LoadQuestSuperTrackPatchRows() {
+    std::vector<QuestSuperTrackPatchRow> rows;
+    QueryResult result = WorldDatabase.Query(
+        "SELECT `ID`, `QuestID`, `ObjectiveIndex`, `NodeIndex`, `SuperTrackID` "
+        "FROM `coa_client_quest_super_track` ORDER BY `ID`");
+    if (!result)
+      return rows;
+
+    do {
+      Field const *fields = result->Fetch();
+      uint32 const id = fields[0].Get<uint32>();
+      uint32 const questId = fields[1].Get<uint32>();
+      int8 const objectiveIndex = fields[2].Get<int8>();
+      uint8 const nodeIndex = fields[3].Get<uint8>();
+      if (objectiveIndex < -1 || objectiveIndex >= int8(QUEST_SUPER_TRACK_OBJECTIVE_COUNT) ||
+          nodeIndex >= QUEST_SUPER_TRACK_NODES_PER_SLOT)
+      {
+        LOG_ERROR("coa", "coa_client_quest_super_track {} has invalid objective {} node {}", id,
+                  objectiveIndex, nodeIndex);
+        continue;
+      }
+
+      if (rows.empty() || rows.back()[0] != id)
+      {
+        QuestSuperTrackPatchRow &row = rows.emplace_back();
+        row[0] = id;
+        row[1] = questId;
+      }
+      else if (rows.back()[1] != questId)
+      {
+        LOG_ERROR("coa", "coa_client_quest_super_track {} mixes quests {} and {}", id, rows.back()[1], questId);
+        continue;
+      }
+
+      uint32 const slot = objectiveIndex < 0 ? QUEST_SUPER_TRACK_OBJECTIVE_COUNT : uint32(objectiveIndex);
+      rows.back()[QUEST_SUPER_TRACK_FIRST_NODE_FIELD + slot * QUEST_SUPER_TRACK_NODES_PER_SLOT + nodeIndex] =
+          fields[4].Get<uint32>();
+    } while (result->NextRow());
+
+    return rows;
+  }
+
   PreparedPatchRows const &GetPreparedPatchRows() {
     std::lock_guard lock(_cacheMutex);
     if (!_rowsPrepared)
@@ -4781,6 +4843,7 @@ private:
       for (std::size_t index = 0; index < _rows.Spells.size(); ++index)
         _rows.SpellRowIndexById.emplace(_rows.Spells[index].Values[0], index);
       _rows.SuperTracks = LoadSuperTrackPatchRows();
+      _rows.QuestSuperTracks = LoadQuestSuperTrackPatchRows();
       _rows.SkillLineAbilities = LoadSkillLineAbilityPatchRows();
       _rows.ShapeshiftForms = LoadShapeshiftFormPatchRows();
       _rows.VanityCollections = LoadVanityCollectionPatchRows();
@@ -5462,6 +5525,8 @@ public:
         uint32 const incarnationDisplay = record.GetUInt32(8);
         if (sCreatureDisplayInfoStore.LookupEntry(incarnationDisplay))
           appearance.CreatureDisplay = incarnationDisplay;
+        else if (record.GetInt32(8) < 0 && sSpellMgr->GetSpellInfo(uint32(-record.GetInt32(8))))
+          appearance.IncarnationSpell = uint32(-record.GetInt32(8));
         appearance.CreatureWeapon = record.GetUInt32(9);
       }
       _allAppearanceIds.push_back(appearanceId);
@@ -5664,8 +5729,9 @@ public:
     SendVanityCollection(player, *state);
     RefreshVisibleItems(player);
     for (auto const& [id, appearance] : _appearances)
-        if (appearance.CosmeticSpell)
-            player->RemoveAurasDueToSpell(appearance.CosmeticSpell, player->GetGUID());
+        for (uint32 spell : { appearance.CosmeticSpell, appearance.IncarnationSpell })
+            if (spell)
+                player->RemoveAurasDueToSpell(spell, player->GetGUID());
     RefreshCosmetics(player, *state);
     RefreshIncarnations(player);
     InitializeRiding(player);
@@ -5746,6 +5812,7 @@ public:
         {
             state->CosmeticTimer = 1000;
             RefreshCosmetics(player, *state);
+            RefreshIncarnationSpell(player);
         }
         else
             state->CosmeticTimer -= diff;
@@ -6178,19 +6245,45 @@ public:
             return nullptr;
 
         auto const appearance = _appearances.find(appearanceId);
-        return appearance != _appearances.end() && appearance->second.CreatureDisplay ? &appearance->second : nullptr;
+        return appearance != _appearances.end() &&
+            (appearance->second.CreatureDisplay || appearance->second.IncarnationSpell) ? &appearance->second : nullptr;
     }
 
-    uint32 GetIncarnationFormDisplay(Player* player, ShapeshiftForm form)
+    AppearanceInfo const* GetActiveFormIncarnation(Player* player, ShapeshiftForm form)
     {
         if (form == FORM_DIREBEAR)
             form = FORM_BEAR;
         else if (form == FORM_FLIGHT_EPIC)
             form = FORM_FLIGHT;
 
-        uint32 const category = FindIncarnationCategory(INCARNATION_KIND_FORM, form);
-        AppearanceInfo const* appearance = category ? GetActiveIncarnation(player, category) : nullptr;
+        uint32 const category = form != FORM_NONE ? FindIncarnationCategory(INCARNATION_KIND_FORM, form) : 0;
+        return category ? GetActiveIncarnation(player, category) : nullptr;
+    }
+
+    uint32 GetIncarnationFormDisplay(Player* player, ShapeshiftForm form)
+    {
+        AppearanceInfo const* appearance = GetActiveFormIncarnation(player, form);
         return appearance ? appearance->CreatureDisplay : 0;
+    }
+
+    void RefreshIncarnationSpell(Player* player)
+    {
+        auto state = GetState(player);
+        if (!state || !player->IsInWorld())
+            return;
+
+        AppearanceInfo const* appearance = player->IsAlive() ?
+            GetActiveFormIncarnation(player, player->GetShapeshiftForm()) : nullptr;
+        uint32 const spell = appearance ? appearance->IncarnationSpell : 0;
+        if (state->AppliedIncarnationSpell && state->AppliedIncarnationSpell != spell)
+            player->RemoveAurasDueToSpell(state->AppliedIncarnationSpell, player->GetGUID());
+        state->AppliedIncarnationSpell = spell;
+        if (spell && !player->HasAura(spell, player->GetGUID()))
+            if (Aura* aura = player->AddAura(spell, player))
+            {
+                aura->SetMaxDuration(-1);
+                aura->SetDuration(-1);
+            }
     }
 
     void RefreshIncarnationGuardian(Player* player, Guardian* guardian)
@@ -6203,7 +6296,8 @@ public:
             return;
 
         AppearanceInfo const* appearance = GetActiveIncarnation(player, category);
-        uint32 const display = appearance ? appearance->CreatureDisplay : guardian->GetNativeDisplayId();
+        uint32 const display = appearance && appearance->CreatureDisplay ? appearance->CreatureDisplay :
+            guardian->GetNativeDisplayId();
         if (guardian->GetDisplayId() != display)
             guardian->SetDisplayId(display, guardian->GetObjectScale());
 
@@ -6225,6 +6319,7 @@ public:
             player->RestoreDisplayId();
         if (Pet* pet = player->GetPet())
             RefreshIncarnationGuardian(player, pet);
+        RefreshIncarnationSpell(player);
     }
 
   void DeliverVanityItem(Player *player, uint32 itemId) {
@@ -6971,8 +7066,9 @@ private:
         return;
       }
       if ((IsCosmeticCategory(categoryId) && !appearance.CosmeticSpell) ||
-          ((categoryId == APPEARANCE_CATEGORY_SHADOWHOUND || _incarnationCategories.contains(categoryId)) &&
-           !appearance.CreatureDisplay))
+          (categoryId == APPEARANCE_CATEGORY_SHADOWHOUND && !appearance.CreatureDisplay) ||
+          (_incarnationCategories.contains(categoryId) && !appearance.CreatureDisplay &&
+           !appearance.IncarnationSpell))
       {
         SendApplyResult(player, "APPLY_APPEARANCES_INVALID_SELECTION");
         return;
@@ -8519,6 +8615,12 @@ class AscensionCompatPlayerScript : public PlayerScript {
         }
     }
 
+    void RemoveExpiredExperienceAura(Player* player)
+    {
+        if (player->GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_RECRUIT_A_FRIEND_BONUS_PLAYER_LEVEL))
+            player->RemoveAurasDueToSpell(818059);
+    }
+
 public:
   AscensionCompatPlayerScript()
       : PlayerScript(
@@ -8742,6 +8844,7 @@ public:
       AscensionDisplayPatchService::Instance().OnPlayerLogin(player);
       RefreshScaledQuestQueries(player);
       SendAverageItemLevel(player);
+      RemoveExpiredExperienceAura(player);
     }
   }
 
@@ -8762,6 +8865,7 @@ public:
       AscensionClassService::Instance().SendCharacterAdvancementKnownEntries(player);
 
       RefreshScaledQuestQueries(player);
+      RemoveExpiredExperienceAura(player);
     }
   }
 
@@ -8891,6 +8995,8 @@ public:
   void OnPlayerEquip(Player *player, Item *item, uint8, uint8,
                      bool) override {
     AscensionCollectionService::Instance().OnItemObtained(player, item);
+    if (ascensionCompatConfig.GetConfigValue<bool>(AscensionCompatConfig::ENABLED))
+      ReconcileAscensionPrimalistWeapon(player);
   }
 
   bool OnPlayerCanCastItemUseSpell(Player *player, Item *item, SpellCastTargets const &, uint8, uint32) override {
@@ -9068,7 +9174,21 @@ public:
             {UNITHOOK_ON_BLOCK,
              UNITHOOK_ON_PERIODIC_DAMAGE_RESULT,
              UNITHOOK_ON_AURA_APPLY, UNITHOOK_ON_AURA_REMOVE,
-             UNITHOOK_ON_SEND_AURA_UPDATE}) {}
+             UNITHOOK_ON_SEND_AURA_UPDATE, UNITHOOK_ON_UNIT_SET_SHAPESHIFT_FORM}) {}
+
+    void OnUnitSetShapeshiftForm(Unit* unit, uint8) override
+    {
+        if (!unit || !unit->IsPlayer() ||
+            !ascensionCompatConfig.GetConfigValue<bool>(AscensionCompatConfig::ENABLED))
+            return;
+
+        ObjectGuid const guid = unit->GetGUID();
+        unit->m_Events.AddEventAtOffset([guid]()
+        {
+            if (Player* player = ObjectAccessor::FindPlayer(guid))
+                AscensionCollectionService::Instance().RefreshIncarnationSpell(player);
+        }, 1ms);
+    }
 
     void OnSendAuraUpdate(Unit* target, Player* receiver,
         AuraApplication const* application, bool remove) override
@@ -9223,18 +9343,6 @@ public:
                     if (spellInfo->Effects[EFFECT_0].Effect == SPELL_EFFECT_APPLY_AURA &&
                         spellInfo->Effects[EFFECT_0].ApplyAuraName == SPELL_AURA_NONE)
                         spellInfo->Effects[EFFECT_0].ApplyAuraName = SPELL_AURA_DUMMY;
-                    break;
-                case 91616: case 91617: case 91618: case 91619:
-                    if (spellInfo->Effects[EFFECT_0].ApplyAuraName == SPELL_AURA_MOUNTED &&
-                        spellInfo->Effects[EFFECT_1].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_SPEED &&
-                        spellInfo->Effects[EFFECT_2].Effect == SPELL_EFFECT_APPLY_AURA &&
-                        spellInfo->Effects[EFFECT_2].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED &&
-                        !spellInfo->HasAttribute(SPELL_ATTR4_ONLY_FLYING_AREAS))
-                    {
-                        spellInfo->Effects[EFFECT_2].Effect = 0;
-                        spellInfo->Effects[EFFECT_2].ApplyAuraName = SPELL_AURA_NONE;
-                        spellInfo->Effects[EFFECT_2].BasePoints = 0;
-                    }
                     break;
                 default:
                     break;
@@ -9789,6 +9897,20 @@ class spell_ascension_local_mount : public SpellScript
             GetCaster()->IsPlayer() && Validate(GetSpellInfo());
     }
 
+    uint32 FlyingVariant(uint16 riding) const
+    {
+        std::array<uint32, 3> preference = { _mount->Flying150, _mount->Flying280, _mount->Flying310 };
+        if (riding >= RIDING_SKILL_EXTRAORDINARY)
+            preference = { _mount->Flying310, _mount->Flying280, _mount->Flying150 };
+        else if (riding >= RIDING_SKILL_ARTISAN)
+            preference = { _mount->Flying280, _mount->Flying310, _mount->Flying150 };
+
+        for (uint32 spellId : preference)
+            if (spellId)
+                return spellId;
+        return 0;
+    }
+
     void HandleMount(SpellEffIndex effIndex)
     {
         PreventHitDefaultEffect(effIndex);
@@ -9803,26 +9925,9 @@ class spell_ascension_local_mount : public SpellScript
             return;
         }
         uint32 selected = riding >= RIDING_SKILL_JOURNEYMAN ? _mount->Ground100 : _mount->Ground60;
-        uint32 map = GetVirtualMapForMapAndZone(player->GetMapId(), player->GetZoneId());
-        bool canFly = map == MAP_OUTLAND || (map == MAP_NORTHREND && player->HasSpell(SPELL_COLD_WEATHER_FLYING));
-        AreaTableEntry const* area = sAreaTableStore.LookupEntry(player->GetAreaId());
-        Battlefield* battlefield = sBattlefieldMgr->GetBattlefieldToZoneId(player->GetZoneId());
-        if ((area && (area->flags & AREA_FLAG_NO_FLY_ZONE)) || (battlefield && !battlefield->CanFlyIn()) ||
-            player->InBattleground())
-            canFly = false;
-
-        if (canFly && riding >= RIDING_SKILL_EXPERT)
-        {
-            uint32 flying = riding >= RIDING_SKILL_ARTISAN ? (_mount->Flying310 ? _mount->Flying310 : _mount->Flying280) :
-                _mount->Flying150;
-            if (!flying)
-                flying = _mount->Flying150;
-            SpellInfo const* spell = flying ? sSpellMgr->GetSpellInfo(flying) : nullptr;
-            if (spell && spell->CheckLocation(player->GetMapId(), player->GetZoneId(),
-                player->GetAreaId(), player) == SPELL_CAST_OK &&
-                player->canFlyInZone(player->GetMapId(), player->GetZoneId(), spell))
-                selected = flying;
-        }
+        if (uint32 flying = FlyingVariant(riding); flying &&
+            AscensionMountSpeed::CanFly(player, sSpellMgr->GetSpellInfo(flying)))
+            selected = flying;
 
         if (!selected)
             return;

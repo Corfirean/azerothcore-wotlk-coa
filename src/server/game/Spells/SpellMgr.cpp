@@ -1621,8 +1621,8 @@ void SpellMgr::LoadSpellRequired()
         {
             if (mSpellReq.contains(twin->second))
                 continue;
-            auto const reqTwin = _spellTwins.find(spellReq);
-            twinRequirements.emplace_back(twin->second, reqTwin != _spellTwins.end() ? reqTwin->second : spellReq);
+            // the requirement's own copy at the same offset, also when it is a namesake (Reborn Bear Form)
+            twinRequirements.emplace_back(twin->second, GetSpellTwinFor(spellReq, twin->second));
         }
     }
     for (auto const& [spellId, spellReq] : twinRequirements)
@@ -3474,8 +3474,12 @@ void SpellMgr::LoadSpellInfoCustomAttributes()
     }
     else
     {
-        for (count = 0; result->NextRow(); ++count)
+        count = 0;
+
+        do
         {
+            ++count;
+
             Field const* fields = result->Fetch();
 
             uint32 const spellId = fields[0].Get<uint32>();
@@ -3535,7 +3539,7 @@ void SpellMgr::LoadSpellInfoCustomAttributes()
 
             spellInfo->AttributesCu |= attributes;
             databaseAttributes[spellId] = attributes;
-        }
+        } while (result->NextRow());
 
         for (auto const& [source, twin] : _spellTwins)
         {

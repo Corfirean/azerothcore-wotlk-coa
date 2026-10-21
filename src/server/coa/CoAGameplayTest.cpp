@@ -2133,6 +2133,8 @@ private:
             return unit->GetDisplayId();
         if (metric == "mount_display_id")
             return unit->GetMountID();
+        if (metric == "can_fly")
+            return unit->CanFly();
         if (metric == "unit_scale")
             return double(unit->GetObjectScale());
         if (metric == "combat_reach")
@@ -2354,6 +2356,8 @@ private:
         }
         if (metric == "run_speed_rate")
             return unit->GetSpeedRate(MOVE_RUN);
+        if (metric == "flight_speed_rate")
+            return unit->GetSpeedRate(MOVE_FLIGHT);
         if (metric == "spell_hit_bonus_taken")
         {
             SpellInfo const* info = sSpellMgr->GetSpellInfo(spell);
@@ -2852,6 +2856,16 @@ private:
             Require(creature != nullptr, "Creature health metric needs a living nearby creature");
             return creature->GetMaxHealth();
         }
+        if (metric == "nearby_creature_sent_spellclick")
+        {
+            Creature* creature = player->FindNearestCreature(step.get<uint32>("entry"), 60.0f, true);
+            Require(creature != nullptr, "Sent spell click metric needs a living nearby creature");
+            Actor const& actor = _actors.at(step.get<std::string>("actor"));
+            auto itr = actor.unitValues.find(creature->GetGUID().GetRawValue());
+            if (itr == actor.unitValues.end() || !itr->second.count(UNIT_NPC_FLAGS))
+                return -1;
+            return (itr->second.at(UNIT_NPC_FLAGS) & UNIT_NPC_FLAG_SPELLCLICK) ? 1 : 0;
+        }
         if (metric == "nearby_creature_template")
         {
             std::list<Creature*> creatures;
@@ -3256,6 +3270,8 @@ private:
         }
         if (metric == "talent_points")
             return player->GetFreeTalentPoints();
+        if (metric == "active_talent_spec")
+            return player->GetActiveSpec();
         if (metric == "bank_bag_slots")
             return player->GetBankBagSlotCount();
         if (metric == "taxi_node")
@@ -4224,6 +4240,12 @@ private:
                             Require(item != nullptr, "Packet item GUID requires a carried item");
                             request << item->GetGUID().GetRawValue();
                         }
+                        else if (kind == "item_bag" || kind == "item_slot")
+                        {
+                            Item* item = player->GetItemByEntry(value.get_value<uint32>());
+                            Require(item != nullptr, "Packet item position requires a carried item");
+                            request << uint8(kind == "item_bag" ? item->GetBagSlot() : item->GetSlot());
+                        }
                         else if (kind == "gameobject_guid")
                         {
                             std::list<GameObject*> objects = OwnedGameObjects(player, value.get_value<uint32>());
@@ -4791,6 +4813,15 @@ private:
             packet << objects.front()->GetGUID();
             if (sScriptMgr->CanPacketReceive(player->GetSession(), packet))
                 player->GetSession()->HandleGameObjectUseOpcode(packet);
+        }
+        else if (action == "spell_click_nearby")
+        {
+            Creature* creature = player->FindNearestCreature(step.get<uint32>("entry"), 20.0f, true);
+            Require(creature != nullptr, "Spell click needs a living creature of that entry within 20 yards");
+            WorldPacket packet(CMSG_SPELLCLICK, 8);
+            packet << creature->GetGUID();
+            if (sScriptMgr->CanPacketReceive(player->GetSession(), packet))
+                player->GetSession()->HandleSpellClick(packet);
         }
         else if (action == "attack_nearby" || action == "loot_nearby")
         {

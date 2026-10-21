@@ -53,18 +53,23 @@ CoA.AutoCollectAppearances = 1
 CoA.EquippedGearLoot = 1
 CoA.EquippedGearLootChance = 5
 
-# Health and damage multipliers for regular-difficulty creatures, tuned to Ascension's combat logs.
+# Health and damage multipliers for regular-difficulty creatures, tuned to live Ascension readings.
 # Health is multiplied when a creature takes its level; damage applies to hits on players and their pets.
 # Heroic/Mythic, battlegrounds, arenas, pets, summons, totems, triggers, critters and training dummies are
 # not changed; raid creatures listed in coa_boss_flex keep their measured flex health.
 # MapHealth/MapDamage replace the context value per map as "mapId:multiplier".
+# Every value may also be a formula of the creature's level: numbers, level, + - * /, parentheses, min(a, b) and
+# max(a, b), e.g. CoA.CreatureScaling.World.Health = "1.17 + 0.013 * level". In MapHealth/MapDamage write a formula
+# without spaces ("43:0.3+0.08*level"), or separate the entries with ';' ("43: 0.3 + 0.08 * level; 36: 2.2").
+# World is fitted to live open-world creature health seen in videos of live Ascension (levels 1-59); world damage uses
+# the same formula. Dungeon and Raid keep their earlier estimates.
 # Without this section the server keeps these multipliers but leaves the feature disabled.
 CoA.CreatureScaling.Enable = 1
-CoA.CreatureScaling.World.Health = 2.5
+CoA.CreatureScaling.World.Health = "1.17 + 0.013 * level"
 CoA.CreatureScaling.Dungeon.Health = 2.5
 CoA.CreatureScaling.Raid.Health = 2.2
 CoA.CreatureScaling.MapHealth = "36:2.2 43:2.0 229:4.0 389:3.0 469:5.0"
-CoA.CreatureScaling.World.Damage = 2.0
+CoA.CreatureScaling.World.Damage = "1.17 + 0.013 * level"
 CoA.CreatureScaling.Dungeon.Damage = 1.5
 CoA.CreatureScaling.Raid.Damage = 1.0
 CoA.CreatureScaling.MapDamage = ""
@@ -468,19 +473,27 @@ Ascension.PrestigiousCache.TbcStages = 0
 
 #
 #    Ascension.CallboardCache.ReleaseStage
-#        Description: The realm's current content progression stage, 0-7, in the order the
-#                     Callboard Caches released: Heroic and Mythic Dungeons, Zul'Gurub,
-#                     Molten Core, Onyxia's Lair, Blackwing Lair, Ruins of Ahn'Qiraj,
-#                     Temple of Ahn'Qiraj, Naxxramas. A generic Callboard Cache resolves
-#                     to a tier at or below this stage.
-#                     The same stage gates the Classic raids: a raid above it is closed,
-#                     entering it shows "Instance is closed" and a character logging in
-#                     inside it is moved out (0 closes every raid, 2 opens Zul'Gurub and
-#                     Molten Core). Game Masters still enter; other maps are not affected.
-#                     Applied on .reload config.
-#        Default:     7
+#        Description: The realm's current content progression stage, 0-8. Every stage also
+#                     releases the stages before it:
+#                     0 - normal dungeons only
+#                     1 - Heroic Dungeons
+#                     2 - Mythic Dungeons
+#                     3 - Molten Core
+#                     4 - Zul'Gurub
+#                     5 - Onyxia's Lair
+#                     6 - Blackwing Lair
+#                     7 - Ruins of Ahn'Qiraj and Temple of Ahn'Qiraj
+#                     8 - Naxxramas
+#                     A raid or dungeon difficulty above the stage is closed: entering it
+#                     shows "Instance is closed" and a character logging in inside it is
+#                     moved out. Game Masters still enter; other maps are not affected. The
+#                     client lists Heroic and Mythic difficulties only once they are released.
+#                     Callboard Caches follow the same stages: only released caches are
+#                     earned, and a generic Callboard Cache resolves to a released tier.
+#                     Applied on .reload config; the client's difficulty list on next login.
+#        Default:     3
 
-Ascension.CallboardCache.ReleaseStage = 7
+Ascension.CallboardCache.ReleaseStage = 3
 
 #
 #    Ascension.CallboardCache.PreviousStageOnly

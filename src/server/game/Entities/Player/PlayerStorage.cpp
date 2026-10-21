@@ -267,6 +267,21 @@ uint8 Player::FindEquipSlot(ItemTemplate const* proto, uint32 slot, bool swap) c
                      CanUseTwoHandWithShield(GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND)->GetTemplate(), proto)))
                     return slots[i];
 
+        // CoA dual two-handed builds (Burning Commander / Valkyr Grip) work the second slot through right-click
+        // while the main hand holds a gripped two-hander: a two-hander joins an offhand that does not hold one
+        // yet, and any other fitting weapon takes the offhand without disturbing the main hand.
+        if (swap && slots[1] == EQUIPMENT_SLOT_OFFHAND && (HasBurningCommander() || HasValkyrGrip()))
+            if (Item* mhWeapon = GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND))
+                if (ItemTemplate const* mhWeaponProto = mhWeapon->GetTemplate())
+                    if (mhWeaponProto->InventoryType == INVTYPE_2HWEAPON && CanTitanGrip(mhWeaponProto))
+                        if (Item* offWeapon = GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND))
+                            if ((proto->InventoryType == INVTYPE_2HWEAPON &&
+                                 offWeapon->GetTemplate()->InventoryType != INVTYPE_2HWEAPON) ||
+                                (proto->InventoryType == INVTYPE_WEAPON &&
+                                 proto->SubClass != ITEM_SUBCLASS_WEAPON_POLEARM &&
+                                 proto->SubClass != ITEM_SUBCLASS_WEAPON_FISHING_POLE))
+                                return EQUIPMENT_SLOT_OFFHAND;
+
         // if not found free and can swap return first appropriate from used
         for (uint8 i = 0; i < 4; ++i)
             if (slots[i] != NULL_SLOT && swap)
@@ -5717,12 +5732,9 @@ bool Player::LoadFromDB(ObjectGuid playerGuid, CharacterDatabaseQueryHolder cons
     }
 
     // RaF stuff.
-    m_grantableLevels = fields[71].Get<uint8>();
+    SetGrantableLevels(fields[71].Get<uint8>());
     if (GetSession()->IsARecruiter() || (GetSession()->GetRecruiterId() != 0))
         SetDynamicFlag(UNIT_DYNFLAG_REFER_A_FRIEND);
-
-    if (m_grantableLevels > 0)
-        SetByteValue(PLAYER_FIELD_BYTES, 1, 0x01);
 
     _LoadDeclinedNames(holder.GetPreparedResult(PLAYER_LOGIN_QUERY_LOAD_DECLINED_NAMES));
 
@@ -7060,7 +7072,9 @@ bool Player::Satisfy(DungeonProgressionRequirements const* ar, uint32 target_map
                     {
                         ChatHandler(GetSession()).PSendSysMessage("{}", missingLeaderQuests[0]->note);
                     }
-                    else if (mapDiff->hasErrorMessage)
+                    // CoA's MapDifficulty.dbc gives every raid's difficulty 0 the text "This difficulty is not available.", so a
+                    // level shortfall goes on to the level message below rather than that text.
+                    else if (mapDiff->hasErrorMessage && !LevelMin)
                     {
                         // if (missingAchievement) covered by this case
                         SendTransferAborted(target_map, TRANSFER_ABORT_DIFFICULTY, target_difficulty);
@@ -7291,6 +7305,9 @@ void Player::SaveToDB(CharacterDatabaseTransaction trans, bool create, bool logo
 
     if (!create)
         sScriptMgr->OnPlayerSave(this);
+
+    if (!create)
+        GetSession()->UpdateRecruitAFriendRewards(true);
 
     _SaveCharacter(create, trans);
 

@@ -391,7 +391,8 @@ Characters are created and loaded through the existing character creation, enume
 handlers with ordinary player security. A player may set `account_of` to an earlier player id to share that
 fixture's disposable account; otherwise each player gets its own account. This supports account-wide state
 checks through separate socketless character sessions and does not test simultaneous client authentication.
-`client_packet` fields may use `item_guid` with a carried item entry, or `gameobject_guid` with an entry of
+`client_packet` fields may use `item_guid` with a carried item entry, `item_bag` or `item_slot` with a carried
+item entry (its u8 bag and slot), or `gameobject_guid` with an entry of
 exactly one owned fixture gameobject. Both write the native raw GUID and require the referenced object to exist.
 Optional `location` supplies `map`, `x`, `y`, `z`, `o` for a fixture
 teleport. `location.ignore_access` optionally bypasses entry requirements for a fixture (for example a solo
@@ -476,8 +477,9 @@ assert stable maximums and final levels when testing damage coefficients.
 | `equip` | `actor`, `item`, `slot` (0..18 equipment, 19..22 bag slots): equip an owned item through the session handler. |
 | `use_item` | `actor`, `item`, `spell`, optional `target`, `target_item` (an owned item entry, sent as the item target instead of a unit) and `destination`: normal item-use handler. |
 | `use_nearby_gameobject` | `actor`, `entry`, optional `owner` (a player id): native use request for the single gameobject of that entry within 20 yards in the actor's phase; `owner` narrows the choice to the object that player owns, so one of several nearby objects can be clicked. |
+| `spell_click_nearby` | `actor`, `entry`: native `CMSG_SPELLCLICK` on the nearest living creature of that entry within 20 yards, as the client sends on right-clicking a spell-click creature. |
 | `use_gameobject` | `actor`, `entry`: native use request for the actor's single nearby owned gameobject. |
-| `summon_gameobject` | Player `actor`, `entry`, optional `distance` (yards in front, default 2) and `duration_s` (default 300): summon a gameobject the actor owns; fails if the actor already owns one of that entry. |
+| `summon_gameobject` | Player `actor`, `entry`, optional `distance` (yards in front, default 2) and `duration_s` (default 300; 0 keeps it until the actor logs out, and only an untimed summon counts as spawned for scripts that check it): summon a gameobject the actor owns; fails if the actor already owns one of that entry. |
 | `loot_gameobject` | Player `actor`, `entry`: open the loot of the actor's single owned chest as a successful open-lock cast does, so chest loot is generated for that player. Lock, key and skill checks are not exercised. |
 | `mapless_loot_hook` | Player `actor`, `store` (`mail`/`gameobject`): test registered loot hooks without a map. |
 | `set_skill` | `actor`, `skill`, `value`, `maximum`: fixture a native profession skill. |
@@ -519,7 +521,7 @@ a previously named snapshot of the same metric; it is available on snapshots and
 `target_pet: true` in place of `target` sends a player's cast at their current pet.
 
 Metrics: `health`, `max_health`, `creature_type`, `power`, `max_power`, `alive`, `map_id`, `combat`, `casting`,
-`level`, `quest_objective_count` (needs `quest`, optional `index`), `knows_spell`, `has_talent`, `talent_points`,
+`level`, `quest_objective_count` (needs `quest`, optional `index`), `knows_spell`, `has_talent`, `talent_points`, `active_talent_spec`,
 `cooldown_ms`, `item_count`, `carried_item_count`, `bank_bag_slots`, `aura`, `aura_stacks`, `aura_charges`,
 `aura_duration_ms`, `aura_amount`, `pet_entry`, `pet_aura_stacks`, `owned_creature_count`, `owned_creature_spacing`,
 `charm_entry`, `charm_aura_stacks`, `controls_self`, `private_instance`, `dynamic_object`,
@@ -575,6 +577,7 @@ reports whether the player carries it (for example `8` customize, `64` faction c
 `health_pct` observes current health as a percentage of maximum health.
 `creature_type` reads the native type used by creature-type targeting and effects.
 `mount_display_id` reads the unit's actual mount display; zero means the unit is dismounted.
+`can_fly` is 1 while the unit may fly, and `flight_speed_rate` reads its current flight speed rate.
 `cast_speed_multiplier` observes the native cast-time multiplier; smaller values mean faster casts.
 `spell_crit_chance` observes the player's Shadow spell critical chance, in percentage points.
 `spell_damage_done` and `melee_damage_done` require `target` and query native outgoing damage calculations
@@ -782,7 +785,8 @@ player's bars. `Player::GetTemporarySpellReplacement` returns the queried spell 
 it, so the unreplaced reading is that spell's own ID, never zero. It reads server-side state, not what the
 client draws.
 `has_talent` requires the talent rank's spell ID; passive talents are separate from the learned spellbook.
-`talent_points` measures unspent points in the active specialization.
+`talent_points` measures unspent points in the active specialization. `active_talent_spec` is the active talent
+spec: 0 for the primary, 1 for the secondary.
 `bank_bag_slots` measures the player's unlocked standard bank bag slots (0..7).
 `pet_entry` measures the player's current guardian pet entry, or the entry of the companion it summoned
 (a minipet, which never occupies the guardian slot), or zero if absent; `pet_display`, `pet_scale`
@@ -982,6 +986,9 @@ the observer's native `CanSeeOrDetect` check; neither metric covers client rende
 `ascension_dungeon_difficulty_packet` sends the one-byte Ascension portrait-menu request through the
 real early receive hook and session queue; follow it with a wait before teleporting. The native
 `dungeon_difficulty_packet` remains available for Normal and Heroic. `nearby_creature_max_health`
-requires an entry and reads the nearest living matching creature within 60 yards. The
+requires an entry and reads the nearest living matching creature within 60 yards.
+`nearby_creature_sent_spellclick` reads that creature's NPC flags from the last values update the actor's client
+received: 1 with the spell-click flag, 0 without, -1 when no values update carried them (creation packets are not
+parsed). The
 `vanilla-dungeons-health` scenario uses real spawns to check video HP, explicitly inferred HP and
 unchanged Normal health. It does not establish the original Ascension scaling formula.

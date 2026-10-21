@@ -35,6 +35,10 @@ void CharacterDatabaseConnection::DoPrepareStatements()
             "PRIMARY KEY (account, challengeId, level)) "
             "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+    PrepareStatement(CHAR_SEL_RAF_DELIVERY, "SELECT mail_id FROM raf_reward_delivery WHERE claim_id = ?", CONNECTION_SYNCH);
+    PrepareStatement(CHAR_INS_RAF_DELIVERY, "INSERT INTO raf_reward_delivery (claim_id, account_id, guid, mail_id) VALUES (?, ?, ?, ?)", CONNECTION_SYNCH);
+    PrepareStatement(CHAR_SEL_RAF_RECIPIENT, "SELECT account FROM characters WHERE guid = ?", CONNECTION_SYNCH);
+
     PrepareStatement(CHAR_SEL_COA_ACCOUNT_CHALLENGE_COMPLETION,
         "SELECT 1 FROM coa_account_challenge_completion WHERE account = ? AND challengeId = ? AND level = ? LIMIT 1",
         CONNECTION_SYNCH);
@@ -52,7 +56,8 @@ void CharacterDatabaseConnection::DoPrepareStatements()
     PrepareStatement(CHAR_DEL_WORLDFORGED_LOOT,
         "DELETE FROM character_worldforged_loot WHERE guid = ?", CONNECTION_ASYNC);
     PrepareStatement(CHAR_SEL_LOTTERY_RECENT_WINNERS,
-        "SELECT winner_name, gold_copper, winner_tickets, house_win, complimentary_tickets FROM coa_lottery_winner "
+        "SELECT winner_name, gold_copper, winner_tickets, house_win, complimentary_tickets, total_tickets "
+        "FROM coa_lottery_winner "
         "ORDER BY drawn_at DESC, round_id DESC LIMIT 5", CONNECTION_SYNCH);
     PrepareStatement(CHAR_SEL_LOTTERY_WINNER_IDENTITY,
         "SELECT name, account FROM characters WHERE guid = ? AND deleteDate IS NULL "

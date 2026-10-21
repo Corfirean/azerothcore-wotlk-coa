@@ -35,6 +35,8 @@ void WorldDatabaseConnection::DoPrepareStatements()
         "UNION SELECT Item FROM milling_loot_template WHERE Reference = 0 AND QuestRequired = 0 "
         "UNION SELECT Item FROM pickpocketing_loot_template WHERE Reference = 0 AND QuestRequired = 0 "
         "UNION SELECT item FROM npc_vendor", CONNECTION_SYNCH);
+    PrepareStatement(WORLD_SEL_RAF_REWARDS, "SELECT reward_id, required_recruits, realm_mode_mask, item_id, quantity FROM recruit_rewards WHERE enabled = 1 ORDER BY required_recruits, reward_id", CONNECTION_SYNCH);
+
     PrepareStatement(WORLD_SEL_CROWS_CACHE_REWARDS, "SELECT kind,item,count FROM coa_crows_cache_rewards ORDER BY kind,item", CONNECTION_SYNCH);
 
     PrepareStatement(WORLD_SEL_QUEST_POOLS, "SELECT entry, pool_entry FROM pool_quest", CONNECTION_SYNCH);

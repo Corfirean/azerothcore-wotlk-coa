@@ -41,14 +41,15 @@ METRICS = {
     'pet_power', 'pet_max_power', 'spell_energize_count', 'spell_energize_total',
     'xp', 'next_level_xp', 'skill_value', 'skill_maximum', 'lfg_dungeon_disabled', 'lfg_state', 'map_id',
     'in_arena', 'arena_team_members', 'arena_team_season_games', 'arena_team_season_wins',
-    'map_difficulty', 'nearby_creature_template', 'nearby_creature_max_health', 'loot_gear_item_level',
+    'map_difficulty', 'nearby_creature_template', 'nearby_creature_max_health', 'nearby_creature_sent_spellclick',
+    'loot_gear_item_level',
     'position_x', 'position_y', 'position_z',
     'view_level', 'sent_level', 'sent_max_health', 'sent_average_item_level', 'sent_average_item_level_count',
     'creature_query_rank', 'quest_level', 'quest_xp',
     'quest_log_sent_level', 'quest_log_sent_xp', 'quest_offer_sent_xp', 'quest_query_scaled', 'quest_query_reward_choice',
     'health', 'health_pct', 'max_health', 'creature_type', 'respawn_remaining', 'power', 'max_power', 'alive', 'combat', 'victim', 'casting', 'level',
     'aura', 'aura_stacks', 'aura_charges', 'aura_duration_ms', 'aura_amount', 'aura_positive', 'aura_visible',
-    'knows_spell', 'spell_active', 'has_talent', 'talent_points', 'cooldown_ms', 'global_cooldown_ms', 'spell_charges',
+    'knows_spell', 'spell_active', 'has_talent', 'talent_points', 'active_talent_spec', 'cooldown_ms', 'global_cooldown_ms', 'spell_charges',
     'action_button', 'action_button_packed', 'persisted_action_button', 'item_count', 'carried_item_count',
     'carried_pool_item_count', 'carried_variant_item_count', 'client_knows_spell', 'client_spellbook_copies',
     'pool_variant_count', 'pool_retired_item_count', 'pool_row_count', 'pool_item_present',
@@ -98,7 +99,7 @@ METRICS = {
     'ball_carried_count', 'ball_carried_quest', 'ball_turn_in_count', 'ball_turn_in_quest',
     'gossip_text',
     'stat', 'attack_power', 'ranged_attack_power', 'armor', 'weapon_damage_min', 'resistance',
-    'attack_time_ms', 'pet_attack_time_ms', 'run_speed_rate', 'display_id', 'mount_display_id',
+    'attack_time_ms', 'pet_attack_time_ms', 'run_speed_rate', 'flight_speed_rate', 'display_id', 'mount_display_id', 'can_fly',
     'aura_amplitude_ms', 'melee_crit_chance', 'dodge_chance', 'parry_chance', 'expertise', 'combat_rating',
     'spell_modifier', 'spell_cast_time_ms', 'client_cast_time_ms', 'client_attributes', 'client_spell_targets', 'spell_max_range', 'spell_max_stacks', 'spell_healing_done',
     'aura_crit_chance', 'aura_script_value', 'melee_hit_chance', 'spell_hit_chance', 'spell_power',
@@ -223,6 +224,7 @@ ACTIONS = {
     'set_player_setting': ({'actor', 'source', 'index', 'value'}, {'actor', 'source', 'index', 'value'}),
     'set_phase': ({'actor'}, {'actor', 'value'}),
     'use_nearby_gameobject': ({'actor', 'entry'}, {'actor', 'entry', 'owner'}),
+    'spell_click_nearby': ({'actor', 'entry'}, {'actor', 'entry'}),
     'attack_owned_creature': ({'actor', 'target', 'entry'}, {'actor', 'target', 'entry'}),
     'attack_nearby': ({'actor', 'entry'}, {'actor', 'entry', 'kill', 'damage_pct'}),
     'summon': ({'actor', 'as', 'entry'}, {'actor', 'as', 'entry', 'distance'}),
@@ -569,7 +571,7 @@ def validate(scenario):
             require(step['actor'] in player_ids, f'{where}: {action} needs a player')
             number(step['entry'], f'{where}.entry', 1, 2**32 - 1, True)
             number(step.get('distance', 2), f'{where}.distance', 0, 20)
-            number(step.get('duration_s', 300), f'{where}.duration_s', 1, 86400, True)
+            number(step.get('duration_s', 300), f'{where}.duration_s', 0, 86400, True)
         if action == 'discover_taxi_node':
             number(step['entry'], f'{where}.entry', 1, 2**31 - 1, True)
         if action == 'client_packet':
@@ -588,7 +590,7 @@ def validate(scenario):
             for index, field in enumerate(fields):
                 require(isinstance(field, dict) and len(field) == 1, f'{where}.fields[{index}]: expected one typed value')
                 (kind, value), = field.items()
-                require(kind in {'u8', 'u32', 'u64', 'string', 'buyback_guid', 'item_guid', 'gameobject_guid',
+                require(kind in {'u8', 'u32', 'u64', 'string', 'buyback_guid', 'item_guid', 'item_bag', 'item_slot', 'gameobject_guid',
                                  'actor_guid', 'packed_actor_guid',
                                  'pet_guid', 'stabled_pet', 'duel_arbiter', 'invited_battleground_type',
                                  'wildcard_entry', 'wildcard_pending_cards', 'wildcard_lowest_card'},
@@ -601,7 +603,7 @@ def validate(scenario):
                     require(value in player_ids, f'{where}.fields[{index}]: expected a player id')
                 else:
                     maximum = {'u8': 255, 'u32': 2**32 - 1, 'u64': 2**64 - 1, 'buyback_guid': 2**31 - 1,
-                               'item_guid': 2**32 - 1, 'gameobject_guid': 2**32 - 1,
+                               'item_guid': 2**32 - 1, 'item_bag': 2**32 - 1, 'item_slot': 2**32 - 1, 'gameobject_guid': 2**32 - 1,
                                'stabled_pet': 3, 'wildcard_entry': 255, 'wildcard_pending_cards': 1000,
                                'wildcard_lowest_card': 7}[kind]
                     number(value, f'{where}.fields[{index}]', 0, maximum, True)
@@ -651,9 +653,9 @@ def validate(scenario):
                 require(step['actor'] in player_ids, f'{where}: creature query metric needs a player')
                 number(step.get('entry'), f'{where}.entry', 1, 2**31 - 1, True)
             if metric in {'map_id', 'map_difficulty', 'nearby_creature_template',
-                          'nearby_creature_max_health', 'loot_gear_item_level'}:
+                          'nearby_creature_max_health', 'nearby_creature_sent_spellclick', 'loot_gear_item_level'}:
                 require(step['actor'] in player_ids, f'{where}: dungeon/loot metric needs a player')
-            if metric in {'nearby_creature_template', 'nearby_creature_max_health'}:
+            if metric in {'nearby_creature_template', 'nearby_creature_max_health', 'nearby_creature_sent_spellclick'}:
                 number(step.get('entry'), f'{where}.entry', 1, 2**32 - 1, True)
             if metric == 'map_creature_count':
                 require(step['actor'] in player_ids, f'{where}: creature count needs a player')
@@ -901,7 +903,7 @@ def validate(scenario):
                 require(isinstance(step.get('text'), str) and step['text'].strip(),
                         f'{where}: metric needs the text to look for')
             if metric in {'knows_spell', 'client_knows_spell', 'client_spellbook_copies', 'has_talent',
-                          'talent_points', 'cooldown_ms',
+                          'talent_points', 'active_talent_spec', 'cooldown_ms',
                           'spell_charges',
                           'action_button', 'action_button_packed', 'persisted_action_button', 'item_count',
                           'carried_item_count', 'carried_pool_item_count', 'carried_variant_item_count',
