@@ -15,6 +15,21 @@ import run
 
 
 class RunnerTests(unittest.TestCase):
+    def test_affixed_grants_validate_property_and_single_item_count(self):
+        step = {'action': 'add_item', 'actor': 'caster', 'item': 13858, 'property': 13202}
+        self.scenario['steps'].append(step)
+        for value in (0, -13202, 13202, -(2**31), 2**31 - 1):
+            step['property'] = value
+            self.assertIs(run.validate(self.scenario), self.scenario)
+        for value in (True, 1.5, '13202', -(2**31) - 1, 2**31):
+            step['property'] = value
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                run.validate(self.scenario)
+        step['property'] = 13202
+        step['count'] = 2
+        with self.assertRaisesRegex(ValueError, 'require one item'):
+            run.validate(self.scenario)
+
     def test_player_account_sharing_requires_an_earlier_player(self):
         self.scenario['players'].append({'id': 'alt', 'race': 1, 'class': 1, 'account_of': 'caster'})
         self.assertIs(run.validate(self.scenario), self.scenario)
@@ -23,14 +38,48 @@ class RunnerTests(unittest.TestCase):
             with self.subTest(owner=owner), self.assertRaisesRegex(ValueError, 'earlier player'):
                 run.validate(self.scenario)
 
-    def test_duel_arbiter_packet_field_requires_a_player(self):
-        step = {'action': 'client_packet', 'actor': 'caster', 'opcode': 364,
-                'fields': [{'duel_arbiter': 'caster'}], 'consumed': False}
+    def test_nearby_creature_count_filters_require_valid_scope_and_ranges(self):
+        for filters in ({}, {'min_level': 16, 'max_level': 17}, {'min_home_distance': 1}, {'spell': 210866}):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['steps'].append({'action': 'assert', 'actor': 'caster',
+                                     'metric': 'nearby_creature_count', 'entry': 2070, 'equals': 2, **filters})
+            with self.subTest(filters=filters):
+                self.assertIs(run.validate(scenario), scenario)
+        for filters in ({'min_level': 0}, {'max_level': 256}, {'min_level': 17, 'max_level': 16},
+                        {'min_level': '16'}, {'min_level': True}, {'max_level': 16.5},
+                        {'min_home_distance': -1}, {'min_home_distance': float('nan')},
+                        {'min_home_distance': float('inf')}, {'min_home_distance': True},
+                        {'spell': 0}, {'spell': '210866'}, {'spell': True}):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['steps'].append({'action': 'assert', 'actor': 'caster',
+                                     'metric': 'nearby_creature_count', 'entry': 2070, 'equals': 2, **filters})
+            with self.subTest(filters=filters), self.assertRaises(ValueError):
+                run.validate(scenario)
+        for field in ('min_level', 'max_level', 'min_home_distance'):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['steps'].append({'action': 'assert', 'actor': 'caster',
+                                     'metric': 'health', 'min': 1, field: 1})
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                run.validate(scenario)
+
+    def test_player_packet_fields_require_a_player(self):
+        step = {'action': 'client_packet', 'actor': 'caster', 'opcode': 364, 'consumed': False}
+        self.scenario['steps'].append(step)
+        for kind in ('duel_arbiter', 'invited_battleground_type'):
+            step['fields'] = [{kind: 'caster'}]
+            self.assertIs(run.validate(self.scenario), self.scenario)
+            for actor in ('target', 'missing', 1):
+                step['fields'] = [{kind: actor}]
+                with self.subTest(kind=kind, actor=actor), self.assertRaisesRegex(ValueError, 'expected a player id'):
+                    run.validate(self.scenario)
+
+    def test_nearby_gameobject_use_owner_requires_a_player(self):
+        step = {'action': 'use_nearby_gameobject', 'actor': 'caster', 'entry': 80775, 'owner': 'caster'}
         self.scenario['steps'].append(step)
         self.assertIs(run.validate(self.scenario), self.scenario)
-        for actor in ('target', 'missing', 1):
-            step['fields'] = [{'duel_arbiter': actor}]
-            with self.subTest(actor=actor), self.assertRaisesRegex(ValueError, 'expected a player id'):
+        for owner in ('target', 'missing', 1):
+            step['owner'] = owner
+            with self.subTest(owner=owner), self.assertRaisesRegex(ValueError, 'owner needs a player'):
                 run.validate(self.scenario)
 
     def test_spell_cast_and_proc_counts_can_share_relative_snapshots(self):
@@ -107,6 +156,22 @@ class RunnerTests(unittest.TestCase):
             scenario['steps'].append(step)
             with self.subTest(target=target), self.assertRaises(ValueError):
                 run.validate(scenario)
+
+    def test_owned_creature_count_creator_filter(self):
+        for value in (False, True, None, 0, 1, 'true'):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['steps'].append({'action': 'assert', 'actor': 'caster', 'metric': 'owned_creature_count',
+                                      'entry': 50301, 'creator_only': value, 'equals': 0})
+            with self.subTest(value=value):
+                if type(value) is bool:
+                    self.assertIs(run.validate(scenario), scenario)
+                else:
+                    with self.assertRaises(ValueError):
+                        run.validate(scenario)
+        scenario['steps'][-1] = {'action': 'assert', 'actor': 'caster', 'metric': 'health',
+                                 'creator_only': True, 'min': 1}
+        with self.assertRaises(ValueError):
+            run.validate(scenario)
 
     def test_profession_fixture_validation(self):
         scenario = run.read_json(Path(__file__).parent / 'scenarios' / 'profession-xp.json')
@@ -202,6 +267,20 @@ class RunnerTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaisesRegex(ValueError, 'creature_scaling must be boolean'):
                 run.validate(scenario)
 
+    def test_game_event_needs_an_event_id_and_a_boolean_state(self):
+        for step in ({'action': 'game_event', 'event': 12, 'active': True},
+                     {'action': 'game_event', 'event': 12, 'active': False}):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['steps'].insert(0, step)
+            self.assertIs(run.validate(scenario), scenario)
+        for step, error in (({'action': 'game_event', 'event': 12, 'active': 1}, 'active must be boolean'),
+                            ({'action': 'game_event', 'event': 0, 'active': True}, r'\.event'),
+                            ({'action': 'game_event', 'event': 12}, 'step 0')):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['steps'].insert(0, step)
+            with self.subTest(step=step), self.assertRaisesRegex(ValueError, error):
+                run.validate(scenario)
+
     def test_hour_timezone_is_a_posix_offset_placing_local_time_at_the_start_of_that_hour(self):
         for utc_hour, hour, expected in ((10, 12, 'UTC-01:01'), (23, 0, 'UTC-00:01'), (1, 23, 'UTC+02:59'),
                                          (12, 0, 'UTC-11:01'), (12, 23, 'UTC-10:01'), (5, 5, 'UTC+00:59'),
@@ -255,6 +334,8 @@ class RunnerTests(unittest.TestCase):
                                      ('spell_cast_count', 'target', {}),
                                      ('spell_go_count', 'caster', {}),
                                      ('spell_go_count', 'caster', {'pet': True}),
+                                     ('spell_go_count', 'caster', {'caster': 'caster'}),
+                                     ('spell_go_count', 'caster', {'caster': 'target'}),
                                      ('spell_go_count', 'caster', {'entry': 50587})]:
             with self.subTest(metric=metric, actor=actor, extra=extra):
                 scenario = copy.deepcopy(self.scenario)
@@ -268,6 +349,10 @@ class RunnerTests(unittest.TestCase):
                                      ('spell_cast_count', 'caster', {'pet': True}),
                                      ('spell_go_count', 'caster', {'pet': 1}),
                                      ('spell_go_count', 'caster', {'entry': 0}),
+                                     ('spell_go_count', 'caster', {'caster': 'missing'}),
+                                     ('spell_go_count', 'caster', {'caster': 'target', 'pet': True}),
+                                     ('spell_go_count', 'caster', {'caster': 'target', 'pet': False}),
+                                     ('spell_go_count', 'caster', {'caster': 'target', 'entry': 50587}),
                                      ('spell_go_count', 'caster', {'entry': 50587, 'pet': True})]:
             scenario = copy.deepcopy(self.scenario)
             scenario['steps'].append({'action': 'assert', 'actor': actor, 'metric': metric,

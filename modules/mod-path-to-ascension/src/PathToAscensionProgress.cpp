@@ -6,6 +6,8 @@
 #include "AllCreatureScript.h"
 #include "AllGameObjectScript.h"
 #include "AllSpellScript.h"
+#include "AscensionAverageItemLevel.h"
+#include "AscensionItemPower.h"
 #include "AuctionHouseMgr.h"
 #include "Battleground.h"
 #include "Config.h"
@@ -46,7 +48,6 @@ namespace PathToAscension
     namespace
     {
         constexpr uint16 SMSG_TUTORIAL_PATCH = 0x06A5;
-        constexpr uint32 MaxItemPower = 1000;
 
         Catalog catalog;
         Settings settings;
@@ -117,7 +118,6 @@ namespace PathToAscension
         uint32 EquippedItemPower(Player const* player, bool pvp)
         {
             uint32 power = 0;
-            std::string_view const prefix = pvp ? "PvP Power (+" : "PvE Power (+";
             for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
             {
                 Item const* item = player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
@@ -125,26 +125,7 @@ namespace PathToAscension
                     continue;
 
                 // Original equipment carries its PvE/PvP power as an on-equip marker spell.
-                for (auto const& effect : item->GetTemplate()->Spells)
-                {
-                    if (effect.SpellTrigger != ITEM_SPELLTRIGGER_ON_EQUIP)
-                        continue;
-
-                    SpellInfo const* spell = sSpellMgr->GetSpellInfo(effect.SpellId);
-                    if (!spell || !spell->SpellName[0])
-                        continue;
-
-                    std::string_view const name(spell->SpellName[0]);
-                    if (!name.starts_with(prefix) || !name.ends_with(')'))
-                        continue;
-
-                    uint32 amount = 0;
-                    char const* first = name.data() + prefix.size();
-                    char const* last = name.data() + name.size() - 1;
-                    auto const parsed = std::from_chars(first, last, amount);
-                    if (parsed.ec == std::errc() && parsed.ptr == last && amount <= MaxItemPower)
-                        power += amount;
-                }
+                power += AscensionItemPower::OfItem(item->GetTemplate(), pvp);
             }
 
             return power;
@@ -154,7 +135,7 @@ namespace PathToAscension
         {
             // Explicit equipped-average item level thresholds. Where the installed client carries two
             // conflicting values for a Vanilla prerequisite, the higher one satisfies both.
-            float const itemLevel = player->GetAverageItemLevel();
+            float const itemLevel = AscensionAverageItemLevel::Equipped(player);
             for (auto const [tutorialId, threshold] : {std::pair{10u, 40u}, {200u, 52u}, {201u, 58u}, {202u, 62u},
                 {203u, 62u}, {204u, 64u}, {205u, 69u}, {206u, 75u}, {207u, 80u}, {208u, 92u}, {209u, 95u},
                 {210u, 100u}, {211u, 108u}, {212u, 114u}, {213u, 116u}, {214u, 134u}, {215u, 134u},
@@ -187,66 +168,19 @@ namespace PathToAscension
             {11, 119, 29744, 35710}
         };
 
+        bool StarterMountQuestRewarded(Player const* player, StarterMount const& mount)
+        {
+            Tutorial const* tutorial = GetCatalog().Find(mount.tutorial);
+            return tutorial && tutorial->QuestId() && player->GetQuestRewardStatus(tutorial->QuestId());
+        }
+
         void CheckStarterMountTutorial(Player* player)
         {
             uint32 const delivered = SettingValue(player, RidingSetting, 0);
-            if (!delivered)
-                return;
-
             for (StarterMount const& mount : StarterMounts)
-                if (mount.race == player->getRace() && delivered == mount.item && player->HasSpell(mount.spell))
+                if (mount.race == player->getRace() && player->HasSpell(mount.spell)
+                    && (delivered == mount.item || StarterMountQuestRewarded(player, mount)))
                     CompleteVerifiedTutorial(player, mount.tutorial);
-        }
-
-        bool IsRidingTrainer(uint32 entry)
-        {
-            switch (entry)
-            {
-                case 3690: case 4732: case 4752: case 4753: case 4772: case 4773:
-                case 7953: case 16280: case 20500: case 20511: case 20914:
-                case 35093: case 35100: case 35133: case 35135:
-                    return true;
-                default:
-                    return false;
-            }
-        }
-
-        void VisitStarterMountTrainer(Player* player, Creature* trainer)
-        {
-            if (!settings.starterMountBridge || !CountsForPlayer(player) || !trainer
-                || !trainer->HasNpcFlag(UNIT_NPC_FLAG_TRAINER) || !player->IsAlive()
-                || !player->IsWithinDistInMap(trainer, INTERACTION_DISTANCE) || !IsRidingTrainer(trainer->GetEntry()))
-                return;
-
-            if (!player->HasSpell(33379) && !player->HasSpell(33388) && !player->HasSpell(33391))
-                return;
-
-            if (SettingValue(player, RidingSetting, 0))
-                return;
-
-            for (StarterMount const& mount : StarterMounts)
-            {
-                if (mount.race != player->getRace())
-                    continue;
-
-                ItemPosCountVec positions;
-                InventoryResult const result = player->CanStoreNewItem(NULL_BAG, NULL_SLOT, positions, mount.item, 1);
-                if (result != EQUIP_ERR_OK)
-                {
-                    player->SendEquipError(result, nullptr, nullptr, mount.item);
-                    return;
-                }
-
-                Item* item = player->StoreNewItem(positions, mount.item, true);
-                if (!item)
-                    return;
-
-                player->UpdatePlayerSetting(RidingSetting, 0, mount.item);
-                player->SendNewItem(item, 1, true, false);
-                player->SaveToDB(false, false);
-                CheckStarterMountTutorial(player);
-                return;
-            }
         }
 
         void CheckStateTutorials(Player* player)
@@ -707,6 +641,15 @@ namespace PathToAscension
             && (expansion == settings.expansion || IsLegacyAvailable(tutorial.Id()));
     }
 
+    bool IsStarterMountQuest(uint32 questId)
+    {
+        return std::any_of(std::begin(StarterMounts), std::end(StarterMounts), [questId](StarterMount const& mount)
+        {
+            Tutorial const* tutorial = GetCatalog().Find(mount.tutorial);
+            return tutorial && tutorial->QuestId() == questId;
+        });
+    }
+
     bool IsCallbackImplemented(uint32 tutorialId)
     {
         static constexpr uint32 ids[] =
@@ -762,7 +705,6 @@ public:
         settings.rewards = sConfigMgr->GetOption<bool>("PathToAscension.Rewards.Enable", true);
         settings.tracking = sConfigMgr->GetOption<bool>("PathToAscension.Tracking.Enable", true);
         settings.legacyContent = sConfigMgr->GetOption<bool>("PathToAscension.LegacyContent.Enable", false);
-        settings.starterMountBridge = sConfigMgr->GetOption<bool>("PathToAscension.StarterMountBridge.Enable", false);
         settings.browser = true;
         loaded = true;
         ConfigureRewards();
@@ -782,7 +724,7 @@ public:
           PLAYERHOOK_ON_AFTER_STORE_OR_EQUIP_NEW_ITEM, PLAYERHOOK_ON_REWARD_KILL_REWARDER,
           PLAYERHOOK_ON_BEFORE_CRITERIA_PROGRESS, PLAYERHOOK_ON_SEND_LIST_INVENTORY,
           PLAYERHOOK_ON_PLAYER_COMPLETE_QUEST, PLAYERHOOK_ON_LEARN_PET_TALENT, PLAYERHOOK_ON_LEARN_TRAINER_SPELL,
-          PLAYERHOOK_ON_TAKE_MAIL_ITEM, PLAYERHOOK_ON_COA_PROGRESS }) { }
+          PLAYERHOOK_ON_TAKE_MAIL_ITEM, PLAYERHOOK_ON_COA_PROGRESS, PLAYERHOOK_ON_PLAYER_QUEST_ACCEPT }) { }
 
     void OnPlayerLogin(Player* player) override
     {
@@ -908,6 +850,13 @@ public:
 
         if (TeachesHigherRank(spellId))
             CompleteVerifiedTutorial(player, 56);
+    }
+
+    void OnPlayerQuestAccept(Player* player, Quest const* quest) override
+    {
+        constexpr uint32 NoviceRidingCredit = 445303;
+        if (loaded && IsStarterMountQuest(quest->GetQuestId()) && player->GetSkillValue(SKILL_RIDING))
+            player->KilledMonsterCredit(NoviceRidingCredit);
     }
 
     void OnPlayerTakeMailItem(Player* player, Mail const* mail, uint32 itemEntry) override
@@ -1073,10 +1022,7 @@ public:
     bool CanCreatureGossipHello(Player* player, Creature* creature) override
     {
         if (loaded)
-        {
             RecordNpcVisit(player, creature);
-            VisitStarterMountTrainer(player, creature);
-        }
         return false;
     }
 };

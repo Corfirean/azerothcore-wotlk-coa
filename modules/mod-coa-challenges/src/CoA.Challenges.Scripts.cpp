@@ -6,6 +6,7 @@
 #include "Random.h"
 #include "AllCreatureScript.h"
 #include "AccountScript.h"
+#include "AscensionClientLua.h"
 #include "LocalLevelScaling.h"
 
 using namespace Acore::ChatCommands;
@@ -1699,7 +1700,10 @@ namespace CoAChallenges
             if (Quest const* quest = sObjectMgr->GetQuestTemplate(quest_id))
             {
                 static char const* colors[5] = {"GRAY", "GREEN", "YELLOW", "ORANGE", "RED"};
-                int c = QuestColor(quest->GetQuestLevel(), player->GetLevel());
+                int qLevel = quest->GetQuestLevel();
+                if (qLevel < 0)
+                    return true;
+                int c = QuestColor(uint32(qLevel), player->GetLevel());
                 std::string rule = std::string("CHALLENGE_RULES_TYPE_NO_") + colors[c] + "_QUESTS";
                 if (PlayerHasRule(player, rule.c_str()))
                 {
@@ -3700,6 +3704,20 @@ namespace CoAChallenges
         uint32 Last = 0;
     };
 
+    // The same scans also test group members, bots and friendly bystanders, which
+    // the core refuses on its own; the PvP challenge notices are only for a player
+    // the core would otherwise let the attacker fight, so they ask the core once
+    // with this hook stood aside.
+    thread_local bool CoreAttackProbeActive = false;
+
+    bool CoreAllowsAttack(Unit const* attacker, Unit const* target, SpellInfo const* spell)
+    {
+        CoreAttackProbeActive = true;
+        bool const allowed = attacker->IsValidAttackTarget(target, spell);
+        CoreAttackProbeActive = false;
+        return allowed;
+    }
+
     class CoAChallengesUnit : public UnitScript
     {
     public:
@@ -3720,9 +3738,9 @@ namespace CoAChallenges
         // Gate is Unit::_IsValidAttackTarget (both melee and spells). Pets/
         // guardians are resolved to their owner. Battlegrounds/arenas keep their
         // own rules (only the open world is restricted).
-        bool CanUnitAttack(Unit const* attacker, Unit const* target, SpellInfo const* /*spell*/) override
+        bool CanUnitAttack(Unit const* attacker, Unit const* target, SpellInfo const* spell) override
         {
-            if (!attacker || !target)
+            if (!attacker || !target || CoreAttackProbeActive)
                 return true;
             Player* a = attacker->GetCharmerOrOwnerPlayerOrPlayerItself();
             if (!a)
@@ -3763,7 +3781,8 @@ namespace CoAChallenges
                 {
                     PveOnlyNotice* notice = a->CustomData.GetDefault<PveOnlyNotice>(PveOnlyNoticeKey);
                     uint32 const now = getMSTime();
-                    if (!notice->Last || now - notice->Last >= PveOnlyNoticeIntervalMs)
+                    if ((!notice->Last || now - notice->Last >= PveOnlyNoticeIntervalMs)
+                        && CoreAllowsAttack(attacker, target, spell))
                     {
                         notice->Last = now;
                         NotifyPlayer(a, "Your challenge is PvE only: you cannot fight players.");
@@ -3791,7 +3810,7 @@ namespace CoAChallenges
                 if (a->IsMaxLevel() != t->IsMaxLevel())
                     blocked = true;
             }
-            if (blocked && a->GetSession())
+            if (blocked && a->GetSession() && CoreAllowsAttack(attacker, target, spell))
                 NotifyPlayer(a,
                     "Your challenge restricts who you may fight in PvP.");
             return !blocked;
@@ -3897,6 +3916,9 @@ namespace CoAChallenges
             if (!owner)
                 return;
 
+            if (!owner->IsFriendlyTo(creature))
+                return;
+
             ApplyActiveChallengeSpellsToCreature(owner, creature);
         }
     };
@@ -3906,6 +3928,11 @@ namespace CoAChallenges
 void Addmod_coa_challengesScripts()
 {
     RegisterAscensionClientConfig(&CoAChallenges::AppendClientConfig);
+    RegisterAscensionChallengeStateSync([](Player* player)
+    {
+        CoAChallenges::SendActiveList(player);
+        CoAChallenges::SendCriteriaState(player);
+    });
     LocalLevelScaling::ChallengeBlocksOwner.store(&CoAChallenges::LevelScalingBlocks, std::memory_order_relaxed);
     new CoAChallenges::CoAChallengesPlayer();
     new CoAChallenges::CoAChallengesWorld();

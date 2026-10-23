@@ -16,6 +16,7 @@
  */
 
 #include "ObjectMgr.h"
+#include "CoaCustomRacials.h"
 #include "AchievementMgr.h"
 #include "ArenaTeamMgr.h"
 #include "CharacterCache.h"
@@ -4409,6 +4410,12 @@ void ObjectMgr::PlayerCreateInfoAddItemHelper(uint32 race_, uint32 class_, uint3
     }
 }
 
+namespace
+{
+// CoA Custom 1.5: the racials of the races 12 and up come from CoaCustomRacials.h (by exact race id).
+
+}
+
 void ObjectMgr::LoadPlayerInfo()
 {
     // Load playercreate
@@ -4626,7 +4633,9 @@ void ObjectMgr::LoadPlayerInfo()
 
                 for (uint32 raceIndex = RACE_HUMAN; raceIndex < sRaceMgr->GetMaxRaces(); ++raceIndex)
                 {
-                    if (raceMask == 0 || ((1 << (raceIndex - 1)) & raceMask))
+                    bool const stockRace = raceIndex >= RACE_HUMAN && raceIndex <= RACE_DRAENEI && raceIndex != 9;
+                    bool const customRaceClassSkill = !stockRace && raceMask != 0 && classMask != 0;
+                    if (raceMask == 0 || customRaceClassSkill || ((1u << ((raceIndex - 1) & 31)) & raceMask))
                     {
                         for (uint32 classIndex = CLASS_WARRIOR; classIndex < MAX_CLASSES; ++classIndex)
                         {
@@ -4687,7 +4696,11 @@ void ObjectMgr::LoadPlayerInfo()
 
                 for (uint32 raceIndex = RACE_HUMAN; raceIndex < sRaceMgr->GetMaxRaces(); ++raceIndex)
                 {
-                    if (raceMask == 0 || ((1 << (raceIndex - 1)) & raceMask))
+                    // CoA Custom: a race above 32 only shares its twin's mask bit; its own bonus racials come
+                    // from CoaCustomRacials (by exact race id)
+                    if (raceMask != 0 && raceIndex > 32)
+                        continue;
+                    if (raceMask == 0 || ((1u << ((raceIndex - 1) & 31)) & raceMask))
                     {
                         for (uint32 classIndex = CLASS_WARRIOR; classIndex < MAX_CLASSES; ++classIndex)
                         {
@@ -4704,6 +4717,19 @@ void ObjectMgr::LoadPlayerInfo()
                 }
             } while (result->NextRow());
 
+            if (sConfigMgr->GetOption<bool>("CoACustomRaces.Enable", false))
+            {
+                for (CoaCustomRacial const& racial : CoaCustomRacials)
+                    for (uint32 classIndex = CLASS_WARRIOR; classIndex < MAX_CLASSES; ++classIndex)
+                        if (PlayerInfo* info = racial.RaceId < sRaceMgr->GetMaxRaces() ? _playerInfo[racial.RaceId][classIndex] : nullptr)
+                            for (uint32 spell : racial.Spells)
+                            {
+                                if (!spell)
+                                    continue;
+                                info->customSpells.push_back(spell);
+                                ++count;
+                            }
+            }
             LOG_INFO("server.loading", ">> Loaded {} Custom Player Create Spells in {} ms", count, GetMSTimeDiffToNow(oldMSTime));
             LOG_INFO("server.loading", " ");
         }
@@ -4745,7 +4771,7 @@ void ObjectMgr::LoadPlayerInfo()
 
                 for (uint32 raceIndex = RACE_HUMAN; raceIndex < sRaceMgr->GetMaxRaces(); ++raceIndex)
                 {
-                    if (raceMask == 0 || ((1 << (raceIndex - 1)) & raceMask))
+                    if (raceMask == 0 || ((1u << ((raceIndex - 1) & 31)) & raceMask))
                     {
                         for (uint32 classIndex = CLASS_WARRIOR; classIndex < MAX_CLASSES; ++classIndex)
                         {
@@ -7634,6 +7660,10 @@ AreaTriggerTeleport const* ObjectMgr::GetGoBackTrigger(uint32 Map) const
  */
 AreaTriggerTeleport const* ObjectMgr::GetMapEntranceTrigger(uint32 Map) const
 {
+    // Exits from linked instances (e.g. Blackwing Lair into Blackrock Spire) also target this map, and the store is
+    // unordered: prefer triggers placed outside instances, then the lowest trigger id.
+    AreaTriggerTeleport const* best = nullptr;
+    std::pair<bool, uint32> bestRank;
     for (AreaTriggerTeleportContainer::const_iterator itr = _areaTriggerTeleportStore.begin(); itr != _areaTriggerTeleportStore.end(); ++itr)
     {
         if (itr->second.target_mapId == Map) // Id is used to determine correct Scarlet Monastery instance
@@ -7641,10 +7671,17 @@ AreaTriggerTeleport const* ObjectMgr::GetMapEntranceTrigger(uint32 Map) const
             // xinef: no need to check, already done at loading
             //AreaTriggerEntry const* atEntry = sAreaTriggerStore.LookupEntry(itr->first);
             //if (atEntry)
-            return &itr->second;
+            AreaTrigger const* source = GetAreaTrigger(itr->first);
+            MapEntry const* sourceMap = source ? sMapStore.LookupEntry(source->map) : nullptr;
+            std::pair<bool, uint32> rank(!sourceMap || sourceMap->Instanceable(), itr->first);
+            if (!best || rank < bestRank)
+            {
+                best = &itr->second;
+                bestRank = rank;
+            }
         }
     }
-    return nullptr;
+    return best;
 }
 
 void ObjectMgr::SetHighestGuids()
@@ -9825,7 +9862,7 @@ int32 ObjectMgr::GetBaseReputationOf(FactionEntry const* factionEntry, uint8 rac
     if (!factionEntry)
         return 0;
 
-    uint32 raceMask = (1 << (race - 1));
+    uint32 raceMask = (1u << ((race - 1) & 31));
     uint32 classMask = (uint32(1) << (playerClass - 1));
 
     for (int i = 0; i < 4; i++)

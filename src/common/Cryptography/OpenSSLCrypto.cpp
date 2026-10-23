@@ -16,6 +16,7 @@
  */
 
 #include "OpenSSLCrypto.h"
+#include "Errors.h"
 #include <openssl/crypto.h> // NOTE: this import is NEEDED (even though some IDEs report it as unused)
 #include <openssl/provider.h>
 

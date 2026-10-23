@@ -654,6 +654,7 @@ void WorldSession::HandleOfferPetitionOpcode(WorldPacket& recvData)
         }
 
     player->SendDirectMessage(&data);
+    sScriptMgr->OnPetitionOffered(player, petitionguid);
 }
 
 void WorldSession::HandleTurnInPetitionOpcode(WorldPacket& recvData)

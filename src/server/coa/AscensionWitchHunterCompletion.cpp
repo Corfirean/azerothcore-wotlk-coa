@@ -67,7 +67,8 @@ void Replacement(Player* player, uint32 word, uint32 mask, uint32 child)
     if (!player->HasSpell(child))
         player->learnSpell(child, true);
     for (auto const& [id, state] : player->GetSpellMap())
-        if (state->State != PLAYERSPELL_REMOVED && Family(sSpellMgr->GetSpellInfo(id), word, mask) && id != child)
+        if (state->State != PLAYERSPELL_REMOVED && Family(sSpellMgr->GetSpellInfo(id), word, mask) && id != child &&
+            !player->IsTemporarySpellReplacementStandIn(id))
             player->SetTemporarySpellReplacement(id, child);
 }
 
@@ -142,7 +143,7 @@ void ApplyContracts(SpellInfo* info)
         info->TargetAuraState = info->CasterAuraState = 0;
     if (id == 802006)
         info->Effects[EFFECT_2].TriggerSpell = 680386;
-    if (Dusk(info))
+    if (Dusk(info) || id == 680230)
         info->AttributesEx3 &= ~SPELL_ATTR3_REQUIRES_OFF_HAND_WEAPON;
     if (Heartseeking(info))
         info->Effects[EFFECT_2].TriggerSpell = 807316;

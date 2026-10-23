@@ -27,6 +27,7 @@
 #include "Group.h"
 #include "GroupMgr.h"
 #include "InstanceSaveMgr.h"
+#include "LocalLevelScaling.h"
 #include "LFGGroupData.h"
 #include "LFGPlayerData.h"
 #include "LFGQueue.h"
@@ -140,10 +141,11 @@ namespace lfg
                 continue;
             }
 
-            if (!maxLevel || maxLevel > sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL))
+            uint32 allowedMaxLevel = (LocalLevelScaling::ContentScalingActive.load(std::memory_order_relaxed) ? 80 : sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL));
+            if (!maxLevel || maxLevel > allowedMaxLevel)
             {
                 LOG_ERROR("lfg", "Level {} specified for dungeon {} in table `lfg_dungeon_rewards` can never be reached!", maxLevel, dungeonId);
-                maxLevel = sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL);
+                maxLevel = allowedMaxLevel;
             }
 
             if (!firstQuestId || !sObjectMgr->GetQuestTemplate(firstQuestId))
@@ -506,6 +508,11 @@ namespace lfg
                 continue;
             MapEntry const* mapEntry = sMapStore.LookupEntry(dungeon->map);
             DungeonProgressionRequirements const* ar = sObjectMgr->GetAccessRequirement(dungeon->map, Difficulty(dungeon->difficulty));
+            bool const dbcOverride = sWorld->getBoolConfig(CONFIG_DUNGEON_ACCESS_REQUIREMENTS_LFG_DBC_LEVEL_OVERRIDE);
+            uint8 minLevel = dbcOverride ? (ar ? ar->levelMin : 0) : dungeon->minlevel;
+            uint8 maxLevel = dbcOverride ? (ar ? ar->levelMax : 0) : dungeon->maxlevel;
+            sScriptMgr->OnResolveDungeonAccessLevels(player, dungeon->map,
+                Difficulty(dungeon->difficulty), minLevel, maxLevel);
 
             uint32 lockData = 0;
 
@@ -517,9 +524,9 @@ namespace lfg
                 lockData = LFG_LOCKSTATUS_RAID_LOCKED;
             else if (dungeon->difficulty > DUNGEON_DIFFICULTY_NORMAL && (!mapEntry || !mapEntry->IsRaid()) && sInstanceSaveMgr->PlayerIsPermBoundToInstance(player->GetGUID(), dungeon->map, Difficulty(dungeon->difficulty)))
                 lockData = LFG_LOCKSTATUS_RAID_LOCKED;
-            else if ((dungeon->minlevel > level && !sWorld->getBoolConfig(CONFIG_DUNGEON_ACCESS_REQUIREMENTS_LFG_DBC_LEVEL_OVERRIDE)) || (sWorld->getBoolConfig(CONFIG_DUNGEON_ACCESS_REQUIREMENTS_LFG_DBC_LEVEL_OVERRIDE) && ar && ar->levelMin > 0 && ar->levelMin > level))
+            else if (minLevel > level)
                 lockData = LFG_LOCKSTATUS_TOO_LOW_LEVEL;
-            else if ((dungeon->maxlevel < level && !sWorld->getBoolConfig(CONFIG_DUNGEON_ACCESS_REQUIREMENTS_LFG_DBC_LEVEL_OVERRIDE)) || (sWorld->getBoolConfig(CONFIG_DUNGEON_ACCESS_REQUIREMENTS_LFG_DBC_LEVEL_OVERRIDE) && ar && ar->levelMax > 0 && ar->levelMax < level))
+            else if ((maxLevel > 0 || !dbcOverride) && maxLevel < level)
                 lockData = LFG_LOCKSTATUS_TOO_HIGH_LEVEL;
             else if (dungeon->seasonal && !IsSeasonActive(dungeon->id))
                 lockData = LFG_LOCKSTATUS_NOT_IN_SEASON;
@@ -625,6 +632,17 @@ namespace lfg
 
         if (grp && (grp->isBGGroup() || grp->isBFGroup()))
             return;
+
+        if (grp && guid != grp->GetLeaderGUID())
+        {
+            LfgQueuePolicy policy;
+            sScriptMgr->OnResolveLfgQueuePolicy(guid, policy);
+            if (policy.compositionMode == LfgCompositionMode::CURRENT_PARTY)
+            {
+                ChatHandler(player->GetSession()).SendNotification("Only the group leader can initiate a Current Party dungeon queue.");
+                return;
+            }
+        }
 
         if (!sScriptMgr->OnPlayerCanJoinLfg(player, roles, dungeons, comment))
             return;
@@ -1526,7 +1544,13 @@ namespace lfg
 
             if (itRoles == roleCheck.roles.end())
             {
-                roleCheck.state = CheckGroupRoles(roleCheck.roles) ? LFG_ROLECHECK_FINISHED : LFG_ROLECHECK_WRONG_ROLES;
+                LfgQueuePolicy policy;
+                sScriptMgr->OnResolveLfgQueuePolicy(roleCheck.leader, policy);
+
+                if (!policy.requireStandardRoles)
+                    roleCheck.state = LFG_ROLECHECK_FINISHED;
+                else
+                    roleCheck.state = CheckGroupRoles(roleCheck.roles) ? LFG_ROLECHECK_FINISHED : LFG_ROLECHECK_WRONG_ROLES;
             }
         }
 
@@ -1825,6 +1849,8 @@ namespace lfg
         SetState(gguid, LFG_STATE_DUNGEON);
 
         _SaveToDB(gguid);
+
+        sScriptMgr->OnLfgProposalMadeGroup(proposal, grp);
 
         // Select a player inside to be teleported to
         WorldLocation const* teleportLocation = nullptr;
@@ -2431,7 +2457,7 @@ namespace lfg
                 if (uint8 count = GetRandomPlayersCount(player->GetGUID()))
                     player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_USE_LFD_TO_GROUP_WITH_PLAYERS, count);
 
-            LfgReward const* reward = GetRandomDungeonReward(rDungeonId, player->GetLevel());
+            LfgReward const* reward = GetRandomDungeonReward(rDungeonId, player->GetLevel(), player);
             if (!reward)
                 continue;
 
@@ -2488,15 +2514,21 @@ namespace lfg
        @param[in]     level Player level
        @returns Reward
     */
-    LfgReward const* LFGMgr::GetRandomDungeonReward(uint32 dungeon, uint8 level)
+    LfgReward const* LFGMgr::GetRandomDungeonReward(uint32 dungeon, uint8 level, Player const* player)
     {
+        uint8 effectiveRewardLevel = level;
+        if (player)
+        {
+            sScriptMgr->OnResolveLfgRewardLevel(player, dungeon, effectiveRewardLevel);
+        }
+
         LfgReward const* rew = nullptr;
         LfgRewardContainerBounds bounds = RewardMapStore.equal_range(dungeon & 0x00FFFFFF);
         for (LfgRewardContainer::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
         {
             rew = itr->second;
             // ordered properly at loading
-            if (itr->second->maxLevel >= level)
+            if (itr->second->maxLevel >= effectiveRewardLevel)
                 break;
         }
 
@@ -2528,6 +2560,14 @@ namespace lfg
 
         LOG_DEBUG("lfg", "LFGMgr::GetState: [{}] = {}", guid.ToString(), state);
         return state;
+    }
+
+    uint32 LFGMgr::GetProposalIdForPlayer(ObjectGuid guid) const
+    {
+        for (auto const& [proposalId, proposal] : ProposalsStore)
+            if (proposal.players.find(guid) != proposal.players.end())
+                return proposalId;
+        return 0;
     }
 
     LfgState LFGMgr::GetOldState(ObjectGuid guid)

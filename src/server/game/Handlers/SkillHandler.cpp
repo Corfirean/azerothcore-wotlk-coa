@@ -61,15 +61,21 @@ void WorldSession::HandleTalentWipeConfirmOpcode(WorldPacket& recvData)
     ObjectGuid guid;
     recvData >> guid;
 
-    Creature* unit = GetPlayer()->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_TRAINER);
-    if (!unit)
+    // The classic talent window sends the player's own guid (or none). A trainer
+    // guid still has to be a trainer the player can talk to.
+    Creature* unit = nullptr;
+    if (!guid.IsEmpty() && guid != _player->GetGUID())
     {
-        LOG_DEBUG("network", "WORLD: HandleTalentWipeConfirmOpcode - Unit ({}) not found or you can't interact with him.", guid.ToString());
-        return;
-    }
+        unit = GetPlayer()->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_TRAINER);
+        if (!unit)
+        {
+            LOG_DEBUG("network", "WORLD: HandleTalentWipeConfirmOpcode - Unit ({}) not found or you can't interact with him.", guid.ToString());
+            return;
+        }
 
-    if (!unit->CanResetTalents(_player))
-        return;
+        if (!unit->CanResetTalents(_player))
+            return;
+    }
 
     // remove fake death
     if (GetPlayer()->HasUnitState(UNIT_STATE_DIED))
@@ -85,7 +91,8 @@ void WorldSession::HandleTalentWipeConfirmOpcode(WorldPacket& recvData)
     }
 
     _player->SendTalentsInfoData(false);
-    unit->CastSpell(_player, 14867, true);                  //spell: "Untalent Visual Effect"
+    if (unit)
+        unit->CastSpell(_player, 14867, true);              //spell: "Untalent Visual Effect"
 }
 
 void WorldSession::HandleUnlearnSkillOpcode(WorldPacket& recvData)

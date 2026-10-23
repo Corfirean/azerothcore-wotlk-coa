@@ -7,6 +7,16 @@
 # Enable the compatibility packet filter.
 CoA.Enable = 1
 
+# One press of /s .rotation attempts one learned attack or heal on the selected target.
+# Uses CoA specialization priorities with a basic fallback for other builds.
+CoA.RotationAssist.Enable = 1
+
+# Maximum crafted-item upgrade steps: 0 disables upgrade kits, 1 allows Refined,
+# 2 allows Superior, and 3 allows Masterwork. Default: 2. Values are clamped to 0-3.
+# Applies on startup and config reload; existing upgraded items remain unchanged.
+# Shirts, bags/quivers, Arclight Spanner and excluded ambiguous families cannot be upgraded.
+CoA.Crafting.MaxUpgradeSteps = 2
+
 # Apply the Ascension protocol settings to remote connections as well as loopback
 # (extension opcodes, ping interval, spell-modifier layout, class-10 mapping).
 # Enable only on realms dedicated to the matching Ascension client build.
@@ -43,18 +53,26 @@ CoA.AutoCollectAppearances = 1
 CoA.EquippedGearLoot = 1
 CoA.EquippedGearLootChance = 5
 
-# Health and damage multipliers for regular-difficulty creatures, tuned to Ascension's combat logs.
+# Health and damage multipliers for regular-difficulty creatures, tuned to live Ascension readings.
 # Health is multiplied when a creature takes its level; damage applies to hits on players and their pets.
 # Heroic/Mythic, battlegrounds, arenas, pets, summons, totems, triggers, critters and training dummies are
 # not changed; raid creatures listed in coa_boss_flex keep their measured flex health.
 # MapHealth/MapDamage replace the context value per map as "mapId:multiplier".
+# Every value may also be a formula of the creature's level: numbers, level, + - * /, parentheses, min(a, b) and
+# max(a, b), e.g. CoA.CreatureScaling.World.Health = "1.17 + 0.013 * level". In MapHealth/MapDamage write a formula
+# without spaces ("43:0.3+0.08*level"), or separate the entries with ';' ("43: 0.3 + 0.08 * level; 36: 2.2").
+# World is fitted to live open-world creature health seen in videos of live Ascension (levels 1-59); world damage uses
+# the same formula. Dungeon and Raid keep their earlier estimates.
+# While mod-coa-content-scaling is enabled it owns the health and damage of dungeon and raid creatures: the Dungeon,
+# Raid and Map* values below are then neutral (1.0) for them, so they never stack on its combat budget (tune that with
+# CoAContentScaling.Difficulty.Health.* instead). World values and servers without the module are not affected.
 # Without this section the server keeps these multipliers but leaves the feature disabled.
 CoA.CreatureScaling.Enable = 1
-CoA.CreatureScaling.World.Health = 2.5
+CoA.CreatureScaling.World.Health = "1.17 + 0.013 * level"
 CoA.CreatureScaling.Dungeon.Health = 2.5
 CoA.CreatureScaling.Raid.Health = 2.2
 CoA.CreatureScaling.MapHealth = "36:2.2 43:2.0 229:4.0 389:3.0 469:5.0"
-CoA.CreatureScaling.World.Damage = 2.0
+CoA.CreatureScaling.World.Damage = "1.17 + 0.013 * level"
 CoA.CreatureScaling.Dungeon.Damage = 1.5
 CoA.CreatureScaling.Raid.Damage = 1.0
 CoA.CreatureScaling.MapDamage = ""
@@ -188,10 +206,12 @@ CoA.RealmType = "live"
 #                     "coa"  - Conquest of Azeroth classes. Default.
 #                     "wcr"  - Warcraft Reborn (classic) classes.
 #                     "hero" - free-pick Hero.
+#                     A space-separated list serves several models on one realm,
+#                     e.g. "coa wcr" (Conquest of Azeroth + Warcraft Reborn classes).
 #        Default:     "coa"
 #
 
-CoA.ClassModel = "coa"
+CoA.ClassModel = "coa wcr"
 
 #
 #    CoA.GameModeMask
@@ -249,6 +269,126 @@ HighRisk.GearChance = 50
 HighRisk.ResourceChance = 50
 HighRisk.GoldChance = 50
 
+###################################################################################################
+# RATED SOLO ARENA
+#
+#    RatedSoloArena.RoleBalanceWaitSeconds
+#        Description: Seconds the oldest rated solo queue entry waits before matchmaking may ignore the
+#                     healer balance (one healer per side or none). Balanced lineups stay preferred.
+#        Default:     60
+#                     0 - (Never relax the healer balance)
+
+RatedSoloArena.RoleBalanceWaitSeconds = 60
+
+#    RatedSoloArena.RoleBalance.2v2
+#    RatedSoloArena.RoleBalance.3v3
+#        Description: Whether rated solo lineups of the bracket require the healer balance until
+#                     RatedSoloArena.RoleBalanceWaitSeconds has elapsed. When disabled, any split is
+#                     accepted from the start and a role-balanced split is still preferred when one exists.
+#        Default:     0 - (2v2: double damage lineups allowed)
+#                     1 - (3v3: healer balance required)
+
+RatedSoloArena.RoleBalance.2v2 = 0
+RatedSoloArena.RoleBalance.3v3 = 1
+
+#    RatedSoloArena.Win.ArenaPoints.1v1
+#    RatedSoloArena.Win.ArenaPoints.2v2
+#    RatedSoloArena.Win.ArenaPoints.3v3
+#        Description: Arena Points granted to each winner of a rated solo or party match, by bracket.
+#        Default:     25 (1v1), 300 (2v2), 300 (3v3)
+
+RatedSoloArena.Win.ArenaPoints.1v1 = 25
+RatedSoloArena.Win.ArenaPoints.2v2 = 300
+RatedSoloArena.Win.ArenaPoints.3v3 = 300
+
+#    RatedSoloArena.Win.RunesOfAscension
+#        Description: Runes of Ascension (item 375250) granted to each winner of a rated solo or party match.
+#        Default:     25
+
+RatedSoloArena.Win.RunesOfAscension = 25
+
+#    RatedSoloArena.SeasonCap.PerWeek
+#        Description: Conquest cap on Arena Points earned from rated solo arena wins during the current
+#                     arena season. The cap grows by this amount at each weekly reset since the season
+#                     started (week 1 = one step).
+#        Default:     12000
+
+RatedSoloArena.SeasonCap.PerWeek = 12000
+
+#    RatedSoloArena.SeasonCap.Max
+#        Description: Upper limit of the season conquest cap.
+#        Default:     0 - (No limit)
+
+RatedSoloArena.SeasonCap.Max = 0
+
+#    RatedSoloArena.Tier.Combatant
+#        Description: Personal rating shown as the Combatant rank in the PvP frame. Combatant has no title.
+#        Default:     1400
+
+RatedSoloArena.Tier.Combatant = 1400
+
+#    RatedSoloArena.Title.Challenger
+#    RatedSoloArena.Title.Rival
+#    RatedSoloArena.Title.Duelist
+#    RatedSoloArena.Title.Gladiator
+#        Description: Personal rating in a rated solo bracket that grants the matching character title
+#                     the first time it is reached. Titles are never removed.
+#        Default:     1700 (Challenger), 2000 (Rival), 2300 (Duelist), 2600 (Gladiator)
+
+RatedSoloArena.Title.Challenger = 1700
+RatedSoloArena.Title.Rival = 2000
+RatedSoloArena.Title.Duelist = 2300
+RatedSoloArena.Title.Gladiator = 2600
+
+#    HighRisk.FelCommutation.Enable
+#        Description: Fel Commutation. A High-Risk character switches it on and picks the equipment slots to
+#                     insure in the window at the Fel Commutation Portal (object 8000053). While on, items in
+#                     insured slots that a High-Risk death would drop are kept if the character carries
+#                     enough gold for all of their fees, and the fees go into the death chest. If the gold
+#                     is short, the character keeps it and the items drop. The normal gold loss
+#                     (HighRisk.GoldChance) still applies on top, from the gold left after the fees; the
+#                     death message shows the two parts separately.
+#        Default:     0 - (Disabled)
+#                     1 - (Enabled)
+
+HighRisk.FelCommutation.Enable = 0
+
+#    HighRisk.FelCommutation.FeeMultiplier
+#        Description: Multiplier applied to each item's fee. The base fee of an item is its item level times
+#                     the client's rate band for that level (for example 179 x 2750 copper).
+#        Default:     1.0
+
+HighRisk.FelCommutation.FeeMultiplier = 1.0
+
+#    HighRisk.FelCommutation.MaxSlots
+#        Description: Equipment slots a character may insure at once. 0 means no limit.
+#        Default:     3
+
+HighRisk.FelCommutation.MaxSlots = 3
+
+#    HighRisk.FelCommutation.AltarRange
+#        Description: Distance in yards within which the portal must stand for the switch to be accepted.
+#        Default:     20
+
+HighRisk.FelCommutation.AltarRange = 20
+
+#    HighRisk.FelCommutation.ToggleAnywhere
+#        Description: Accept the switch without a portal nearby (for example from a companion).
+#        Default:     0 - (Disabled)
+#                     1 - (Enabled)
+
+HighRisk.FelCommutation.ToggleAnywhere = 0
+
+#    HighRisk.FelCommutation.ClickToggle
+#        Description: Show an Activate/Deactivate button in the Fel Commutation window that switches
+#                     Fel Commutation for all equipped gear. Using the portal only opens or closes the
+#                     window. The original client still sends the switch itself when the portal is used
+#                     (its Extensions.dll raises GAMEOBJECT_USED and its Lua sends the switch packet).
+#        Default:     0 - (Disabled)
+#                     1 - (Enabled)
+
+HighRisk.FelCommutation.ClickToggle = 0
+
 #    PvpPower.Enable
 #        Description: Item spells named "PvP Power (+N)" scale damage and healing at level 60, capped at
 #                     495 points. Damage +0.05% per point against players (and against uncontrolled
@@ -263,7 +403,8 @@ PvpPower.Enable = 0
 #    Bloodforged.Enable
 #        Description: Adds one independent Bloodforged roll to eligible open-world creature corpses
 #                     for High-Risk players from level 15, drawn from the reviewed catalogue in
-#                     coa_bloodforged_catalogue. Requires PvpPower.Enable.
+#                     coa_bloodforged_catalogue. The item and rate band follow the player's level;
+#                     creatures grey to the player give no roll. Requires PvpPower.Enable.
 #        Default:     0 - (Disabled)
 #                     1 - (Enabled)
 
@@ -335,19 +476,27 @@ Ascension.PrestigiousCache.TbcStages = 0
 
 #
 #    Ascension.CallboardCache.ReleaseStage
-#        Description: The realm's current content progression stage, 0-7, in the order the
-#                     Callboard Caches released: Heroic and Mythic Dungeons, Zul'Gurub,
-#                     Molten Core, Onyxia's Lair, Blackwing Lair, Ruins of Ahn'Qiraj,
-#                     Temple of Ahn'Qiraj, Naxxramas. A generic Callboard Cache resolves
-#                     to a tier at or below this stage.
-#                     The same stage gates the Classic raids: a raid above it is closed,
-#                     entering it shows "Instance is closed" and a character logging in
-#                     inside it is moved out (0 closes every raid, 2 opens Zul'Gurub and
-#                     Molten Core). Game Masters still enter; other maps are not affected.
-#                     Applied on .reload config.
-#        Default:     7
+#        Description: The realm's current content progression stage, 0-8. Every stage also
+#                     releases the stages before it:
+#                     0 - normal dungeons only
+#                     1 - Heroic Dungeons
+#                     2 - Mythic Dungeons
+#                     3 - Molten Core
+#                     4 - Zul'Gurub
+#                     5 - Onyxia's Lair
+#                     6 - Blackwing Lair
+#                     7 - Ruins of Ahn'Qiraj and Temple of Ahn'Qiraj
+#                     8 - Naxxramas
+#                     A raid or dungeon difficulty above the stage is closed: entering it
+#                     shows "Instance is closed" and a character logging in inside it is
+#                     moved out. Game Masters still enter; other maps are not affected. The
+#                     client lists Heroic and Mythic difficulties only once they are released.
+#                     Callboard Caches follow the same stages: only released caches are
+#                     earned, and a generic Callboard Cache resolves to a released tier.
+#                     Applied on .reload config; the client's difficulty list on next login.
+#        Default:     3
 
-Ascension.CallboardCache.ReleaseStage = 7
+Ascension.CallboardCache.ReleaseStage = 3
 
 #
 #    Ascension.CallboardCache.PreviousStageOnly
@@ -400,6 +549,42 @@ Ascension.CallboardCache.GoldMax = 15
 
 CoA.DungeonTuning.Enable = 1
 
+#
+#    CoA.DungeonNormal.Enable
+#        Description: Normal tuning of the Ascension boss kits in 5-man dungeons. The kit spells listed
+#                     in coa_dungeon_normal_spell_damage deal Ascension's Normal rank damage (casters
+#                     below level 50) or the Heroic damage / 1.66 * 0.85, without the dungeon creature
+#                     damage scaling, and their repeat timers run longer.
+#        Default:     1
+
+CoA.DungeonNormal.Enable = 1
+
+#
+#    CoA.DungeonNormal.RepeatFactor
+#        Description: How much longer a boss kit spell takes to come back on Normal (1.1 = 10% longer).
+#        Default:     1.1
+
+CoA.DungeonNormal.RepeatFactor = 1.1
+
+#
+#    CoA.DungeonNormal.AreaHitCapPct
+#    CoA.DungeonNormal.TargetHitCapPct
+#        Description: On Normal no single hit of a boss kit spell deals more than this share of the
+#                     player's maximum health: area spells / single target spells. 0 turns a cap off.
+#        Default:     25, 40
+
+CoA.DungeonNormal.AreaHitCapPct = 25
+CoA.DungeonNormal.TargetHitCapPct = 40
+
+#
+#    CoA.TestZoneBonus.AnnounceIntervalMinutes
+#        Description: How often every player is told which test zones are active and what they earn
+#                     there. The zones themselves live in coa_test_zone_bonus and are managed with
+#                     .testzone; making a zone a test zone is always announced. 0 turns the reminder off.
+#        Default:     15
+
+CoA.TestZoneBonus.AnnounceIntervalMinutes = 15
+
 CrowsCache.Enable = 0
 CrowsCache.IntervalSeconds = 10800
 CrowsCache.WarningSeconds = 1800
@@ -421,3 +606,20 @@ CrowsCache.Barrens.X = -763.6296
 CrowsCache.Barrens.Y = -3191.6892
 CrowsCache.Barrens.Z = 91.666626
 CrowsCache.Barrens.O = 2.3004022
+
+# Optional shared-client XP hotspots. Independent of class or realm ruleset.
+# MaxContinent: 0 = Azeroth, 1 = Azeroth and Outland, 2 = all three continents.
+# The effective ceiling never exceeds the worldserver Expansion setting.
+# Azeroth starting zones on map 530 remain eligible with MaxContinent = 0.
+# The client FrameXML extension is required for map display and the GM editor.
+XPHotspots.Enable = 0
+XPHotspots.MaxContinent = 2
+XPHotspots.ActiveCount = 3
+XPHotspots.BuffSpell = 993945
+# Portable character sessions (Manager-driven checkpoints of one character while it plays).
+# The pending SQL `coa_portable_session` must be applied. Needs CharacterDatabase.WorkerThreads = 1.
+PortableSession.Enable = 0
+
+# How long a portable character is held at login until the Manager has captured its baseline.
+# A character that is not released in time is disconnected; it never plays before the baseline exists. 1-600.
+PortableSession.GateTimeoutSeconds = 30

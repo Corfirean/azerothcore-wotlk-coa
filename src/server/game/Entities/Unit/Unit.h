@@ -838,7 +838,7 @@ public:
     // Race methods
     [[nodiscard]] uint8 getRace(bool original = false) const;
     void setRace(uint8 race);
-    [[nodiscard]] uint32 getRaceMask() const { return 1 << (getRace(true) - 1); }
+    [[nodiscard]] uint32 getRaceMask() const { return 1u << ((getRace(true) - 1) & 31); /* races above 32 share a mask bit (CoA Custom) */ }
     [[nodiscard]] DisplayRace GetDisplayRaceFromModelId(uint32 modelId) const;
     [[nodiscard]] DisplayRace GetDisplayRace() const { return GetDisplayRaceFromModelId(GetDisplayId()); };
 

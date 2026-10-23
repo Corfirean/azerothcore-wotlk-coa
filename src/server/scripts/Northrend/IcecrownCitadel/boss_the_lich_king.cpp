@@ -266,6 +266,7 @@ enum Events
     EVENT_MOVE_TO_DROP_POS,
     EVENT_MOVE_TO_SIPHON_POS,
     EVENT_LIFE_SIPHON,
+    EVENT_SOLO_SAFE_RELEASE,
 
     // Strangulate Vehicle (Harvest Soul)
     EVENT_TELEPORT,
@@ -2428,6 +2429,50 @@ public:
             _events.ScheduleEvent(EVENT_MOVE_TO_SIPHON_POS, 0ms);
         }
 
+        void SafeReleasePassenger()
+        {
+            if (didbelow50pct || dropped)
+                return;
+
+            dropped = true;
+            _events.Reset();
+            me->GetMotionMaster()->Clear();
+            me->StopMovingOnCurrentPos();
+
+            Player* passenger = nullptr;
+            if (Vehicle* vehicle = me->GetVehicleKit())
+                if (Unit* unit = vehicle->GetPassenger(0))
+                    passenger = unit->ToPlayer();
+
+            if (passenger)
+            {
+                // Inset towards CenterPosition from cliff/dest point to ensure safe landing on platform
+                constexpr float SAFE_INSET_DISTANCE = 12.0f;
+                float const angle = _destPoint.GetAngle(&CenterPosition);
+                float const safeX = _destPoint.GetPositionX() + std::cos(angle) * SAFE_INSET_DISTANCE;
+                float const safeY = _destPoint.GetPositionY() + std::sin(angle) * SAFE_INSET_DISTANCE;
+                float safeZ = CenterPosition.GetPositionZ();
+                if (Map* map = me->GetMap())
+                {
+                    float const groundZ = map->GetHeight(safeX, safeY, safeZ + 5.0f, true);
+                    if (std::isfinite(groundZ) && groundZ > 830.0f && groundZ < 850.0f)
+                        safeZ = groundZ;
+                }
+
+                me->CastSpell((Unit*)nullptr, SPELL_EJECT_ALL_PASSENGERS, false);
+                passenger->NearTeleportTo(safeX, safeY, safeZ, passenger->GetOrientation());
+            }
+            else
+            {
+                me->CastSpell((Unit*)nullptr, SPELL_EJECT_ALL_PASSENGERS, false);
+            }
+
+            if (IsHeroic())
+                GoSiphon();
+            else
+                me->DespawnOrUnsummon(1s);
+        }
+
         void OnCharmed(bool  /*apply*/) override {}
 
         void PassengerBoarded(Unit* pass, int8  /*seat*/, bool apply) override
@@ -2448,8 +2493,20 @@ public:
 
         void DamageTaken(Unit*, uint32& damage, DamageEffectType, SpellSchoolMask) override
         {
-            if (IsHeroic() && !didbelow50pct && !dropped && me->HealthBelowPctDamaged(50, damage))
-                GoSiphon();
+            uint32 const authoredThreshold = IsHeroic() ? 50 : 0;
+            uint32 const dropThresholdPct = _instance ? _instance->ResolveEncounterMechanic(DATA_THE_LICH_KING, 1 /*REQUIRED_PLAYERS*/, 7 /*STACK_THRESHOLD*/, authoredThreshold) : authoredThreshold;
+
+            if (dropThresholdPct > 0 && !didbelow50pct && !dropped && me->HealthBelowPctDamaged(dropThresholdPct, damage))
+            {
+                if (IsHeroic())
+                    GoSiphon();
+                else
+                {
+                    dropped = true;
+                    me->CastSpell((Unit*)nullptr, SPELL_EJECT_ALL_PASSENGERS, false);
+                    me->DespawnOrUnsummon(1s);
+                }
+            }
         }
 
         void MovementInform(uint32 type, uint32 id) override
@@ -2482,6 +2539,10 @@ public:
                                         _destPoint.Relocate(triggers.front());
                                         _events.Reset();
                                         _events.ScheduleEvent(EVENT_MOVE_TO_DROP_POS, 1s);
+
+                                        uint32 const safeReleaseMs = _instance ? _instance->ResolveEncounterMechanic(DATA_THE_LICH_KING, 2 /*TIMER_MS*/, 9 /*TIMER_MS*/, 0) : 0;
+                                        if (safeReleaseMs > 0)
+                                            _events.ScheduleEvent(EVENT_SOLO_SAFE_RELEASE, Milliseconds(safeReleaseMs));
                                     }
                                 }
                         if (!valid)
@@ -2502,6 +2563,16 @@ public:
                             _events.ScheduleEvent(EVENT_MOVE_TO_DROP_POS, 0ms);
                             break;
                         }
+
+                        // Fail-safe for solo / small-group: if safeRelease is active, safely eject passenger onto platform
+                        // instead of dropping over the cliff, even if drop point is reached before EVENT_SOLO_SAFE_RELEASE.
+                        uint32 const safeReleaseMs = _instance ? _instance->ResolveEncounterMechanic(DATA_THE_LICH_KING, 2 /*TIMER_MS*/, 9 /*TIMER_MS*/, 0) : 0;
+                        if (safeReleaseMs > 0)
+                        {
+                            SafeReleasePassenger();
+                            break;
+                        }
+
                         dropped = true;
                         _events.Reset();
                         /*Player* p = nullptr;
@@ -2590,6 +2661,9 @@ public:
                             me->CastSpell(target, SPELL_LIFE_SIPHON, false);
                         _events.ScheduleEvent(EVENT_LIFE_SIPHON, 2500ms);
                     }
+                    break;
+                case EVENT_SOLO_SAFE_RELEASE:
+                    SafeReleasePassenger();
                     break;
                 default:
                     break;

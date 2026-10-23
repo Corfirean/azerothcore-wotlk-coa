@@ -24,6 +24,7 @@
 #ifndef _ACORE_GEOMETRY_H
 #define _ACORE_GEOMETRY_H
 
+#include "Define.h"
 #include <cstdlib>
 #include <math.h>
 

@@ -3,6 +3,7 @@
 #include "AscensionCoAConfig.h"
 #include "AscensionCompatOpcodes.h"
 #include "AscensionFreepick.h"
+#include "AscensionMysticEnchant.h"
 #include "AscensionMysticEnchantRules.h"
 #include "Chat.h"
 #include "Config.h"
@@ -218,9 +219,15 @@ void SyncAuras(Player* player, State& state)
             ++wanted[spell];
     for (auto const& [spell, stacks] : state.Auras)
         if (!wanted.contains(spell))
+        {
             player->RemoveAurasDueToSpell(spell);
+            if (Enchant const* enchant = Loaded.FindSpell(spell); enchant && enchant->Taught)
+                player->removeSpell(enchant->Taught, SPEC_MASK_ALL, true);
+        }
     for (auto const& [spell, stacks] : wanted)
     {
+        if (Enchant const* enchant = Loaded.FindSpell(spell); enchant && enchant->Taught && !player->HasSpell(enchant->Taught))
+            player->learnSpell(enchant->Taught, true);
         Aura* aura = player->GetAura(spell);
         if (!aura)
             aura = player->AddAura(spell, player);
@@ -1002,6 +1009,49 @@ public:
             LOG_ERROR("coa", "Mystic enchants are unavailable: MysticEnchant.dbc did not load");
     }
 };
+}
+
+bool ApplyGuide(Player* player, std::vector<GuideEnchant> const& guide)
+{
+    State* state = Ready ? Find(player) : nullptr;
+    if (!state || guide.empty())
+        return false;
+    ClientConfig const config = CurrentClientConfig();
+    Character character = Describe(player, config);
+    character.Known = &state->Known;
+    Slots const before = state->Active();
+    Slots const after = GuideSlots(Loaded, character, before, guide);
+    if (after == before)
+        return false;
+    state->Active() = after;
+    for (uint32 slot = 0; slot < SLOT_COUNT; ++slot)
+        if (before[slot] != after[slot])
+            SaveSlot(player, state->ActivePreset, slot, after[slot]);
+    SyncAuras(player, *state);
+    SendChangedSlots(player, before, after);
+    return true;
+}
+
+uint32 ClearActivePreset(Player* player)
+{
+    State* state = Ready ? Find(player) : nullptr;
+    if (!state)
+        return 0;
+    Slots const before = state->Active();
+    uint32 cleared = 0;
+    for (uint32 slot = 0; slot < SLOT_COUNT; ++slot)
+        if (before[slot])
+        {
+            state->Active()[slot] = 0;
+            SaveSlot(player, state->ActivePreset, slot, 0);
+            ++cleared;
+        }
+    if (cleared)
+    {
+        SyncAuras(player, *state);
+        SendChangedSlots(player, before, state->Active());
+    }
+    return cleared;
 }
 }
 

@@ -1096,7 +1096,8 @@ bool Aura::CanBeSaved() const
 
 bool Aura::CanBeSentToClient() const
 {
-    return !IsPassive() || GetSpellInfo()->HasAreaAuraEffect() || HasEffectType(SPELL_AURA_ABILITY_IGNORE_AURASTATE);
+    return !IsPassive() || GetSpellInfo()->HasAreaAuraEffect() || HasEffectType(SPELL_AURA_ABILITY_IGNORE_AURASTATE) ||
+           HasEffectType(SPELL_AURA_ASCENSION_IGNORE_MIN_RANGE);
 }
 
 bool Aura::IsSingleTargetWith(Aura const* aura) const
@@ -1316,6 +1317,10 @@ void Aura::HandleAuraSpecificMods(AuraApplication const* aurApp, Unit* caster, b
     // mods at aura apply
     if (apply)
     {
+        if (sSpellMgr->GetSpellTwinSource(GetId()) == 60970 && target->IsPlayer())
+            for (uint32 intercept : sSpellMgr->GetSpellAndRelatives(20252))
+                target->ToPlayer()->RemoveSpellCooldown(intercept, true);
+
         switch (GetSpellInfo()->SpellFamilyName)
         {
             case SPELLFAMILY_GENERIC:
@@ -1332,10 +1337,6 @@ void Aura::HandleAuraSpecificMods(AuraApplication const* aurApp, Unit* caster, b
                     case 50836: //Petrifying Grip, becomes stoned
                         if (GetStackAmount() >= 5 && !target->HasAura(50812))
                             target->CastSpell(target, 50812, true);
-                        break;
-                    case 60970: // Heroic Fury (remove Intercept cooldown)
-                        if (target->IsPlayer())
-                            target->ToPlayer()->RemoveSpellCooldown(20252, true);
                         break;
                 }
                 break;
@@ -1643,10 +1644,10 @@ void Aura::HandleAuraSpecificMods(AuraApplication const* aurApp, Unit* caster, b
                         switch (sSpellMgr->GetSpellTwinSource(aurEff->GetId()))
                         {
                             case 53759:
-                                spellId = 60947;
+                                spellId = sSpellMgr->GetSpellTwinFor(60947, aurEff->GetId());
                                 break;
                             case 53754:
-                                spellId = 60946;
+                                spellId = sSpellMgr->GetSpellTwinFor(60946, aurEff->GetId());
                                 break;
                             default:
                                 LOG_ERROR("spells.aura", "Aura::HandleAuraSpecificMods: Unknown rank of Improved Fear ({}) found", aurEff->GetId());

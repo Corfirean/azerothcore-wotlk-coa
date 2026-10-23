@@ -1,0 +1,24 @@
+###################################################################################################
+#  mod-coa-custom-races
+#
+#  Custom playable races for Ascension/CoA (Esteria & ilusixn races).
+#  Disabled by default.
+###################################################################################################
+
+[worldserver]
+
+###################################################################################################
+#  CoACustomRaces.Enable
+#        Enable custom races support (DBC data, character creation, extended appearances).
+#        Default: 0 - disabled
+#                 1 - enabled
+###################################################################################################
+CoACustomRaces.Enable = 0
+
+###################################################################################################
+#  CoACustomRaces.BotsEnable
+#        Allow Playerbots to spawn as custom races.
+#        Default: 0 - disabled
+#                 1 - enabled
+###################################################################################################
+CoACustomRaces.BotsEnable = 0

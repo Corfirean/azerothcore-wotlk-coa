@@ -53,7 +53,8 @@ class Workspace:
         self.build = self.root / 'build'
         self.client = self.base / 'mysql-client'
         self.tools = self.base / 'bin'
-        self.conf = self.base / 'dist' / 'etc'
+        self.conf = (self.build / 'src/server/apps/configs' if verify_all.WINDOWS
+                     else self.base / 'dist' / 'etc')
         self.dbc = self.base / 'data' / 'dbc'
         self.worldserver = program(self.build / 'src/server/apps', 'worldserver')
         for name in ('mysql', 'mysqldump', 'mysql_config'):
@@ -70,6 +71,7 @@ class Workspace:
 
     def configure(self, testing='ON'):
         write(self.build / 'CMakeCache.txt', f'CMAKE_INSTALL_PREFIX:PATH={self.conf.parent.as_posix()}\n'
+              f'CONF_DIR:PATH={self.conf.as_posix()}\n'
               f'BUILD_TESTING:BOOL={testing}\nMYSQL_CONFIG:FILEPATH={(self.client / "mysql_config").as_posix()}\n'
               'CMAKE_GENERATOR:INTERNAL=Ninja\n')
         write(self.build / 'build.ninja')
@@ -105,6 +107,14 @@ class WorkspaceTest(unittest.TestCase):
                 redirect_stdout(stdout), redirect_stderr(stderr):
             status = verify_all.main(arguments, root=workspace.root, environment=workspace.environment)
         return status, stdout.getvalue(), stderr.getvalue()
+
+
+class SourceAuthorizationTests(WorkspaceTest):
+    def test_historical_sql_requires_explicit_authorization(self):
+        self.assertNotIn('--allow-historical-sql', verify_all.source_command('base'))
+        self.assertIn('--allow-historical-sql', verify_all.source_command('base', True))
+        self.assertFalse(verify_all.parser().parse_args([]).allow_historical_sql)
+        self.assertTrue(verify_all.parser().parse_args(['--allow-historical-sql']).allow_historical_sql)
 
 
 class SettingsTests(WorkspaceTest):
@@ -439,6 +449,8 @@ class HarnessClassificationTests(WorkspaceTest):
             self.assertEqual(classify(fallback, path)['status'], 'run')
             self.assertEqual(classify(unconditional, path)['status'], 'unavailable')
             self.assertEqual(classify(unconditional, {'VCToolsInstallDir': 'C:/VC'})['status'], 'run')
+            for key in ('VCTOOLSINSTALLDIR', 'vCtOoLsInStAlLdIr'):
+                self.assertEqual(classify(unconditional, {key: 'C:/VC'})['status'], 'run')
             self.assertIn('clang++ on PATH', classify(fallback, {'PATH': '', 'CXX': 'clang++'})['reason'])
         with patch.object(verify_all, 'WINDOWS', False):
             self.assertEqual([classify(source, {})['status'] for source in (unconditional, fallback)], ['run', 'run'])
@@ -829,7 +841,8 @@ class GameplayTests(WorkspaceTest):
         self.assertEqual(verify_all.gameplay_prerequisites(context.settings, context.environment), ([], []))
 
     def test_module_configs_already_in_the_server_modules_directory_make_gameplay_unavailable(self):
-        workspace = self.workspace()
+        with patch.object(verify_all, 'WINDOWS', False):
+            workspace = self.workspace()
         write(workspace.conf / 'modules' / 'mod_ascension_compat.conf', 'Enabled = 1\n')
         write(workspace.conf / 'modules' / 'spellbook.conf.dist')
         separate = workspace.base / 'module-configs'
@@ -953,7 +966,8 @@ class GameplayTests(WorkspaceTest):
         workspace = self.workspace()
         selection = [f'scenario-{index:05d}-' + 'x' * 40 for index in range(800)]
         small, large = workspace.context(scenarios=selection[:10]), workspace.context(scenarios=selection)
-        verify_all.check_command_length(large)
+        with patch.object(verify_all, 'WINDOWS', False):
+            verify_all.check_command_length(large)
         with patch.object(verify_all, 'WINDOWS', True):
             verify_all.check_command_length(small)
             with self.assertRaisesRegex(ValueError, '800 scenarios exceeds the Windows command-line limit'):

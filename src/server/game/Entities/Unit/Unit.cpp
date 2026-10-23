@@ -16,6 +16,8 @@
  */
 
 #include "Unit.h"
+#include "AscensionSpellCopy.h"
+#include "AscensionIncarnation.h"
 #include "AbstractFollower.h"
 #include "AreaDefines.h"
 #include "ArenaSpectator.h"
@@ -69,6 +71,7 @@
 #include "Totem.h"
 #include "TotemAI.h"
 #include "Transport.h"
+#include "TypeContainerVisitor.h"
 #include "UpdateFieldFlags.h"
 #include "UpdateFields.h"
 #include "Util.h"
@@ -1474,6 +1477,8 @@ thread_local bool TriggerLoopLogged = false;
 
 SpellCastResult Unit::CastSpell(SpellCastTargets const& targets, SpellInfo const* spellInfo, CustomSpellValues const* value, TriggerCastFlags triggerFlags, Item* castItem, AuraEffect const* triggeredByAura, ObjectGuid originalCaster)
 {
+    sScriptMgr->ResolveSpellCast(this, spellInfo);
+
     if (!spellInfo)
     {
         LOG_ERROR("entities.unit", "CastSpell: unknown spell by caster {}", GetGUID().ToString());
@@ -4871,6 +4876,10 @@ bool Unit::CanCastSpellWhileMoving(SpellInfo const* info) const
 {
     if (!info)
         return false;
+    // All movement gates must agree on the active Manastorm mixture.
+    // Its aura 313 family differs from CoA class spells such as Elemental Burst.
+    if (HasManastormMovementGrace())
+        return true;
     if (IsPlayer() && getClass() == CLASS_STARCALLER &&
         (info->Id == 801990 || info->Id == 802682 || (HasAura(704772) && !info->IsPositive())))
         return true;
@@ -4886,6 +4895,10 @@ bool Unit::CanCastSpellWhileMoving(SpellInfo const* info) const
         (info->Id == 500213 || info->Id == 504594 ||
          sSpellMgr->GetFirstSpellInChain(info->Id) == 504527 ||
          sSpellMgr->GetFirstSpellInChain(info->Id) == 801387))
+        return true;
+    if (IsPlayer() && getClass() == CLASS_CHRONOMANCER && info->SpellFamilyName == 28 &&
+        (info->SpellFamilyFlags[1] & 0x00001000) && (info->SpellFamilyFlags[2] & 0x02000000) &&
+        HasAura(570067))
         return true;
     // Copied aura 313 grants movement only to spells selected by its family mask.
     return HasAuraTypeWithAffectMask(SPELL_AURA_313, info);
@@ -5780,6 +5793,9 @@ void Unit::RemoveAppliedAuras(uint32 spellId, std::function<bool(AuraApplication
 
 void Unit::RemoveAurasDueToSpell(uint32 spellId, ObjectGuid casterGUID, uint8 reqEffMask, AuraRemoveMode removeMode)
 {
+    if (uint32 copy = GetAscensionSpellCopy(spellId)) // Bronzebeard copy (vanilla classes)
+        if (m_appliedAuras.find(spellId) == m_appliedAuras.end())
+            spellId = copy;
     for (AuraApplicationMap::iterator iter = m_appliedAuras.lower_bound(spellId); iter != m_appliedAuras.upper_bound(spellId);)
     {
         Aura const* aura = iter->second->GetBase();
@@ -6059,12 +6075,12 @@ void Unit::RemoveNotOwnSingleTargetAuras()
 
 bool Unit::HasManastormMovementGrace() const
 {
-    // Aura 313 is a private client extension. Only the eight authored Mobility Mixtures
-    // in an authorized scripted instance enable it; unrelated aura-313 class spells do not.
+    // Only the temporary Mobility Mixture auras grant movement grace.
+    // Learned duration upgrades (1300186-1300192) never grant it by themselves.
     Map const* map = FindMap();
     if (!IsPlayer() || !map || !map->IsScriptedPrivateInstance())
         return false;
-    for (uint32 spell : {1300179u, 1300186u, 1300187u, 1300188u, 1300189u, 1300190u, 1300191u, 1300192u})
+    for (uint32 spell = 1300179; spell <= 1300185; ++spell)
         if (HasAura(spell))
             return true;
     return false;
@@ -6412,6 +6428,8 @@ AuraEffect* Unit::GetAuraEffect(uint32 spellId, uint8 effIndex, ObjectGuid caste
             return itr->second->GetBase()->GetEffect(effIndex);
         }
     }
+    if (uint32 copy = GetAscensionSpellCopy(spellId)) // Bronzebeard copy (vanilla classes)
+        return GetAuraEffect(copy, effIndex, caster);
     return nullptr;
 }
 
@@ -6466,6 +6484,8 @@ AuraEffect* Unit::GetAuraEffectDummy(uint32 spellid) const
             return *itr;
     }
 
+    if (uint32 copy = GetAscensionSpellCopy(spellid)) // Bronzebeard copy (vanilla classes)
+        return GetAuraEffectDummy(copy);
     return nullptr;
 }
 
@@ -6491,6 +6511,9 @@ AuraApplication* Unit::GetAuraApplication(uint32 spellId, ObjectGuid casterGUID,
 Aura* Unit::GetAura(uint32 spellId, ObjectGuid casterGUID, ObjectGuid itemCasterGUID, uint8 reqEffMask) const
 {
     AuraApplication* aurApp = GetAuraApplication(spellId, casterGUID, itemCasterGUID, reqEffMask);
+    if (!aurApp)
+        if (uint32 copy = GetAscensionSpellCopy(spellId)) // Bronzebeard copy (vanilla classes)
+            aurApp = GetAuraApplication(copy, casterGUID, itemCasterGUID, reqEffMask);
     return aurApp ? aurApp->GetBase() : nullptr;
 }
 
@@ -6503,6 +6526,8 @@ AuraApplication* Unit::GetAuraApplicationOfRankedSpell(uint32 spellId, ObjectGui
             return aurApp;
         rankSpell = sSpellMgr->GetNextSpellInChain(rankSpell);
     }
+    if (uint32 copy = GetAscensionSpellCopy(spellId)) // Bronzebeard copy (vanilla classes)
+        return GetAuraApplicationOfRankedSpell(copy, casterGUID, itemCasterGUID, reqEffMask, except);
     return nullptr;
 }
 
@@ -6587,6 +6612,8 @@ bool Unit::HasAuraEffect(uint32 spellId, uint8 effIndex, ObjectGuid caster) cons
             return true;
         }
     }
+    if (uint32 copy = GetAscensionSpellCopy(spellId)) // Bronzebeard copy (vanilla classes)
+        return HasAuraEffect(copy, effIndex, caster);
     return false;
 }
 
@@ -6603,6 +6630,9 @@ uint32 Unit::GetAuraCount(uint32 spellId) const
             count += (uint32)itr->second->GetBase()->GetStackAmount();
     }
 
+    if (!count)
+        if (uint32 copy = GetAscensionSpellCopy(spellId)) // Bronzebeard copy (vanilla classes)
+            return GetAuraCount(copy);
     return count;
 }
 
@@ -6663,6 +6693,8 @@ bool Unit::HasAura(uint32 spellId, ObjectGuid casterGUID, ObjectGuid itemCasterG
 {
     if (GetAuraApplication(spellId, casterGUID, itemCasterGUID, reqEffMask))
         return true;
+    if (uint32 copy = GetAscensionSpellCopy(spellId)) // Bronzebeard copy (vanilla classes)
+        return GetAuraApplication(copy, casterGUID, itemCasterGUID, reqEffMask) != nullptr;
     return false;
 }
 
@@ -13647,6 +13679,20 @@ void Unit::RemoveFromWorld()
     if (IsInWorld())
     {
         m_duringRemoveFromWorld = true;
+
+        // A unit queued into i_objectsForDelayedVisibility (Unit::Update(), relocation timer
+        // expiry) stays a raw pointer there until Map::HandleDelayedVisibility() processes and
+        // clears the set later in the same Map::Update() tick. Nothing else ever unhooked a
+        // unit's pointer from that set if it left the world (despawn, logout, kill, teleport)
+        // in between -- so a unit deleted after being queued but before the set was drained left
+        // a dangling Unit* that HandleDelayedVisibility() would dereference on
+        // ExecuteDelayedUnitRelocationEvent(), crashing with an access violation deep inside
+        // Object::SetFloatValue. Confirmed live under heavy bot load (mass spawn/despawn/kill
+        // churn makes this easy to hit). Erase here, the single choke point every removal path
+        // (despawn, logout, death cleanup, map change) already funnels through.
+        if (Map* map = FindMap())
+            map->i_objectsForDelayedVisibility.erase(this);
+
         if (IsAIEnabled)
             GetAI()->OnDespawn();
 
@@ -15101,6 +15147,61 @@ bool Unit::HandleAuraRaidProcFromCharge(AuraEffect* triggeredByAura)
     return true;
 }
 
+namespace
+{
+    struct BossSummonCollector
+    {
+        std::vector<Creature*> summons;
+
+        void Visit(std::unordered_map<ObjectGuid, Creature*>& creatures)
+        {
+            for (auto const& [guid, creature] : creatures)
+                if (creature->IsSummon())
+                    summons.push_back(creature);
+        }
+
+        template<class T>
+        void Visit(std::unordered_map<ObjectGuid, T*>&) { }
+    };
+
+    // CoA: when a boss dies in an instance, the adds and totems it summoned (and
+    // what those summoned in turn) despawn with it. Runs before the boss's
+    // JustDied, so anything its script summons on death stays.
+    void DespawnBossSummons(Creature* boss)
+    {
+        Map* map = boss->GetMap();
+        if (!map || !map->Instanceable() || boss->IsCharmedOwnedByPlayerOrPlayer())
+            return;
+        if (!boss->IsDungeonBoss() && !boss->isWorldBoss() && boss->GetCreatureTemplate()->rank != CREATURE_ELITE_WORLDBOSS)
+            return;
+
+        BossSummonCollector collector;
+        TypeContainerVisitor<BossSummonCollector, MapStoredObjectTypesContainer> visitor(collector);
+        visitor.Visit(map->GetObjectsStore());
+
+        std::set<ObjectGuid> parents{ boss->GetGUID() };
+        std::vector<Creature*> despawn;
+        bool added;
+        do
+        {
+            added = false;
+            for (Creature* summon : collector.summons)
+            {
+                if (summon->IsCharmedOwnedByPlayerOrPlayer() || summon->IsDungeonBoss() || !summon->IsHostileToPlayers())
+                    continue;
+                if (parents.count(summon->ToTempSummon()->GetSummonerGUID()) && parents.insert(summon->GetGUID()).second)
+                {
+                    despawn.push_back(summon);
+                    added = true;
+                }
+            }
+        } while (added);
+
+        for (Creature* summon : despawn)
+            summon->DespawnOrUnsummon();
+    }
+}
+
 void Unit::Kill(Unit* killer, Unit* victim, bool durabilityLoss, WeaponAttackType attackType, SpellInfo const* /*spellProto*/, Spell const* /*spell*/ /*= nullptr*/)
 {
     // Prevent killing unit twice (and giving reward from kill twice)
@@ -15355,6 +15456,8 @@ void Unit::Kill(Unit* killer, Unit* victim, bool durabilityLoss, WeaponAttackTyp
         // Call KilledUnit for creatures, this needs to be called after the lootable flag is set
         if (killer && killer->IsCreature() && killer->IsAIEnabled)
             killer->ToCreature()->AI()->KilledUnit(victim);
+
+        DespawnBossSummons(creature);
 
         // Call creature just died function
         if (CreatureAI* ai = creature->AI())
@@ -16636,6 +16739,14 @@ uint32 Unit::GetModelForForm(ShapeshiftForm form, uint32 spellId)
 
     if (IsPlayer())
     {
+        uint32 incarnationModel = 0;
+        sScriptMgr->OnPlayerGetShapeshiftModel(ToPlayer(), form, spellId, incarnationModel);
+        if (incarnationModel)
+            return incarnationModel;
+
+        if (uint32 incarnation = GetAscensionIncarnationDisplay(ToPlayer(), form, spellId))
+            return incarnation;
+
         if (uint32 ModelId = sObjectMgr->GetModelForShapeshift(form, ToPlayer()))
             return ModelId;
     }
@@ -17265,7 +17376,7 @@ void Unit::RewardRage(uint32 damage, uint32 weaponSpeedHitFactor, bool attacker)
         addRage = damage / rageconversion * 2.5f;
 
         // Berserker Rage effect
-        if (HasAura(18499))
+        if (HasAuraOrTwin(18499))
             addRage *= 3.0f;
     }
 
@@ -18541,6 +18652,25 @@ bool Unit::IsInDisallowedMountForm() const
     if (GetDisplayId() == GetNativeDisplayId())
     {
         return false;
+    }
+
+    // A display form whose spell asks to be allowed while mounted may coexist with the mount, so
+    // it does not block one. The form is kept, and entering it is what dismounts the caster.
+    for (auto const& pair : GetOwnedAuras())
+    {
+        SpellInfo const* auraInfo = pair.second->GetSpellInfo();
+        if (!auraInfo || !auraInfo->HasAttribute(SPELL_ATTR0_ALLOW_WHILE_MOUNTED))
+        {
+            continue;
+        }
+
+        for (SpellEffectInfo const& effect : auraInfo->Effects)
+        {
+            if (effect.IsAura() && effect.ApplyAuraName != SPELL_AURA_MOD_SHAPESHIFT)
+            {
+                return false;
+            }
+        }
     }
 
     CreatureDisplayInfoEntry const* display = sCreatureDisplayInfoStore.LookupEntry(GetDisplayId());

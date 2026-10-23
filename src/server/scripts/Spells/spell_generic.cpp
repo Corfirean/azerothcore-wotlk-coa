@@ -34,6 +34,8 @@
 #include "SpellScriptLoader.h"
 #include "Unit.h"
 #include "Vehicle.h"
+#include "Player.h"
+#include "PlayerScript.h"
 #include <array>
 #include <cmath>
 /*
@@ -1457,6 +1459,77 @@ class spell_gen_cannibalize : public SpellScript
     {
         OnEffectHit += SpellEffectFn(spell_gen_cannibalize::HandleDummy, EFFECT_0, SPELL_EFFECT_DUMMY);
         OnCheckCast += SpellCheckCastFn(spell_gen_cannibalize::CheckIfCorpseNear);
+    }
+};
+
+enum CoAFreeTalentReset
+{
+    SPELL_COA_FREE_TALENT_RESET = 14009999
+};
+
+class spell_coa_free_talent_reset : public SpellScript
+{
+    PrepareSpellScript(spell_coa_free_talent_reset);
+
+    void HandleDummy(SpellEffIndex /*effIndex*/)
+    {
+        Player* player = GetCaster()->ToPlayer();
+        if (!player)
+            return;
+
+        player->resetTalents(true);
+        player->SendTalentsInfoData(false);
+        Pet* pet = player->GetPet();
+        Pet::resetTalentsForAllPetsOf(player, pet);
+        if (pet)
+            player->SendTalentsInfoData(true);
+    }
+
+    void Register() override
+    {
+        OnEffectHit += SpellEffectFn(spell_coa_free_talent_reset::HandleDummy, EFFECT_0, SPELL_EFFECT_DUMMY);
+    }
+};
+
+static void DoCoAFreeTalentReset(Player* player)
+{
+    if (!player)
+        return;
+    player->resetTalents(true);
+    player->SendTalentsInfoData(false);
+    Pet* pet = player->GetPet();
+    Pet::resetTalentsForAllPetsOf(player, pet);
+    if (pet)
+        player->SendTalentsInfoData(true);
+}
+
+class CoA_free_talent_reset_player : public PlayerScript
+{
+public:
+    CoA_free_talent_reset_player() : PlayerScript("CoA_free_talent_reset_player") { }
+
+    void OnPlayerLogin(Player* player) override
+    {
+        if (!player->HasSpell(SPELL_COA_FREE_TALENT_RESET))
+            player->learnSpell(SPELL_COA_FREE_TALENT_RESET);
+    }
+
+    // The talent button cannot use ConfirmTalentWipe (trainer-only) or a lua
+    // `.` command (Ascension often swallows those). It says this in chat instead.
+    bool OnPlayerCanUseChat(Player* player, uint32 /*type*/, uint32 /*language*/, std::string& msg) override
+    {
+        if (msg != "COA_RESET_TALENTS")
+            return true;
+        DoCoAFreeTalentReset(player);
+        return false;
+    }
+
+    bool OnPlayerCanUseChat(Player* player, uint32 /*type*/, uint32 /*language*/, std::string& msg, Player* /*receiver*/) override
+    {
+        if (msg != "COA_RESET_TALENTS")
+            return true;
+        DoCoAFreeTalentReset(player);
+        return false;
     }
 };
 
@@ -4165,42 +4238,24 @@ public:
                 canFly = false;
 
             uint32 mount = 0;
-            switch (target->GetBaseSkillValue(SKILL_RIDING))
-            {
-                case 0:
-                    mount = _mount0;
-                    break;
-                case 75:
-                    mount = _mount60;
-                    break;
-                case 150:
-                    mount = _mount100;
-                    break;
-                case 225:
-                    if (canFly)
-                        mount = _mount150;
-                    else
-                        mount = _mount100;
-                    break;
-                case 300:
-                    if (canFly)
-                    {
-                        if (_mount310 && target->Has310Flyer(false))
-                            mount = _mount310;
-                        else
-                            mount = _mount280;
-                    }
-                    else
-                        mount = _mount100;
-                    break;
-                default:
-                    break;
-            }
+            uint16 riding = target->GetBaseSkillValue(SKILL_RIDING);
+            if (riding < RIDING_SKILL_NOVICE)
+                mount = _mount0;
+            else if (riding < RIDING_SKILL_JOURNEYMAN)
+                mount = _mount60;
+            else if (!canFly || riding < RIDING_SKILL_EXPERT)
+                mount = _mount100;
+            else if (riding < RIDING_SKILL_ARTISAN)
+                mount = _mount150;
+            else if (_mount310 && target->Has310Flyer(false))
+                mount = _mount310;
+            else
+                mount = _mount280;
 
             if (mount)
             {
                 PreventHitAura();
-                target->CastSpell(target, mount, true);
+                target->CastRidingMount(mount);
             }
 
             if (petNumber)
@@ -6251,6 +6306,8 @@ void AddSC_generic_spell_scripts()
     RegisterSpellScript(spell_gen_av_drekthar_presence);
     RegisterSpellScript(spell_gen_burn_brutallus);
     RegisterSpellScript(spell_gen_cannibalize);
+    RegisterSpellScript(spell_coa_free_talent_reset);
+    new CoA_free_talent_reset_player();
     RegisterSpellScript(spell_gen_clear_debuffs);
     RegisterSpellScript(spell_gen_clear_demonic_circle);
     RegisterSpellScript(spell_gen_create_lance);

@@ -16,6 +16,7 @@
  */
 
 #include "SpellAuraEffects.h"
+#include "AscensionIncarnation.h"
 #include "AreaDefines.h"
 #include "BattlefieldMgr.h"
 #include "Battleground.h"
@@ -1527,6 +1528,11 @@ void AuraEffect::HandleShapeshiftBoosts(Unit* target, bool apply) const
             break;
     }
 
+    if (spellId)
+        spellId = sSpellMgr->GetSpellTwinFor(spellId, GetId());
+    if (spellId2)
+        spellId2 = sSpellMgr->GetSpellTwinFor(spellId2, GetId());
+
     Player* player = target->ToPlayer();
     if (apply)
     {
@@ -1560,7 +1566,7 @@ void AuraEffect::HandleShapeshiftBoosts(Unit* target, bool apply) const
                 if (!spellInfo || !spellInfo->HasAttribute(SpellAttr0(SPELL_ATTR0_PASSIVE | SPELL_ATTR0_DO_NOT_DISPLAY)))
                     continue;
 
-                if (spellInfo->Stances & (1 << (GetMiscValue() - 1)))
+                if (spellInfo->Stances & (uint64(1) << (GetMiscValue() - 1)))
                     target->CastSpell(target, itr->first, true, nullptr, this, target->GetGUID());
             }
 
@@ -1579,7 +1585,7 @@ void AuraEffect::HandleShapeshiftBoosts(Unit* target, bool apply) const
                 if (!spellInfo || !spellInfo->HasAttribute(SpellAttr0(SPELL_ATTR0_PASSIVE | SPELL_ATTR0_DO_NOT_DISPLAY)) || spellInfo->HasEffect(SPELL_EFFECT_LEARN_SPELL))
                     continue;
 
-                if (spellInfo->Stances & (1 << (GetMiscValue() - 1)))
+                if (spellInfo->Stances & (uint64(1) << (GetMiscValue() - 1)))
                     target->CastSpell(target, itr->first, true, nullptr, this, target->GetGUID());
             }
 
@@ -1593,7 +1599,7 @@ void AuraEffect::HandleShapeshiftBoosts(Unit* target, bool apply) const
                         SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(glyph->SpellId);
                         if (!spellInfo || !spellInfo->HasAttribute(SpellAttr0(SPELL_ATTR0_PASSIVE | SPELL_ATTR0_DO_NOT_DISPLAY)))
                             continue;
-                        if (spellInfo->Stances & (1 << (GetMiscValue() - 1)))
+                        if (spellInfo->Stances & (uint64(1) << (GetMiscValue() - 1)))
                             target->CastSpell(target, glyph->SpellId, TriggerCastFlags(TRIGGERED_FULL_MASK & ~(TRIGGERED_IGNORE_SHAPESHIFT | TRIGGERED_IGNORE_CASTER_AURASTATE)), nullptr, this, target->GetGUID());
                     }
                 }
@@ -1605,7 +1611,7 @@ void AuraEffect::HandleShapeshiftBoosts(Unit* target, bool apply) const
                 [player](uint32 spellId) { return player->HasTalent(spellId, player->GetActiveSpec()); }))
             {
                 SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(24932);
-                if (spellInfo && spellInfo->Stances & (1 << (GetMiscValue() - 1)))
+                if (spellInfo && spellInfo->Stances & (uint64(1) << (GetMiscValue() - 1)))
                     target->CastSpell(target, 24932, true, nullptr, this, target->GetGUID());
             }
             // Improved Barkskin - apply/remove armor bonus due to shapeshift
@@ -1726,7 +1732,7 @@ void AuraEffect::HandleShapeshiftBoosts(Unit* target, bool apply) const
         }
 
         // Use the new aura to see on what stance the target will be
-        uint32 newStance = (1 << ((newAura ? newAura->GetMiscValue() : 0) - 1));
+        uint64 newStance = newAura && newAura->GetMiscValue() > 0 ? uint64(1) << (newAura->GetMiscValue() - 1) : 0;
 
         Unit::AuraApplicationMap& tAuras = target->GetAppliedAuras();
         for (Unit::AuraApplicationMap::iterator itr = tAuras.begin(); itr != tAuras.end();)
@@ -2415,7 +2421,10 @@ void AuraEffect::HandleAuraTransform(AuraApplication const* aurApp, uint8 mode, 
     if (apply)
     {
         // update active transform spell only when transform or shapeshift not set or not overwriting negative by positive case
-        if (GetSpellInfo()->HasAttribute(SPELL_ATTR0_NO_IMMUNITIES) || !target->GetModelForForm(target->GetShapeshiftForm(), GetId()) || !GetSpellInfo()->IsPositive())
+        // (AscensionIncarnation: GetModelForForm also answers for a transform spell's incarnation, so only ask it
+        //  about a real shapeshift form - otherwise a transform form with an incarnation was never applied)
+        if (GetSpellInfo()->HasAttribute(SPELL_ATTR0_NO_IMMUNITIES) || target->GetShapeshiftForm() == FORM_NONE ||
+            !target->GetModelForForm(target->GetShapeshiftForm(), GetId()) || !GetSpellInfo()->IsPositive())
         {
             // special case (spell specific functionality)
             if (GetMiscValue() == 0)
@@ -2944,7 +2953,10 @@ void AuraEffect::HandleAuraTransform(AuraApplication const* aurApp, uint8 mode, 
             else
             {
                 CreatureTemplate const* ci = sObjectMgr->GetCreatureTemplate(GetMiscValue());
-                if (!ci)
+                uint32 const incarnation = target->IsPlayer() ? GetAscensionIncarnationDisplay(target->ToPlayer(), FORM_NONE, GetId()) : 0;
+                if (!ci && incarnation)
+                    target->SetDisplayId(incarnation);   // AscensionIncarnation: form whose creature is missing
+                else if (!ci)
                 {
                     target->SetDisplayId(16358);              // pig pink ^_^
                     LOG_ERROR("spells.aura.effect", "Auras: unknown creature id = {} (only need its modelid) From Spell Aura Transform in Spell ID = {}", GetMiscValue(), GetId());
@@ -2955,6 +2967,11 @@ void AuraEffect::HandleAuraTransform(AuraApplication const* aurApp, uint8 mode, 
 
                     if (uint32 modelid = ObjectMgr::ChooseDisplayId(ci)->CreatureDisplayID)
                         model_id = modelid;                     // Will use the default model here
+
+                    // AscensionIncarnation: a form that is a transform wears its Wardrobe incarnation.
+                    if (Player* player = target->ToPlayer())
+                        if (uint32 incarnation = GetAscensionIncarnationDisplay(player, FORM_NONE, GetId()))
+                            model_id = incarnation;
 
                     // Polymorph (sheep)
                     if (GetSpellInfo()->SpellFamilyName == SPELLFAMILY_MAGE && GetSpellInfo()->SpellIconID == 82 && GetSpellInfo()->SpellVisual[0] == 12978)
@@ -7014,6 +7031,22 @@ void AuraEffect::HandleObsModPowerAuraTick(Unit* target, Unit* caster) const
     if (target->IsImmunedToAuraPeriodicTick(caster, GetSpellInfo()))
     {
         SendTickImmune(target, caster);
+        return;
+    }
+
+    // EunoiaCore-Underworld Mana Bomb: negative OBS_MOD_POWER (aura 21)
+    // drains max-power percentage. Other negative regen auras stay unchanged.
+    // Handle drains before the full-power regeneration early return.
+    if (GetId() >= 93489 && GetId() <= 93509 && m_amount < 0)
+    {
+        int64 const requested = -int64(m_amount) * int64(target->GetMaxPower(PowerType)) / 100;
+        int32 const drain = int32(std::min<int64>(requested, 2147483647LL));
+        if (!drain)
+            return;
+        int32 const change = target->ModifyPower(PowerType, -drain);
+        uint32 const drained = change < 0 ? uint32(-int64(change)) : 0;
+        SpellPeriodicAuraLogInfo pInfo(this, drained, 0, 0, 0, 0.0f, false);
+        target->SendPeriodicAuraLog(&pInfo);
         return;
     }
 

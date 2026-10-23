@@ -53,6 +53,15 @@ void PointMovementGenerator<T>::DoInitialize(T* unit)
     i_recalculateSpeed = false;
     Movement::MoveSplineInit init(unit);
 
+    bool isBot = false;
+    Player const* player = unit->ToPlayer();
+    if (player && player->IsBot())
+        isBot = true;
+
+    bool const isCharge = (id == EVENT_CHARGE || id == EVENT_CHARGE_PREPATH);
+    if (isBot && !isCharge)
+        _forceDestination = false;
+
     // mod-playerbots
     if (_reverseOrientation)
         init.SetOrientationInversed();
@@ -63,13 +72,24 @@ void PointMovementGenerator<T>::DoInitialize(T* unit)
     {
         PathGenerator path(unit);
         bool result = path.CalculatePath(i_x, i_y, i_z, _forceDestination);
-        if (result && !(path.GetPathType() & PATHFIND_NOPATH) && path.GetPath().size() > 2)
+        if (result && !(path.GetPathType() & PATHFIND_NOPATH) && path.GetPath().size() >= 2)
         {
             m_precomputedPath = path.GetPath();
-            init.MovebyPath(m_precomputedPath);
+            if (m_precomputedPath.size() > 2)
+                init.MovebyPath(m_precomputedPath);
+            else
+                init.MoveTo(m_precomputedPath[1].x, m_precomputedPath[1].y, m_precomputedPath[1].z, true);
         }
         else
         {
+            if (isBot && (!player || !player->CanFly()))
+            {
+                // Strict bot navigation: fail safe, never cheat through geometry
+                unit->ClearUnitState(UNIT_STATE_ROAMING | UNIT_STATE_ROAMING_MOVE);
+                unit->StopMoving();
+                return;
+            }
+
             // Xinef: fix strange client visual bug, moving on z coordinate only switches orientation by 180 degrees (visual only)
             if (G3D::fuzzyEq(unit->GetPositionX(), i_x) && G3D::fuzzyEq(unit->GetPositionY(), i_y))
             {
@@ -82,6 +102,14 @@ void PointMovementGenerator<T>::DoInitialize(T* unit)
     }
     else
     {
+        if (isBot && !isCharge && (!player || !player->CanFly()))
+        {
+            // Strict bot navigation: unpathed straight movement prohibited for ground bots
+            unit->ClearUnitState(UNIT_STATE_ROAMING | UNIT_STATE_ROAMING_MOVE);
+            unit->StopMoving();
+            return;
+        }
+
         // Xinef: fix strange client visual bug, moving on z coordinate only switches orientation by 180 degrees (visual only)
         if (G3D::fuzzyEq(unit->GetPositionX(), i_x) && G3D::fuzzyEq(unit->GetPositionY(), i_y))
         {
@@ -215,11 +243,29 @@ bool PointMovementGenerator<T>::DoUpdate(T* unit, uint32 diff)
                 else if (m_precomputedPath.size() == 2)
                     init.MoveTo(m_precomputedPath[1].x, m_precomputedPath[1].y, m_precomputedPath[1].z, true);
                 else
+                {
+                    Player const* player = unit->ToPlayer();
+                    if (player && player->IsBot() && id != EVENT_CHARGE && id != EVENT_CHARGE_PREPATH && !player->CanFly())
+                    {
+                        unit->ClearUnitState(UNIT_STATE_ROAMING | UNIT_STATE_ROAMING_MOVE);
+                        unit->StopMoving();
+                        return false;
+                    }
                     init.MoveTo(i_x, i_y, i_z, true);
+                }
             }
         }
         else
+        {
+            Player const* player = unit->ToPlayer();
+            if (player && player->IsBot() && id != EVENT_CHARGE && id != EVENT_CHARGE_PREPATH && !player->CanFly())
+            {
+                unit->ClearUnitState(UNIT_STATE_ROAMING | UNIT_STATE_ROAMING_MOVE);
+                unit->StopMoving();
+                return false;
+            }
             init.MoveTo(i_x, i_y, i_z, true);
+        }
 
         if (speed > 0.0f) // Default value for point motion type is 0.0, if 0.0 spline will use GetSpeed on unit
             init.SetVelocity(speed);

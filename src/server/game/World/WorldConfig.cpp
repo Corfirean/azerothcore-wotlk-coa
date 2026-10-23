@@ -651,14 +651,14 @@ void WorldConfig::BuildConfigCache()
     SetConfigValue<uint32>(CONFIG_LFG_OPTIONSMASK, "DungeonFinder.OptionsMask", 5);
     SetConfigValue<bool>(CONFIG_LFG_CAST_DESERTER, "DungeonFinder.CastDeserter", true);
     SetConfigValue<bool>(CONFIG_LFG_ALLOW_COMPLETED, "DungeonFinder.AllowCompleted", true);
-    SetConfigValue<uint32>(CONFIG_LFG_MAX_EXPANSION, "DungeonFinder.MaxExpansion", 0);
+    SetConfigValue<uint32>(CONFIG_LFG_MAX_EXPANSION, "DungeonFinder.MaxExpansion", GetConfigValue<uint32>(CONFIG_EXPANSION));
     SetConfigValue<uint32>(CONFIG_LFG_DUNGEON_SELECTION_COOLDOWN, "DungeonFinder.DungeonSelectionCooldown", 0);
 
     // DBC_ItemAttributes
     SetConfigValue<bool>(CONFIG_DBC_ENFORCE_ITEM_ATTRIBUTES, "DBC.EnforceItemAttributes", true);
 
     // Max instances per hour
-    SetConfigValue<uint32>(CONFIG_MAX_INSTANCES_PER_HOUR, "AccountInstancesPerHour", 5);
+    SetConfigValue<uint32>(CONFIG_MAX_INSTANCES_PER_HOUR, "AccountInstancesPerHour", 10);
 
     // AutoBroadcast
     SetConfigValue<bool>(CONFIG_AUTOBROADCAST, "AutoBroadcast.On", false);
@@ -775,4 +775,5 @@ void WorldConfig::BuildConfigCache()
     // Achievement
     SetConfigValue<uint32>(CONFIG_ACHIEVEMENT_REALM_FIRST_KILL_WINDOW, "Achievement.RealmFirstKillWindow", 60);
     SetConfigValue<bool>(CONFIG_ACHIEVEMENT_REALM_FIRST_RACE_LIMIT_ONE_PER_CHARACTER, "Achievement.RealmFirstRaceLimitOnePerCharacter", true);
+    SetConfigValue<bool>(CONFIG_ACHIEVEMENT_REALM_FIRST_BLOCK_BOTS, "Achievement.RealmFirstBlockBots", true);
 }

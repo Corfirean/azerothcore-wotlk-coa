@@ -23,6 +23,7 @@
 #include "Battleground.h"
 #include "BattlegroundMgr.h"
 #include "CharacterDatabaseCleaner.h"
+#include "CoAPortableSession.h"
 #include "Chat.h"
 #include "Common.h"
 #include "Config.h"
@@ -266,6 +267,21 @@ uint8 Player::FindEquipSlot(ItemTemplate const* proto, uint32 slot, bool swap) c
                     (GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND) &&
                      CanUseTwoHandWithShield(GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND)->GetTemplate(), proto)))
                     return slots[i];
+
+        // CoA dual two-handed builds (Burning Commander / Valkyr Grip) work the second slot through right-click
+        // while the main hand holds a gripped two-hander: a two-hander joins an offhand that does not hold one
+        // yet, and any other fitting weapon takes the offhand without disturbing the main hand.
+        if (swap && slots[1] == EQUIPMENT_SLOT_OFFHAND && (HasBurningCommander() || HasValkyrGrip()))
+            if (Item* mhWeapon = GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND))
+                if (ItemTemplate const* mhWeaponProto = mhWeapon->GetTemplate())
+                    if (mhWeaponProto->InventoryType == INVTYPE_2HWEAPON && CanTitanGrip(mhWeaponProto))
+                        if (Item* offWeapon = GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND))
+                            if ((proto->InventoryType == INVTYPE_2HWEAPON &&
+                                 offWeapon->GetTemplate()->InventoryType != INVTYPE_2HWEAPON) ||
+                                (proto->InventoryType == INVTYPE_WEAPON &&
+                                 proto->SubClass != ITEM_SUBCLASS_WEAPON_POLEARM &&
+                                 proto->SubClass != ITEM_SUBCLASS_WEAPON_FISHING_POLE))
+                                return EQUIPMENT_SLOT_OFFHAND;
 
         // if not found free and can swap return first appropriate from used
         for (uint8 i = 0; i < 4; ++i)
@@ -2984,6 +3000,14 @@ void Player::SetVisibleItemSlot(uint8 slot, Item* pItem)
     }
 
     sScriptMgr->OnPlayerAfterSetVisibleItemSlot(this, slot, pItem);
+
+    // CoA Custom 1.5: Gnoll (83) and Saberon (84) are creature bodies whose own outfit (Esteria appearance) dresses
+    // them; body armor drawn on them does not fit, so those slots stay unseen (weapons, shield, shoulders, helmet do)
+    if (IsCoaOutfitBodyHidden(getRace(), slot))
+    {
+        SetUInt32Value(PLAYER_VISIBLE_ITEM_1_ENTRYID + (slot * 2), 0);
+        SetUInt32Value(PLAYER_VISIBLE_ITEM_1_ENCHANTMENT + (slot * 2), 0);
+    }
 }
 
 void Player::VisualizeItem(uint8 slot, Item* pItem)
@@ -5017,6 +5041,12 @@ void Player::SetHomebind(WorldLocation const& loc, uint32 areaId)
     stmt->SetData (4, m_homebindZ);
     stmt->SetData(5, GetGUID().GetRawValue());
     CharacterDatabase.Execute(stmt);
+
+    WorldPacket data(SMSG_BINDPOINTUPDATE, 4 + 4 + 4 + 4 + 4);
+    data << m_homebindX << m_homebindY << m_homebindZ;
+    data << uint32(m_homebindMapId);
+    data << uint32(m_homebindAreaId);
+    SendDirectMessage(&data);
 }
 
 bool Player::isBeingLoaded() const
@@ -5135,6 +5165,13 @@ bool Player::LoadFromDB(ObjectGuid playerGuid, CharacterDatabaseQueryHolder cons
     SetByteValue(PLAYER_BYTES_2, 3, fields[15].Get<uint8>());
     SetByteValue(PLAYER_BYTES_3, 0, fields[5].Get<uint8>());
     SetByteValue(PLAYER_BYTES_3, 1, fields[54].Get<uint8>());
+    if (UsesExtendedAppearance(getRace(true)))           // CoA: Esteria appearance extension
+        SetByteValue(UNIT_FIELD_PADDING, 0, uint8(fields[75].Get<uint64>()));
+    else if (UsesHaranirAppearance(getRace(true)))
+    {
+        SetUInt32Value(UNIT_FIELD_PADDING, uint32(fields[75].Get<uint64>()));
+        SetUInt32Value(OBJECT_FIELD_PADDING, uint32(fields[75].Get<uint64>() >> 32));
+    }
     ReplaceAllPlayerFlags((PlayerFlags)fields[16].Get<uint32>());
 
     RemovePlayerFlag(PLAYER_FLAGS_NO_PLAY_TIME);
@@ -5696,12 +5733,9 @@ bool Player::LoadFromDB(ObjectGuid playerGuid, CharacterDatabaseQueryHolder cons
     }
 
     // RaF stuff.
-    m_grantableLevels = fields[71].Get<uint8>();
+    SetGrantableLevels(fields[71].Get<uint8>());
     if (GetSession()->IsARecruiter() || (GetSession()->GetRecruiterId() != 0))
         SetDynamicFlag(UNIT_DYNFLAG_REFER_A_FRIEND);
-
-    if (m_grantableLevels > 0)
-        SetByteValue(PLAYER_FIELD_BYTES, 1, 0x01);
 
     _LoadDeclinedNames(holder.GetPreparedResult(PLAYER_LOGIN_QUERY_LOAD_DECLINED_NAMES));
 
@@ -6899,12 +6933,17 @@ bool Player::Satisfy(DungeonProgressionRequirements const* ar, uint32 target_map
         if (!mapEntry)
             return false;
 
+        Difficulty target_difficulty = GetDifficulty(mapEntry->IsRaid());
+
         if (!sWorld->getBoolConfig(CONFIG_INSTANCE_IGNORE_LEVEL))
         {
-            if (ar->levelMin && GetLevel() < ar->levelMin)
-                LevelMin = ar->levelMin;
-            if (ar->levelMax && GetLevel() > ar->levelMax)
-                LevelMax = ar->levelMax;
+            uint8 minLevel = ar->levelMin;
+            uint8 maxLevel = ar->levelMax;
+            sScriptMgr->OnResolveDungeonAccessLevels(this, target_map, target_difficulty, minLevel, maxLevel);
+            if (minLevel && GetLevel() < minLevel)
+                LevelMin = minLevel;
+            if (maxLevel && GetLevel() > maxLevel)
+                LevelMax = maxLevel;
         }
 
         if (sDisableMgr->IsDisabledFor(DISABLE_TYPE_MAP, target_map, this))
@@ -7005,7 +7044,7 @@ bool Player::Satisfy(DungeonProgressionRequirements const* ar, uint32 target_map
             }
         }
 
-        Difficulty target_difficulty = GetDifficulty(mapEntry->IsRaid());
+        target_difficulty = GetDifficulty(mapEntry->IsRaid());
         MapDifficulty const* mapDiff = GetDownscaledMapDifficultyData(target_map, target_difficulty);
         if (LevelMin || LevelMax || ilvlRequirementNotMet
             || missingPlayerItems.size() || missingPlayerQuests.size() || missingPlayerAchievements.size()
@@ -7034,7 +7073,9 @@ bool Player::Satisfy(DungeonProgressionRequirements const* ar, uint32 target_map
                     {
                         ChatHandler(GetSession()).PSendSysMessage("{}", missingLeaderQuests[0]->note);
                     }
-                    else if (mapDiff->hasErrorMessage)
+                    // CoA's MapDifficulty.dbc gives every raid's difficulty 0 the text "This difficulty is not available.", so a
+                    // level shortfall goes on to the level message below rather than that text.
+                    else if (mapDiff->hasErrorMessage && !LevelMin)
                     {
                         // if (missingAchievement) covered by this case
                         SendTransferAborted(target_map, TRANSFER_ABORT_DIFFICULTY, target_difficulty);
@@ -7266,6 +7307,9 @@ void Player::SaveToDB(CharacterDatabaseTransaction trans, bool create, bool logo
     if (!create)
         sScriptMgr->OnPlayerSave(this);
 
+    if (!create)
+        GetSession()->UpdateRecruitAFriendRewards(true);
+
     _SaveCharacter(create, trans);
 
     if (m_mailsUpdated)                                     //save mails only when needed
@@ -7300,6 +7344,9 @@ void Player::SaveToDB(CharacterDatabaseTransaction trans, bool create, bool logo
     // save pet (hunter pet level and experience and all type pets health/mana).
     if (Pet* pet = GetPet())
         pet->SavePetToDB(PET_SAVE_AS_CURRENT);
+
+    if (!create)
+        CoAPortableSession::AppendSaveMarker(this, trans, logout);
 }
 
 // flag data to be saved by UpdateAdditionalSaves a moment after an important change,
@@ -7899,6 +7946,23 @@ void Player::_SaveSpells(CharacterDatabaseTransaction trans)
 {
     CharacterDatabasePreparedStatement* stmt = nullptr;
 
+    // A character's first save writes its whole spellbook (a companion that was just created knows over a thousand
+    // spells). New spells go out as multi-row INSERTs - same statement, same columns, same duplicate handling as
+    // CHAR_INS_CHAR_SPELL - instead of one round trip each, which is what made saving a large population take minutes.
+    constexpr uint32 SPELLS_PER_INSERT = 200;
+    std::string newSpellRows;
+    uint32 newSpellCount = 0;
+    auto flushNewSpells = [&]()
+    {
+        if (!newSpellCount)
+            return;
+        newSpellRows.pop_back(); // the trailing comma
+        trans->Append("INSERT INTO character_spell (guid, spell, specMask) VALUES " + newSpellRows +
+            " ON DUPLICATE KEY UPDATE specMask = VALUES(specMask)");
+        newSpellRows.clear();
+        newSpellCount = 0;
+    };
+
     for (PlayerSpellMap::iterator itr = m_spells.begin(); itr != m_spells.end();)
     {
         // xinef: skip temporary spells
@@ -7918,7 +7982,13 @@ void Player::_SaveSpells(CharacterDatabaseTransaction trans)
         }
 
         // xinef: insert statement for new / updated spell
-        if (itr->second->State == PLAYERSPELL_NEW || itr->second->State == PLAYERSPELL_CHANGED)
+        if (itr->second->State == PLAYERSPELL_NEW)
+        {
+            newSpellRows += Acore::StringFormat("({},{},{}),", GetGUID().GetRawValue(), uint32(itr->first), uint32(itr->second->specMask));
+            if (++newSpellCount >= SPELLS_PER_INSERT)
+                flushNewSpells();
+        }
+        else if (itr->second->State == PLAYERSPELL_CHANGED)
         {
             stmt = CharacterDatabase.GetPreparedStatement(CHAR_INS_CHAR_SPELL);
             stmt->SetData(0, GetGUID().GetRawValue());
@@ -7938,6 +8008,7 @@ void Player::_SaveSpells(CharacterDatabaseTransaction trans)
             ++itr;
         }
     }
+    flushNewSpells();
 }
 
 // save player stats -- only for external usage

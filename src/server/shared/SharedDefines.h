@@ -92,6 +92,28 @@ enum Races
     //RACE_ICE_TROLL      = 21
 };
 
+// CoA: Esteria's native races (EsteriaAppearance.dll on the client). Highmountain and Earthen keep a sixth
+// appearance byte (the unused outfit byte of CMSG_CHAR_CREATE), Haranir a uint64 sent after the stock packet.
+// Saved in characters.extraAppearance, carried live in UNIT_FIELD_PADDING (+ OBJECT_FIELD_PADDING for Haranir).
+inline constexpr bool UsesExtendedAppearance(uint32 race)
+{
+    return race == 66 || race == 68 || race == 69;      // Highmountain Tauren, Earthen (Alliance, Horde)
+}
+
+// CoA Custom 1.5: Gnoll (83) and Saberon (84) wear their own outfit (Esteria appearance); body armor does not fit
+// their creature bodies, so shirt, chest, waist, legs, feet, wrists, hands, back and tabard are never shown on them
+inline constexpr bool IsCoaOutfitBodyHidden(uint32 /*race*/, uint8 /*slot*/)
+{
+    // 2026-10-09: none. Esteria's EsteriaAppearance.dll draws Gnoll / Saberon armor itself (Saberon coverage
+    // geosets 20001-20009, Gnoll outfits yielding to equipped regions) and needs the real equipped displays
+    return false;
+}
+
+inline constexpr bool UsesHaranirAppearance(uint32 race)
+{
+    return race == 70 || race == 71;                    // Haranir (Horde, Alliance)
+}
+
 // DisplayRace values from CreatureDisplayInfoExtra.dbc
 enum class DisplayRace : uint8
 {
@@ -171,7 +193,8 @@ constexpr bool IsAscensionClass(uint8 classId)
 
 constexpr bool UsesProjectileAmmo(uint8 classId)
 {
-    return classId != CLASS_HERO && !IsAscensionClass(classId);
+    (void)classId;
+    return false;
 }
 
 // Several WotLK formulas have hard-coded per-class constants rather than DBC
@@ -1024,15 +1047,18 @@ enum SpellEffects
     SPELL_EFFECT_ASCENSION_PLAY_SPELL_VISUAL_KIT    = 168,
     SPELL_EFFECT_ASCENSION_SPREAD_AURA              = 169,
     SPELL_EFFECT_ASCENSION_SPREAD_AURA_2            = 170,
+    SPELL_EFFECT_ASCENSION_MODIFY_AURA_CHARGES      = 171,
     SPELL_EFFECT_ASCENSION_REFRESH_AURA             = 173,
     SPELL_EFFECT_ASCENSION_MODIFY_AURA_STACKS       = 175,
     SPELL_EFFECT_ASCENSION_MODIFY_AURA_STACKS_2     = 176,
     SPELL_EFFECT_ASCENSION_MODIFY_AURA_DURATION     = 177,
+    SPELL_EFFECT_ASCENSION_TRIGGER_SPELL_DURATION   = 178,
     SPELL_EFFECT_ASCENSION_RESTORE_BASE_HEALTH_PCT  = 181,
     SPELL_EFFECT_ASCENSION_TRIGGER_SPELL_DELAYED    = 183,
     SPELL_EFFECT_ASCENSION_TRIGGER_RANDOM_SPELL     = 184,
     SPELL_EFFECT_ASCENSION_RESTORE_SPELL_CHARGES    = 187,
     SPELL_EFFECT_ASCENSION_APPLY_AURA_TO_SUMMONS    = 190,
+    SPELL_EFFECT_ASCENSION_MODIFY_COOLDOWN_PCT      = 192,
     SPELL_EFFECT_ASCENSION_RESET_COOLDOWN           = 195,
     SPELL_EFFECT_ASCENSION_LAST                     = 198,
     TOTAL_SPELL_EFFECTS                             = 199
@@ -3998,6 +4024,7 @@ enum BattlegroundQueueTypeId : uint8
     BATTLEGROUND_QUEUE_2v2       = 8,
     BATTLEGROUND_QUEUE_3v3       = 9,
     BATTLEGROUND_QUEUE_5v5       = 10,
+    BATTLEGROUND_QUEUE_1v1       = 11,
     MAX_BATTLEGROUND_QUEUE_TYPES = 20,
 };
 

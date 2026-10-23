@@ -151,6 +151,35 @@ void ScriptMgr::AfterInstanceGameObjectCreate(Map* instance, GameObject* go)
     CALL_ENABLED_HOOKS(GlobalScript, GLOBALHOOK_AFTER_INSTANCE_GAME_OBJECT_CREATE, script->AfterInstanceGameObjectCreate(instance, go));
 }
 
+void ScriptMgr::OnResolveLfgQueuePolicy(ObjectGuid const& guid, lfg::LfgQueuePolicy& policy)
+{
+    CALL_ENABLED_HOOKS(GlobalScript, GLOBALHOOK_ON_RESOLVE_LFG_QUEUE_POLICY, script->OnResolveLfgQueuePolicy(guid, policy));
+}
+
+void ScriptMgr::OnLfgProposalMadeGroup(lfg::LfgProposal const& proposal, Group* group)
+{
+    CALL_ENABLED_HOOKS(GlobalScript, GLOBALHOOK_ON_LFG_PROPOSAL_MADE_GROUP, script->OnLfgProposalMadeGroup(proposal, group));
+}
+
+void ScriptMgr::OnInstanceMapCreated(InstanceMap* instanceMap, Player* player)
+{
+    CALL_ENABLED_HOOKS(GlobalScript, GLOBALHOOK_ON_INSTANCE_MAP_CREATED, script->OnInstanceMapCreated(instanceMap, player));
+}
+
+bool ScriptMgr::HasLfgAutoFillProvider() const
+{
+    bool hasProvider = false;
+    CALL_ENABLED_HOOKS(GlobalScript, GLOBALHOOK_HAS_LFG_AUTO_FILL_PROVIDER,
+    {
+        if (script->HasLfgAutoFillProvider())
+        {
+            hasProvider = true;
+            break;
+        }
+    });
+    return hasProvider;
+}
+
 GlobalScript::GlobalScript(char const* name, std::vector<uint16> enabledHooks)
     : ScriptObject(name, GLOBALHOOK_END)
 {

@@ -258,7 +258,8 @@ struct boss_twinemperorsAI : public BossAI
             {
                 if (Creature* twin = GetTwin())
                 {
-                    if (me->IsWithinDist(twin, 60.f))
+                    uint32 healDist = instance ? instance->ResolveEncounterMechanic(DATA_TWIN_EMPERORS, 1 /*PROXIMITY_DISTANCE*/, 11 /*PROXIMITY_DISTANCE*/, 60) : 60;
+                    if (healDist > 0 && me->IsWithinDist(twin, float(healDist)))
                         DoCast(twin, SPELL_HEAL_BROTHER, true);
                 }
 

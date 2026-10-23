@@ -296,7 +296,11 @@ public:
             {
                 case EVENT_MARK_CAST:
                     me->CastSpell(me, TABLE_SPELL_MARK[horsemanId], false);
-                    events.Repeat((me->GetEntry() == NPC_LADY_BLAUMEUX || me->GetEntry() == NPC_SIR_ZELIEK) ? 15s : 12s);
+                    {
+                        uint32 baseIntervalMs = (me->GetEntry() == NPC_LADY_BLAUMEUX || me->GetEntry() == NPC_SIR_ZELIEK) ? 15000 : 12000;
+                        uint32 markIntervalMs = instance ? instance->ResolveEncounterMechanic(BOSS_HORSEMAN, 1 /*TIMER_MS*/, 9 /*TIMER_MS*/, baseIntervalMs) : baseIntervalMs;
+                        events.Repeat(Milliseconds(markIntervalMs));
+                    }
                     return;
                 case EVENT_BERSERK:
                     Talk(SAY_SPECIAL);
@@ -328,8 +332,12 @@ public:
                 }
                 else if (!me->IsWithinDistInMap(me->GetVictim(), 45.0f) || !me->IsValidAttackTarget(me->GetVictim()))
                 {
-                    DoCastAOE(TABLE_SPELL_PUNISH[horsemanId]);
-                    Talk(EMOTE_RAGECAST);
+                    uint32 punishmentEnabled = instance ? instance->ResolveEncounterMechanic(BOSS_HORSEMAN, 2 /*FAIL_THRESHOLD*/, 10 /*FAIL_THRESHOLD*/, 1) : 1;
+                    if (punishmentEnabled > 0)
+                    {
+                        DoCastAOE(TABLE_SPELL_PUNISH[horsemanId]);
+                        Talk(EMOTE_RAGECAST);
+                    }
                 }
             }
             else

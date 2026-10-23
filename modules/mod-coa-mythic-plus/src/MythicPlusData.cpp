@@ -130,7 +130,11 @@ namespace CoaMythicPlus
                 if (!k.item || !k.level || dungeon == _dungeons.end())
                     continue;
                 _keystones[k.item] = k;
-                _keystoneByDungeonLevel.emplace(Key(k.lfgId, k.level), k.item);
+                // Pit of the Fangs and Halls of the Damned have two key series: an older one named after the
+                // whole dungeon ("Keystone: Wailing Caverns") and a newer one with the wing in its name. New
+                // keys come from the newer series; old ones still work.
+                uint32& handedOut = _keystoneByDungeonLevel[Key(k.lfgId, k.level)];
+                handedOut = std::max(handedOut, k.item);
                 _keystonesByMap[dungeon->second.mapId].push_back(k.item);
             }
         }
@@ -200,6 +204,8 @@ namespace CoaMythicPlus
                     }
                 if (swapped)
                     _swappedAffixRows.push_back(row);
+                _lastAffixRowId = std::max(_lastAffixRowId, row[0]);
+                _affixRowScale = row[15];
                 _affixes[(affixes.U32(i, 1) << 16) | affixes.U32(i, 2)] = std::move(ids);
             }
         }
@@ -255,6 +261,16 @@ namespace CoaMythicPlus
             return {};
         auto itr = _affixes.find((rotation << 16) | std::min<uint32>(level, 254));
         return itr != _affixes.end() ? itr->second : std::vector<uint32> {};
+    }
+
+    std::array<uint32, 16> Data::PlusOneAffixRow(uint32 rotation) const
+    {
+        std::array<uint32, 16> row {};
+        row[0] = _lastAffixRowId + 1 + rotation;
+        row[1] = rotation;
+        row[2] = 1;
+        row[15] = _affixRowScale;
+        return row;
     }
 
     std::vector<WingEncounter> const* Data::GetWingEncounters(uint32 lfgId) const

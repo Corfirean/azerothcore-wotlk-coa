@@ -16,6 +16,7 @@
 #include <utility>
 
 class Creature;
+class CreatureTemplate;
 class Item;
 class Player;
 class Quest;
@@ -24,8 +25,66 @@ struct ItemTemplate;
 
 namespace LocalLevelScaling
 {
+inline std::atomic<std::uint8_t> FlightUnlockLevel{60};
+
+using QuestBaseLevelResolver = std::int32_t (*)(Quest const*);
+inline std::atomic<QuestBaseLevelResolver> QuestBaseLevelOwner{nullptr};
+
+std::int32_t GetEffectiveQuestBaseLevel(Quest const* quest);
+
+using QuestMinLevelResolver = std::uint32_t (*)(Quest const*);
+inline std::atomic<QuestMinLevelResolver> QuestMinLevelOwner{nullptr};
+
+std::uint32_t GetEffectiveQuestMinLevel(Quest const* quest);
+
+using QuestMoneyMaxLevelResolver = std::uint32_t (*)(Quest const*, std::uint32_t /*defaultRewardMoney*/);
+inline std::atomic<QuestMoneyMaxLevelResolver> QuestMoneyMaxLevelOwner{nullptr};
+
+std::uint32_t GetEffectiveQuestMoneyMaxLevel(Quest const* quest, std::uint32_t defaultRewardMoney);
+
+using KillContentLevelResolver = std::uint8_t (*)(Player const*, Unit const*, std::uint8_t /*defaultContentLevel*/);
+inline std::atomic<KillContentLevelResolver> KillContentLevelOwner{nullptr};
+
+std::uint8_t GetEffectiveKillContentLevel(Player const* player, Unit const* victim, std::uint8_t defaultContentLevel);
+
+using QuestRewardRateResolver = float (*)(Player const*, Quest const*, float /*defaultRate*/);
+inline std::atomic<QuestRewardRateResolver> QuestRewardRateOwner{nullptr};
+
+float GetEffectiveQuestRewardRate(Player const* player, Quest const* quest, float defaultRate);
+
+using CreatureBaseLevelResolver = std::uint8_t (*)(CreatureTemplate const*, Creature const*);
+inline std::atomic<CreatureBaseLevelResolver> CreatureBaseLevelOwner{nullptr};
+
+std::uint8_t GetEffectiveCreatureBaseLevel(CreatureTemplate const* cinfo, Creature const* creature = nullptr);
+
+inline std::atomic<std::uint32_t> QuestMoneyKeepSharePercent{100};
+inline std::atomic<std::uint32_t> QuestXpKeepSharePercent{100};
+inline std::uint8_t ScaleQuestLevel(std::int32_t originalLevel, std::uint8_t playerLevel)
+{
+    if (originalLevel <= 0)
+        return playerLevel;
+    std::uint8_t questLevel = static_cast<std::uint8_t>(std::min<std::int32_t>(originalLevel, UINT8_MAX));
+    return std::max(questLevel, playerLevel);
+}
+
+/// The share of a scaled reward a quest keeps: `floorPercent` at the far end of the level range,
+/// growing to 100% at the player's own level, in proportion to how much of that range the quest
+/// spans. A quest at or above the player's level - the case where scaling changes nothing - always
+/// keeps the whole reward.
+inline std::uint32_t RewardKeepPercent(std::uint32_t floorPercent, std::int32_t questLevel,
+    std::uint8_t effectiveLevel)
+{
+    if (floorPercent >= 100 || questLevel <= 0 || effectiveLevel == 0 ||
+        std::uint32_t(questLevel) >= effectiveLevel)
+        return 100;
+
+    std::uint32_t const sharePercent = std::uint32_t(questLevel) * 100 / effectiveLevel;
+    return floorPercent + (100 - floorPercent) * sharePercent / 100;
+}
+
 inline std::atomic<bool> QuestEnabled{false};
-inline std::atomic<std::uint8_t> CreatureOffset{4};
+inline std::atomic<bool> ContentScalingActive{false};
+inline std::atomic<std::uint8_t> CreatureOffset{3};
 
 /// Whether a query response marks a quest on its curve with the client's scaling flag, which colours
 /// it "standard" instead of by level. Off by default: live quest caches never carried the flag.
@@ -311,8 +370,8 @@ inline std::uint32_t QuestRewardItemFor(Player const* player, std::uint32_t item
 }
 
 /// The template one item instance is built from. An item that was given a scaling level of its own keeps
-/// its authored entry, so the client still knows it, but its stats, damage, armor, required level and
-/// sell price come from the row for that level. The paths that apply, check or price an item ask here;
+/// its authored entry, so the client still knows it, but its stats, damage, armor, required level, sell
+/// price and disenchant loot come from the row for that level. The paths that apply, check or price an item ask here;
 /// nullptr from the owner means the instance is the authored item.
 using ItemInstanceTemplateResolver = ItemTemplate const* (*)(Item const*);
 inline std::atomic<ItemInstanceTemplateResolver> ItemInstanceTemplateOwner{nullptr};

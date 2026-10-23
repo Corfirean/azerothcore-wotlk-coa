@@ -21,6 +21,7 @@
 #cmakedefine ACORE_IS_DYNAMIC_SCRIPTLOADER
 
 #include "Define.h"
+#include "Config.h"
 #include <vector>
 #include <string>
 

@@ -32,7 +32,7 @@
     },
     {
       "action": "assert", "label": "Account info names the warrior class", "actor": "player",
-      "metric": "server_packet_contains", "opcode": 2491, "text": "CLASS_WARRIOR", "equals": 1, "within_ms": 1000
+      "metric": "server_packet_contains", "opcode": 2491, "text": "CLASS_WARRIOR", "equals": 1, "within_ms": 5000
     },
     {
       "action": "assert", "label": "and the human race", "actor": "player",

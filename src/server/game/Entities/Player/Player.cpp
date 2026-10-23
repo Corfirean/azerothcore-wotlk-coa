@@ -16,6 +16,9 @@
  */
 
 #include "Player.h"
+#include "CoaCustomRacials.h"
+#include "AscensionSpellCopy.h"
+#include "AscensionIncarnation.h"
 #include "AccountMgr.h"
 #include "AchievementMgr.h"
 #include "AreaDefines.h"
@@ -23,6 +26,7 @@
 #include "ArenaTeam.h"
 #include "ArenaTeamMgr.h"
 #include "ArenaSeasonMgr.h"
+#include "AscensionIncarnation.h"
 #include "AscensionPooledVitality.h"
 #include "Battlefield.h"
 #include "BattlefieldMgr.h"
@@ -41,6 +45,7 @@
 #include "Common.h"
 #include "ConditionMgr.h"
 #include "Config.h"
+#include "Creature.h"
 #include "CreatureAI.h"
 #include "DatabaseEnv.h"
 #include "DisableMgr.h"
@@ -61,6 +66,7 @@
 #include "LocalLevelScaling.h"
 #include "Log.h"
 #include "LootItemStorage.h"
+#include "LootMgr.h"
 #include "MapMgr.h"
 #include "MiscPackets.h"
 #include "ObjectAccessor.h"
@@ -552,7 +558,14 @@ bool Player::Create(ObjectGuid::LowType guidlow, CharacterCreateInfo* createInfo
         return false;
     }
 
-    SetMap(sMapMgr->CreateMap(info->mapId, this));
+    Map* map = sMapMgr->CreateMap(info->mapId, this);
+    if (!map)
+    {
+        LOG_ERROR("entities.player", "Player::Create: Account {} character '{}' race/class {}/{} has no map {} - refusing instead of aborting the world thread.",
+            GetSession()->GetAccountId(), m_name, createInfo->Race, createInfo->Class, info->mapId);
+        return false;
+    }
+    SetMap(map);
 
     uint8 powertype = uint8(LiveClassResourcePolicy::DefaultPowerForClass(createInfo->Class, cEntry->powerType));
 
@@ -592,6 +605,13 @@ bool Player::Create(ObjectGuid::LowType guidlow, CharacterCreateInfo* createInfo
                                     (0x00 << 16) |
                                     (((GetSession()->IsARecruiter() || GetSession()->GetRecruiterId() != 0) ? REST_STATE_RAF_LINKED : REST_STATE_NOT_RAF_LINKED) << 24)));
     SetByteValue(PLAYER_BYTES_3, 0, createInfo->Gender);
+    if (UsesExtendedAppearance(createInfo->Race))         // CoA: Esteria sixth appearance byte
+        SetByteValue(UNIT_FIELD_PADDING, 0, createInfo->OutfitId);
+    else if (UsesHaranirAppearance(createInfo->Race))
+    {
+        SetUInt32Value(UNIT_FIELD_PADDING, uint32(createInfo->HaranirExtra));
+        SetUInt32Value(OBJECT_FIELD_PADDING, uint32(createInfo->HaranirExtra >> 32));
+    }
     SetByteValue(PLAYER_BYTES_3, 3, 0);                     // BattlefieldArenaFaction (0 or 1)
 
     SetUInt32Value(PLAYER_GUILDID, 0);
@@ -1347,6 +1367,9 @@ bool Player::BuildEnumData(PreparedQueryResult result, WorldPacket* data)
     *data << uint32(petFamily);
 
     std::vector<std::string_view> equipment = Acore::Tokenize(fields[22].Get<std::string_view>(), ' ', false);
+    // Custom races that wear an NPC look in game (Murloc): the character screen paints armor with the human body
+    // layout on their model, so only their weapons are listed.
+    bool const weaponsOnly = HasAscensionCustomRaceDisplay(plrRace, gender);
     for (uint8 slot = 0; slot < INVENTORY_SLOT_BAG_END; ++slot)
     {
         uint32 const visualBase = slot * 2;
@@ -1355,6 +1378,8 @@ bool Player::BuildEnumData(PreparedQueryResult result, WorldPacket* data)
         if (visualBase < equipment.size())
         {
             itemId = Acore::StringTo<uint32>(equipment[visualBase]);
+            if (weaponsOnly && slot != EQUIPMENT_SLOT_MAINHAND && slot != EQUIPMENT_SLOT_OFFHAND && slot != EQUIPMENT_SLOT_RANGED)
+                itemId = 0u;                      // shown empty, no warning
         }
 
         ItemTemplate const* proto = nullptr;
@@ -2706,15 +2731,12 @@ void Player::GiveLevel(uint8 level)
     UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_REACH_LEVEL);
 
     // Refer-A-Friend
-    if (GetSession()->GetRecruiterId())
-        if (level < sWorld->getIntConfig(CONFIG_MAX_RECRUIT_A_FRIEND_BONUS_PLAYER_LEVEL))
-            if (level % 2 == 0)
-            {
-                ++m_grantableLevels;
-
-                if (!HasByteFlag(PLAYER_FIELD_BYTES, 1, 0x01))
-                    SetByteFlag(PLAYER_FIELD_BYTES, 1, 0x01);
-            }
+    if (GetSession()->GetRecruiterId() && level > oldLevel)
+    {
+        uint32 const cap = sWorld->getIntConfig(CONFIG_MAX_RECRUIT_A_FRIEND_BONUS_PLAYER_LEVEL);
+        uint32 const earned = std::min<uint32>(level, cap) / 2 - std::min<uint32>(oldLevel, cap) / 2;
+        SetGrantableLevels(uint8(std::min<uint32>(255, uint32(m_grantableLevels) + earned)));
+    }
 
     SendQuestGiverStatusMultiple();
 
@@ -3544,7 +3566,7 @@ bool Player::IsNeedCastPassiveSpellAtLearn(SpellInfo const* spellInfo) const
     // note: form passives activated with shapeshift spells be implemented by HandleShapeshiftBoosts instead of spell_learn_spell
     // talent dependent passives activated at form apply have proper stance data
     ShapeshiftForm form = GetShapeshiftForm();
-    return (!spellInfo->Stances || (form && (spellInfo->Stances & (1 << (form - 1)))) ||
+    return (!spellInfo->Stances || (form && (spellInfo->Stances & (uint64(1) << (form - 1)))) ||
             (!form && spellInfo->HasAttribute(SPELL_ATTR2_ALLOW_WHILE_NOT_SHAPESHIFTED)));
 }
 
@@ -3841,6 +3863,28 @@ void Player::removeSpell(uint32 spell_id, uint8 removeSpecMask, bool onlyTempora
     }
 }
 
+void Player::CastRidingMount(uint32 spellId)
+{
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    if (!spellInfo)
+        return;
+
+    CustomSpellValues values;
+    uint16 const riding = GetBaseSkillValue(SKILL_RIDING);
+    for (SpellEffectInfo const& effect : spellInfo->GetEffects())
+    {
+        int32 speed = 0;
+        if (effect.ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_SPEED)
+            speed = GetRidingGroundMountSpeed(riding);
+        else if (effect.ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED)
+            speed = GetRidingFlightMountSpeed(riding);
+        if (speed)
+            values.AddSpellMod(SpellValueMod(SPELLVALUE_BASE_POINT0 + effect.EffectIndex), speed);
+    }
+
+    CastCustomSpell(spellId, values, this, TRIGGERED_FULL_MASK);
+}
+
 bool Player::Has310Flyer(bool checkAllSpells, uint32 excludeSpellId)
 {
     if (!checkAllSpells)
@@ -3938,6 +3982,17 @@ void Player::RemoveArenaSpellCooldowns(bool removeActivePetCooldowns)
             // actually clear cooldowns
             pet->m_CreatureSpellCooldowns.clear();
         }
+}
+
+void Player::RemoveActivePetSpellCooldowns()
+{
+    if (Pet* pet = GetPet())
+    {
+        for (auto const& cooldown : pet->m_CreatureSpellCooldowns)
+            SendClearCooldown(cooldown.first, pet);
+
+        pet->m_CreatureSpellCooldowns.clear();
+    }
 }
 
 void Player::RemoveAllSpellCooldown()
@@ -4261,19 +4316,28 @@ void Player::DestroyForPlayer(Player* target, bool onDeath) const
 bool Player::HasSpell(uint32 spell) const
 {
     PlayerSpellMap::const_iterator itr = m_spells.find(spell);
-    return (itr != m_spells.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->IsInSpec(m_activeSpec));
+    if (itr != m_spells.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->IsInSpec(m_activeSpec))
+        return true;
+    uint32 copy = GetAscensionSpellCopy(spell); // Bronzebeard copy (vanilla classes)
+    return copy && HasSpell(copy);
 }
 
 bool Player::HasTalent(uint32 spell, uint8 spec) const
 {
     PlayerTalentMap::const_iterator itr = m_talents.find(spell);
-    return (itr != m_talents.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->IsInSpec(spec));
+    if (itr != m_talents.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->IsInSpec(spec))
+        return true;
+    uint32 copy = GetAscensionSpellCopy(spell); // Bronzebeard copy (vanilla classes)
+    return copy && HasTalent(copy, spec);
 }
 
 bool Player::HasActiveSpell(uint32 spell) const
 {
     PlayerSpellMap::const_iterator itr = m_spells.find(spell);
-    return (itr != m_spells.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->Active && itr->second->IsInSpec(m_activeSpec));
+    if (itr != m_spells.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->Active && itr->second->IsInSpec(m_activeSpec))
+        return true;
+    uint32 copy = GetAscensionSpellCopy(spell); // Bronzebeard copy (vanilla classes)
+    return copy && HasActiveSpell(copy);
 }
 
 /**
@@ -6322,7 +6386,7 @@ float Player::CalculateReputationGain(ReputationSource source, uint32 creatureOr
         percent *= repRate;
     }
 
-    if (source != REPUTATION_SOURCE_SPELL && GetsRecruitAFriendBonus(false))
+    if (rep > 0.0f && source != REPUTATION_SOURCE_SPELL && GetsRecruitAFriendBonus(false))
         percent *= 1.0f + sWorld->getRate(RATE_REPUTATION_RECRUIT_A_FRIEND_BONUS);
 
     return CalculatePct(rep, percent);
@@ -8439,7 +8503,8 @@ void Player::SendLoot(ObjectGuid guid, LootType loot_type)
             switch (loot_type)
             {
                 case LOOT_DISENCHANTING:
-                    loot->FillLoot(item->GetTemplate()->DisenchantID, LootTemplates_Disenchant, this, true);
+                    loot->FillLoot(LocalLevelScaling::InstanceTemplateFor(item, item->GetTemplate())->DisenchantID,
+                        LootTemplates_Disenchant, this, true);
                     break;
                 case LOOT_PROSPECTING:
                     loot->FillLoot(item->GetEntry(), LootTemplates_Prospecting, this, true);
@@ -10402,6 +10467,17 @@ void Player::ApplySpellMod(uint32 spellId, SpellModOp op, T& basevalue, Spell* s
         }
         else if (mod->type == SPELLMOD_PCT)
         {
+            // Ascension: a positive percent critical strike chance modifier adds percentage points ("increases the
+            // critical strike chance of your Mind Flay by 5%", "Fireball guaranteed crit QA aura" at 100). Stock data
+            // never has one; the negative stock case (Surge of Light's -100) keeps the multiplier below.
+            if (mod->op == SPELLMOD_CRITICAL_CHANCE && mod->value > 0)
+            {
+                if (totalflat < 100)
+                    totalflat += mod->value;
+                ApplyModToSpell(mod, spell);
+                return;
+            }
+
             // skip percent mods for null basevalue (most important for spell mods with charges)
             if (basevalue == T(0) || totalmul == 0.0f)
                 return;
@@ -11287,6 +11363,17 @@ void Player::InitDisplayIds()
             LOG_ERROR("entities.player", "Invalid gender {} for player", gender);
             return;
     }
+
+    // SetDisplayId takes the gender of the model's creature_model_info row; a player keeps its own.
+    SetByteValue(UNIT_FIELD_BYTES_0, 2, gender);
+
+    // Custom races without a dressable player model wear an NPC look picked by skin colour.
+    if (uint32 customDisplay = GetAscensionCustomRaceDisplay(this))
+    {
+        SetDisplayId(customDisplay);
+        SetNativeDisplayId(customDisplay);
+        SetByteValue(UNIT_FIELD_BYTES_0, 2, gender);
+    }
 }
 
 inline bool Player::_StoreOrEquipNewItem(uint32 vendorslot, uint32 item, uint8 count, uint8 bag, uint8 slot, int32 price, ItemTemplate const* pProto, Creature* pVendor, VendorItem const* crItem, bool bStore)
@@ -11680,9 +11767,12 @@ void Player::AddSpellAndCategoryCooldowns(SpellInfo const* spellInfo, uint32 ite
                     continue;
                 }
 
-                // Only within the same spellfamily
+                // Only within the same spellfamily, except for item-driven cooldowns in the shared
+                // potion pool, which spans spell families by design (classic potions vs. custom
+                // consumables such as the ranger waterskins, see #6911).
+                bool const sharedPotionPool = itemId > 0 && cat == SPELL_CATEGORY_SHARED_POTION_COOLDOWN;
                 SpellInfo const* categorySpellInfo = sSpellMgr->GetSpellInfo(i_scset->second);
-                if (!categorySpellInfo || categorySpellInfo->SpellFamilyName != spellInfo->SpellFamilyName)
+                if (!categorySpellInfo || (!sharedPotionPool && categorySpellInfo->SpellFamilyName != spellInfo->SpellFamilyName))
                 {
                     continue;
                 }
@@ -12610,7 +12700,9 @@ void Player::LearnDefaultSkill(uint32 skillId, uint16 rank)
         {
             uint16 skillValue = 1;
             uint16 maxValue = GetMaxSkillValueForLevel();
-            if (sWorld->getBoolConfig(CONFIG_ALWAYS_MAXSKILL) && !IsProfessionOrRidingSkill(skillId))
+            SkillLineEntry const* maxLine = sSkillLineStore.LookupEntry(skillId);
+            if (sWorld->getBoolConfig(CONFIG_ALWAYS_MAXSKILL) && !IsProfessionOrRidingSkill(skillId) &&
+                (skillId == SKILL_DEFENSE || (maxLine && maxLine->categoryId == SKILL_CATEGORY_WEAPON)))
             {
                 skillValue = maxValue;
             }
@@ -12714,6 +12806,10 @@ void Player::learnQuestRewardedSpells()
 
 void Player::learnSkillRewardedSpells(uint32 skill_id, uint32 skill_value)
 {
+    // CoA Custom: the added races have their own racials, never the vanilla racial lines (shared mask bits)
+    if (sConfigMgr->GetOption<bool>("CoACustomRaces.Enable", false) && GetCoaCustomRacial(getRace()) && IsCoaVanillaRacialSkill(skill_id))
+        return;
+
     uint32 raceMask  = getRaceMask();
     uint32 classMask = getClassMask();
 
@@ -12936,7 +13032,8 @@ bool Player::InBattlegroundQueue(bool ignoreArena) const
         if (_BgBattlegroundQueueID[i].bgQueueTypeId != BATTLEGROUND_QUEUE_NONE &&
             (!ignoreArena || (_BgBattlegroundQueueID[i].bgQueueTypeId != BATTLEGROUND_QUEUE_2v2 &&
                 _BgBattlegroundQueueID[i].bgQueueTypeId != BATTLEGROUND_QUEUE_3v3 &&
-                _BgBattlegroundQueueID[i].bgQueueTypeId != BATTLEGROUND_QUEUE_5v5)))
+                _BgBattlegroundQueueID[i].bgQueueTypeId != BATTLEGROUND_QUEUE_5v5 &&
+                _BgBattlegroundQueueID[i].bgQueueTypeId != BATTLEGROUND_QUEUE_1v1)))
             return true;
     return false;
 }
@@ -13463,6 +13560,15 @@ bool Player::isHonorOrXPTarget(Unit* victim) const
             return false;
 
     return true;
+}
+
+void Player::SetGrantableLevels(uint8 val)
+{
+    m_grantableLevels = val;
+    if (val)
+        SetByteFlag(PLAYER_FIELD_BYTES, 1, 0x01);
+    else
+        RemoveByteFlag(PLAYER_FIELD_BYTES, 1, 0x01);
 }
 
 bool Player::GetsRecruitAFriendBonus(bool forXP)
@@ -14499,7 +14605,18 @@ LootItem* Player::StoreLootItem(uint8 lootSlot, Loot* loot, InventoryResult& msg
     }
 
     ItemPosCountVec dest;
-    msg = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, item->itemid, item->count);
+    uint32 storedCount = item->count;
+    uint32 noSpaceForCount = 0;
+    msg = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, item->itemid, storedCount, &noSpaceForCount);
+    // A quest drop stack can exceed what the item's carry limit still allows; take what fits
+    // instead of refusing the whole stack while the quest still needs items.
+    if (msg == EQUIP_ERR_CANT_CARRY_MORE_OF_THIS && item->needs_quest && noSpaceForCount < storedCount)
+    {
+        storedCount -= noSpaceForCount;
+        dest.clear();
+        msg = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, item->itemid, storedCount);
+    }
+
     if (msg == EQUIP_ERR_OK)
     {
         AllowedLooterSet looters = item->GetAllowedLooters();
@@ -14537,14 +14654,14 @@ LootItem* Player::StoreLootItem(uint8 lootSlot, Loot* loot, InventoryResult& msg
 
         --loot->unlootedCount;
 
-        SendNewItem(newitem, uint32(item->count), false, false, true);
+        SendNewItem(newitem, storedCount, false, false, true);
         UpdateLootAchievements(item, loot);
 
         // LootItem is being removed (looted) from the container, delete it from the DB.
         if (loot->containerGUID)
             sLootItemStorage->RemoveStoredLootItem(loot->containerGUID, item->itemid, item->count, loot, item->itemIndex);
 
-        sScriptMgr->OnPlayerLootItem(this, newitem, item->count, this->GetLootGUID());
+        sScriptMgr->OnPlayerLootItem(this, newitem, storedCount, this->GetLootGUID());
     }
     else
     {
@@ -15865,13 +15982,13 @@ void Player::_SaveCharacter(bool create, CharacterDatabaseTransaction trans)
         stmt->SetData(index++, GetByteValue(PLAYER_BYTES_2, 3));
         stmt->SetData(index++, GetPlayerFlags());
 
-        if (_scriptedPrivateMapId && (GetMapId() == _scriptedPrivateMapId
-            || (IsBeingTeleported() && GetTeleportDest().GetMapId() == _scriptedPrivateMapId)))
+        if (_scriptedPrivateMapId != MAPID_INVALID)
         {
             // Private-instance IDs are process-local. Crash recovery always starts outside.
             stmt->SetData(index++, uint16(_scriptedPrivateReturn.GetMapId()));
             stmt->SetData(index++, uint32(0));
-            stmt->SetData(index++, uint8(GetDungeonDifficulty()) | uint8(GetRaidDifficulty()) << 4);
+            stmt->SetData(index++, uint8(_scriptedPrivateReturnDungeonDifficulty)
+                | uint8(_scriptedPrivateReturnRaidDifficulty) << 4);
             stmt->SetData(index++, finiteAlways(_scriptedPrivateReturn.GetPositionX()));
             stmt->SetData(index++, finiteAlways(_scriptedPrivateReturn.GetPositionY()));
             stmt->SetData(index++, finiteAlways(_scriptedPrivateReturn.GetPositionZ()));
@@ -16003,6 +16120,22 @@ void Player::_SaveCharacter(bool create, CharacterDatabaseTransaction trans)
     }
 
     trans->Append(stmt);
+
+    if (UsesExtendedAppearance(getRace(true)))
+    {
+        CharacterDatabasePreparedStatement* appStmt = CharacterDatabase.GetPreparedStatement(CHAR_UPD_EXTENDED_APPEARANCE);
+        appStmt->SetData(0, uint64(GetByteValue(UNIT_FIELD_PADDING, 0)));
+        appStmt->SetData(1, GetGUID().GetRawValue());
+        trans->Append(appStmt);
+    }
+    else if (UsesHaranirAppearance(getRace(true)))
+    {
+        uint64 haranirExtra = uint64(GetUInt32Value(UNIT_FIELD_PADDING)) | (uint64(GetUInt32Value(OBJECT_FIELD_PADDING)) << 32);
+        CharacterDatabasePreparedStatement* appStmt = CharacterDatabase.GetPreparedStatement(CHAR_UPD_EXTENDED_APPEARANCE);
+        appStmt->SetData(0, haranirExtra);
+        appStmt->SetData(1, GetGUID().GetRawValue());
+        trans->Append(appStmt);
+    }
 }
 
 void Player::_LoadGlyphs(PreparedQueryResult result)
@@ -17239,9 +17372,11 @@ uint16 Player::GetMaxSkillValueForLevel() const
     return result;
 }
 
-float Player::GetQuestRate(bool isDFQuest, int32 questLevel)
+float Player::GetQuestRate(bool isDFQuest, int32 questLevel, Quest const* quest)
 {
     float result = Acore::XP::QuestRate(isDFQuest, questLevel, GetLevel());
+
+    result = LocalLevelScaling::GetEffectiveQuestRewardRate(this, quest, result);
 
     sScriptMgr->OnPlayerGetQuestRate(this, result);
 
@@ -17327,6 +17462,7 @@ std::string Player::GetPlayerName()
 
 void Player::SetSummonPoint(uint32 mapid, float x, float y, float z, uint32 delay /*= 0*/, bool asSpectator /*= false*/)
 {
+    GetSession()->SetRecruitAFriendSummoner(ObjectGuid::Empty);
     m_summon_expire = GameTime::GetGameTime().count() + (delay ? delay : MAX_PLAYER_SUMMON_DELAY);
     m_summon_mapid = mapid;
     m_summon_x = x;
@@ -17548,7 +17684,10 @@ void Player::SendAllSpellChargeStates() const
     GetSession()->SendPacket(&clear);
 
     if (partialPools.empty())
+    {
+        sScriptMgr->OnPlayerSendSpellChargeStates(this);
         return;
+    }
 
     WorldPacket packet(SMSG_SEND_SPELL_CHARGES, 4 + partialPools.size() * 9);
     packet << uint32(partialPools.size());
@@ -17559,6 +17698,7 @@ void Player::SendAllSpellChargeStates() const
         packet << uint8(pool.second);
     }
     GetSession()->SendPacket(&packet);
+    sScriptMgr->OnPlayerSendSpellChargeStates(this);
 }
 
 std::string Player::GetDebugInfo() const
@@ -17571,4 +17711,9 @@ std::string Player::GetDebugInfo() const
 void Player::SendSystemMessage(std::string_view msg, bool escapeCharacters)
 {
     ChatHandler(GetSession()).SendSysMessage(msg, escapeCharacters);
+}
+
+bool Player::IsBot() const
+{
+    return m_session && m_session->IsBot();
 }

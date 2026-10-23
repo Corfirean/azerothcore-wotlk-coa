@@ -20,6 +20,7 @@
 #include "vmapexport.h"
 
 #include <cstdio>
+#include <stdexcept>
 
 char* wdtGetPlainName(char* FileName)
 {
@@ -57,6 +58,8 @@ bool WDTFile::init(uint32 mapId)
 
     while (!_file.isEof())
     {
+        if (_file.getSize() - _file.getPos() < 8)
+            throw std::runtime_error("Truncated WDT chunk header: " + filename);
         _file.read(fourcc, 4);
         _file.read(&size, 4);
 
@@ -64,6 +67,8 @@ bool WDTFile::init(uint32 mapId)
         fourcc[4] = 0;
 
         std::size_t nextpos = _file.getPos() + size;
+        if (nextpos > _file.getSize())
+            throw std::runtime_error("Truncated WDT chunk payload: " + filename);
 
         if (!strcmp(fourcc, "MAIN"))
         {
@@ -73,8 +78,9 @@ bool WDTFile::init(uint32 mapId)
             // global map objects
             if (size)
             {
-                char* buf = new char[size];
+                char* buf = new char[std::size_t(size) + 1];
                 _file.read(buf, size);
+                buf[size] = '\0';
                 char* p = buf;
                 while (p < buf + size)
                 {
@@ -101,6 +107,8 @@ bool WDTFile::init(uint32 mapId)
                 {
                     ADT::MODF mapObjDef;
                     _file.read(&mapObjDef, sizeof(ADT::MODF));
+                    if (mapObjDef.Id >= _wmoNames.size())
+                        throw std::runtime_error("Invalid WDT WMO name index: " + filename);
                     MapObject::Extract(mapObjDef, _wmoNames[mapObjDef.Id].c_str(), mapId, 65, 65, dirfile);
                     Doodad::ExtractSet(WmoDoodads[_wmoNames[mapObjDef.Id]], mapObjDef, mapId, 65, 65, dirfile);
                 }

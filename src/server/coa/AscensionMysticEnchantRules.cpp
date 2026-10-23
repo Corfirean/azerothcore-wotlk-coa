@@ -252,16 +252,47 @@ Enchant const* Catalog::FindItem(std::uint32_t item) const
     return itr == ByItem.end() ? nullptr : &Rows[itr->second];
 }
 
+namespace
+{
+std::unordered_map<std::uint32_t, std::uint32_t> TaughtSpells()
+{
+    constexpr std::uint32_t SPELL_DESCRIPTION = 170;
+    std::unordered_map<std::uint32_t, std::uint32_t> taught;
+    ClientDBC spells;
+    if (!spells.Load(GetClientDBCPath("Spell.dbc"), SPELL_DESCRIPTION + 1))
+        return taught;
+    for (std::uint32_t index = 0; index < spells.GetRecordCount(); ++index)
+    {
+        ClientDBC::Record const record = spells.GetRecord(index);
+        std::string_view const description = record.GetString(SPELL_DESCRIPTION);
+        if (!description.starts_with("Teaches you"))
+            continue;
+        std::size_t const token = description.find("@s:");
+        if (token == std::string_view::npos)
+            continue;
+        std::uint32_t spell = 0;
+        for (std::size_t at = token + 3; at < description.size() && description[at] >= '0' && description[at] <= '9'; ++at)
+            spell = spell * 10 + std::uint32_t(description[at] - '0');
+        if (spell)
+            taught[record.GetUInt32(0)] = spell;
+    }
+    return taught;
+}
+}
+
 bool LoadCatalog(Catalog& catalog)
 {
     ClientDBC file;
     if (!file.Load(GetClientDBCPath("MysticEnchant.dbc"), FIELD_COUNT))
         return false;
+    std::unordered_map<std::uint32_t, std::uint32_t> const taught = TaughtSpells();
 
     Catalog loaded;
     for (std::uint32_t index = 0; index < file.GetRecordCount(); ++index)
     {
         loaded.Rows.push_back(ReadEnchant(file.GetRecord(index)));
+        if (auto const itr = taught.find(loaded.Rows.back().Spell); itr != taught.end())
+            loaded.Rows.back().Taught = itr->second;
         loaded.BySpell[loaded.Rows.back().Spell] = loaded.Rows.size() - 1;
         loaded.ByItem[loaded.Rows.back().Item] = loaded.Rows.size() - 1;
     }
@@ -639,6 +670,58 @@ std::string QualityTier(std::uint32_t quality)
         "ARTIFACT", "" };
     return TIERS[quality];
 }
+
+bool GuideFits(Catalog const& catalog, Character const& character, Slots const& slots, std::uint32_t spell)
+{
+    Enchant const* enchant = catalog.FindSpell(spell);
+    if (!enchant || !character.Knows(spell) || !RealmAllows(*enchant, character.RealmGates) || character.Wildcard() ||
+        !ClassAllowed(*enchant, character.Class) || character.Level < enchant->RequiredLevel ||
+        !InvestmentMet(character, *enchant, false) || !InvestmentMet(character, *enchant, true))
+        return false;
+    std::uint32_t const quality = QualityOf(*enchant, character.Class);
+    std::uint32_t sameSpell = 1;
+    std::uint32_t sameQuality = 1;
+    std::uint32_t rareWorldforged = quality == QUALITY_RARE && enchant->Worldforged;
+    for (std::uint32_t held : slots)
+    {
+        sameSpell += held == spell;
+        if (Enchant const* other = held ? catalog.FindSpell(held) : nullptr)
+        {
+            sameQuality += QualityOf(*other, character.Class) == quality;
+            rareWorldforged += QualityOf(*other, character.Class) == QUALITY_RARE && other->Worldforged;
+        }
+    }
+    std::uint32_t const stackLimit = character.StackLimit ? character.StackLimit(spell) : 0;
+    return sameSpell <= stackLimit && sameQuality <= QualityCap(character, quality) &&
+        !(quality == QUALITY_RARE && enchant->Worldforged && rareWorldforged > RARE_WORLDFORGED_LIMIT);
+}
+}
+
+Slots GuideSlots(Catalog const& catalog, Character const& character, Slots const& current,
+    std::vector<GuideEnchant> const& guide)
+{
+    bool const fusion = character.Fusion();
+    std::vector<std::uint32_t> open;
+    for (std::uint32_t slot = 0; slot < SLOT_COUNT; ++slot)
+        if (SlotValid(slot, fusion))
+            open.push_back(slot);
+    Slots slots{};
+    std::size_t next = 0;
+    auto place = [&](std::uint32_t spell)
+    {
+        if (next >= open.size() || !GuideFits(catalog, character, slots, spell))
+            return false;
+        slots[open[next++]] = spell;
+        return true;
+    };
+    for (GuideEnchant const& enchant : guide)
+        if (enchant.Level <= character.Level)
+            for (std::uint32_t stack = 0; stack < enchant.Stacks && place(enchant.Spell); ++stack)
+                ;
+    for (std::uint32_t slot : open)
+        if (current[slot])
+            place(current[slot]);
+    return slots;
 }
 
 bool Character::Knows(std::uint32_t spell) const

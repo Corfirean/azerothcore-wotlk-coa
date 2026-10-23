@@ -240,10 +240,12 @@ enum PlayerHook
     PLAYERHOOK_ON_PLAYER_BREATH_INVERTED,
     PLAYERHOOK_ON_CAN_REGENERATE,
     PLAYERHOOK_ON_CAN_ENERGIZE,
+    PLAYERHOOK_ON_SEND_SPELL_CHARGE_STATES,
     PLAYERHOOK_ON_GET_MAX_ALLOWED_LEVEL,
     PLAYERHOOK_ON_HAS_NO_BONUS_EXPERIENCE,
     PLAYERHOOK_ON_HONORABLE_KILLING_BLOW,
     PLAYERHOOK_ON_BANKER_ACTIVATE,
+    PLAYERHOOK_ON_PETITION_OFFERED,
     PLAYERHOOK_ON_BANK_WITHDRAW,
     PLAYERHOOK_ON_LEARN_PET_TALENT,
     PLAYERHOOK_ON_LEARN_TRAINER_SPELL,
@@ -254,7 +256,13 @@ enum PlayerHook
     PLAYERHOOK_ON_REFRESH_QUEST_GIVER,
     PLAYERHOOK_ON_COA_PROGRESS,
     PLAYERHOOK_ON_GET_GAME_MODE_MASK,
+    PLAYERHOOK_ON_RESOLVE_DUNGEON_ACCESS_LEVELS,
+    PLAYERHOOK_ON_RESOLVE_LFG_REWARD_LEVEL,
     PLAYERHOOK_ON_AFTER_APPLY_ITEM_MODS,
+    PLAYERHOOK_ON_COA_PRESTIGE,
+    PLAYERHOOK_ON_COA_PRESTIGE_SAVED,
+    PLAYERHOOK_ON_MASTER_LOOT_ITEM,
+    PLAYERHOOK_ON_GET_SHAPESHIFT_MODEL,
     PLAYERHOOK_END
 };
 
@@ -440,7 +448,16 @@ public:
     // is gone
     virtual void OnPlayerTemporarySpellRemoveNotice(Player* /*player*/, uint32 /*spellId*/, bool /*sent*/) { }
     virtual void OnPlayerSpellChargeConsumed(Player* /*player*/, SpellInfo const* /*spellInfo*/, Spell* /*spell*/, uint32 /*recoveryMs*/, uint64 /*nowEpochMs*/) { }
+
+    // Append charge displays backed by module-owned state after the core's full client reset.
+    virtual void OnPlayerSendSpellChargeStates(Player const* /*player*/) { }
     virtual void OnPlayerSpellCooldownCalculated(Player* /*player*/, SpellInfo const* /*spellInfo*/, Spell* /*spell*/, uint32 /*recoveryMs*/) { }
+
+    // Fires when a petition (guild charter or arena team charter) is offered to a specific
+    // player via HandleOfferPetitionOpcode (the real "Request Signature" action) -- lets a
+    // module react to "this specific player was just explicitly asked to sign," as opposed to
+    // guessing intent from group membership alone.
+    virtual void OnPetitionOffered(Player* /*player*/, ObjectGuid /*petitionGuid*/) { }
 
     // Called when a player is bound to an instance
     virtual void OnPlayerBindToInstance(Player* /*player*/, Difficulty /*difficulty*/, uint32 /*mapId*/, bool /*permanent*/) { }
@@ -690,6 +707,9 @@ public:
     virtual void OnPlayerGetAmmoDisplay(Player* /*player*/, SpellInfo const* /*spellInfo*/,
         uint32& /*displayId*/, uint32& /*inventoryType*/) { }
 
+    // Model the player takes in a shapeshift form; leaving modelId at 0 keeps the form's own model.
+    virtual void OnPlayerGetShapeshiftModel(Player* /*player*/, uint8 /*form*/, uint32 /*spellId*/, uint32& /*modelId*/) { }
+
     [[nodiscard]] virtual bool OnPlayerCanEquipItem(Player* /*player*/, uint8 /*slot*/, uint16& /*dest*/, Item* /*pItem*/, bool /*swap*/, bool /*not_loading*/) { return true; }
 
     [[nodiscard]] virtual bool OnPlayerCanUnequipItem(Player* /*player*/, uint16 /*pos*/, bool /*swap*/) { return true; }
@@ -728,6 +748,8 @@ public:
     [[nodiscard]] virtual bool OnPlayerCanJoinLfg(Player* /*player*/, uint8 /*roles*/, std::set<uint32>& /*dungeons*/, std::string const& /*comment*/) { return true; }
 
     [[nodiscard]] virtual bool OnPlayerCanEnterMap(Player* /*player*/, MapEntry const* /*entry*/, InstanceTemplate const* /*instance*/, MapDifficulty const* /*mapDiff*/, bool /*loginCheck*/) { return true; }
+    virtual void OnResolveDungeonAccessLevels(Player const* /*player*/, uint32 /*mapId*/, Difficulty /*difficulty*/, uint8& /*minLevel*/, uint8& /*maxLevel*/) { }
+    virtual void OnResolveLfgRewardLevel(Player const* /*player*/, uint32 /*dungeonId*/, uint8& /*level*/) { }
 
     [[nodiscard]] virtual bool OnPlayerCanInitTrade(Player* /*player*/, Player* /*target*/) { return true; }
 
@@ -1093,6 +1115,31 @@ public:
      * @param value The event's subject: an item, spell, appearance or depth, or 0
      */
     virtual void OnPlayerCoAProgress(Player* /*player*/, CoAProgressEvent /*event*/, uint32 /*value*/) { }
+
+    /**
+     * @brief This hook is called while the Chromie prestige save transaction is built.
+     *
+     * @param player Contains information about the Player
+     * @param trans The transaction that commits with the prestige; append database changes only
+     */
+    virtual void OnPlayerCoAPrestige(Player* /*player*/, CharacterDatabaseTransaction /*trans*/) { }
+
+    /**
+     * @brief This hook is called after the Chromie prestige save transaction has committed.
+     *
+     * @param player Contains information about the Player
+     */
+    virtual void OnPlayerCoAPrestigeSaved(Player* /*player*/) { }
+
+    /**
+     * @brief This hook is called after the master looter gave a loot item to a group member.
+     *
+     * @param player The group member who received the item
+     * @param item The stored item
+     * @param count The stored count
+     * @param lootguid The creature or gameobject the item was looted from
+     */
+    virtual void OnPlayerMasterLootItem(Player* /*player*/, Item* /*item*/, uint32 /*count*/, ObjectGuid /*lootguid*/) { }
 
     /**
      * @brief This hook is called to resolve a character's Conquest of Azeroth game mode mask.

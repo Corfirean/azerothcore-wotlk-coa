@@ -107,6 +107,8 @@ void Player::Update(uint32 p_time)
         }
     }
 
+    GetSession()->UpdateRecruitAFriendRewards();
+
     time_t lastTick = m_Last_tick;
     if (now > m_Last_tick)
     {
@@ -1250,6 +1252,11 @@ void Player::UpdateSkillsToMaxSkillsForLevel()
         uint32 pskill = itr->first;
         if (IsProfessionOrRidingSkill(pskill))
             continue;
+        // AlwaysMaxWeaponSkill: weapon skills and Defense only (CoA's Woodcutting / Woodworking are not professions
+        // in SkillLine and were maxed too)
+        SkillLineEntry const* skillLine = sSkillLineStore.LookupEntry(pskill);
+        if (pskill != SKILL_DEFENSE && (!skillLine || skillLine->categoryId != SKILL_CATEGORY_WEAPON))
+            continue;
         uint32 valueIndex = PLAYER_SKILL_VALUE_INDEX(itr->second.pos);
         uint32 data       = GetUInt32Value(valueIndex);
         uint32 max        = SKILL_MAX(data);
@@ -1927,8 +1934,19 @@ void Player::UpdateForQuestWorldObjects()
                     ConditionList conds = sConditionMgr->GetConditionsForSpellClickEvent(obj->GetEntry(), _itr->second.spellId);
                     bool buildUpdateBlock = false;
                     for (ConditionList::const_iterator jtr = conds.begin(); jtr != conds.end() && !buildUpdateBlock; ++jtr)
-                        if ((*jtr)->ConditionType == CONDITION_QUESTREWARDED || (*jtr)->ConditionType == CONDITION_QUESTTAKEN)
-                            buildUpdateBlock = true;
+                        switch ((*jtr)->ConditionType)
+                        {
+                            case CONDITION_QUESTREWARDED:
+                            case CONDITION_QUESTTAKEN:
+                            case CONDITION_QUEST_NONE:
+                            case CONDITION_QUEST_COMPLETE:
+                            case CONDITION_QUESTSTATE:
+                            case CONDITION_QUEST_OBJECTIVE_PROGRESS:
+                                buildUpdateBlock = true;
+                                break;
+                            default:
+                                break;
+                        }
 
                     if (buildUpdateBlock)
                     {

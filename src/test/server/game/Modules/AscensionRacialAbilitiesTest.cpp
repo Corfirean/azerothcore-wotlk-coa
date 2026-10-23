@@ -1,8 +1,10 @@
 /* Copyright (C) 2016+ AzerothCore, GNU AGPL v3. */
 
 #include "AscensionRacialAbilities.h"
+#include "CoaCustomRacials.h"
 #include "gtest/gtest.h"
 #include <vector>
+#include <set>
 
 namespace
 {
@@ -162,4 +164,49 @@ TEST(AscensionRacialAbilitiesTest, RejectsUnrelatedSkillsClassesAndNonDefaultAbi
     ability.MinSkillLineRank = 1;
     ability.SupercededBySpell = 123;
     EXPECT_FALSE(AscensionRacialAbilities::CanLearn(ability, RACE_HUMAN, CLASS_BARBARIAN));
+}
+
+TEST(AscensionRacialAbilitiesTest, AddedRaceRacialsAreUniqueManagedSpellsWithOptionalPadding)
+{
+    for (CoaCustomRacial const& racial : CoaCustomRacials)
+    {
+        EXPECT_EQ(GetCoaCustomRacial(racial.RaceId), &racial);
+        std::set<uint32> spells;
+        for (uint32 spell : racial.Spells)
+        {
+            if (!spell)
+                continue;
+            EXPECT_TRUE(spells.insert(spell).second);
+            EXPECT_TRUE(IsCoaManagedRacialSpell(spell));
+        }
+        EXPECT_FALSE(spells.empty());
+    }
+    EXPECT_EQ(GetCoaCustomRacial(1), nullptr);
+    EXPECT_EQ(GetCoaCustomRacial(84), nullptr);
+    EXPECT_FALSE(IsCoaManagedRacialSpell(0));
+}
+
+TEST(AscensionRacialAbilitiesTest, DragonRacesReceiveTheirAuthoredSetsByExactRaceId)
+{
+    auto const* drakkin = GetCoaCustomRacial(99);
+    ASSERT_NE(drakkin, nullptr);
+    std::array<uint32, 12> const drakkinSpells = {
+        110300, 110301, 110302, 110303, 110304, 110305, 110306, 110307, 110308, 110309, 110316, 110318
+    };
+    EXPECT_EQ(drakkin->Spells, drakkinSpells);
+    std::array<uint32, 12> const drakonidSpells = {110400, 110404, 110405, 110406};
+    for (uint8 race : {uint8(98), uint8(100)})
+    {
+        auto const* drakonid = GetCoaCustomRacial(race);
+        ASSERT_NE(drakonid, nullptr);
+        EXPECT_EQ(drakonid->Spells, drakonidSpells);
+    }
+}
+
+TEST(AscensionRacialAbilitiesTest, GrummleKeepsItsFourExistingRacials)
+{
+    auto const* grummle = GetCoaCustomRacial(103);
+    ASSERT_NE(grummle, nullptr);
+    std::array<uint32, 12> const expected = {14001031, 14001032, 14001033, 14001034};
+    EXPECT_EQ(grummle->Spells, expected);
 }

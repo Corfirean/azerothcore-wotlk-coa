@@ -156,7 +156,15 @@ struct boss_razorgore : public BossAI
         {
             if (Unit* charmer = ObjectAccessor::GetUnit(*me, _charmerGUID))
             {
-                charmer->CastSpell(charmer, SPELL_MIND_EXHAUSTION, true);
+                uint32 exhaustionDurationMs = instance ? instance->ResolveEncounterMechanic(DATA_RAZORGORE_THE_UNTAMED, 2 /*TIMER_MS*/, 9 /*TIMER_MS*/, 60000) : 60000;
+                if (exhaustionDurationMs > 0)
+                {
+                    if (Aura* aura = charmer->AddAura(SPELL_MIND_EXHAUSTION, charmer))
+                    {
+                        aura->SetDuration(exhaustionDurationMs);
+                        aura->SetMaxDuration(exhaustionDurationMs);
+                    }
+                }
                 charmer->CastSpell(me, SPELL_MINDCONTROL_VISUAL, false);
             }
         }

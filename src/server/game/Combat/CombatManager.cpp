@@ -27,6 +27,7 @@
 #include "Containers.h"
 #include "Creature.h"
 #include "CreatureAI.h"
+#include "Log.h"
 #include "Player.h"
 #include "ScriptMgr.h"
 #include "ThreatManager.h"
@@ -384,17 +385,32 @@ void CombatManager::EndAllPvPCombat()
 
 void CombatManager::PutReference(ObjectGuid const& guid, CombatReference* ref)
 {
+    // Under heavy concurrent-bot load we've observed this slot occasionally already occupied
+    // (an asymmetric leftover from a combat state torn down on one side only) -- rather than
+    // ASSERT-crashing the whole process over a single stale reference, force-end the stale one
+    // (which symmetrically purges/deletes it via its own EndCombat()) and proceed. Logged so a
+    // recurring pattern can still be investigated.
     if (ref->_isPvP)
     {
-        auto& inMap = _pvpRefs[guid];
-        ASSERT(!inMap, "Duplicate combat state at %p being inserted for %s vs %s - memory leak!", (void*)ref, _owner->GetGUID().ToString().c_str(), guid.ToString().c_str());
-        inMap = static_cast<PvPCombatReference*>(ref);
+        if (auto it = _pvpRefs.find(guid); it != _pvpRefs.end())
+        {
+            PvPCombatReference* stale = it->second;
+            LOG_ERROR("entities.unit.combat", "CombatManager::PutReference: duplicate PvP combat state at {} being inserted for {} vs {} -- force-ending the stale reference instead of asserting.",
+                (void*)ref, _owner->GetGUID().ToString(), guid.ToString());
+            stale->EndCombat();
+        }
+        _pvpRefs[guid] = static_cast<PvPCombatReference*>(ref);
     }
     else
     {
-        auto& inMap = _pveRefs[guid];
-        ASSERT(!inMap, "Duplicate combat state at %p being inserted for %s vs %s - memory leak!", (void*)ref, _owner->GetGUID().ToString().c_str(), guid.ToString().c_str());
-        inMap = ref;
+        if (auto it = _pveRefs.find(guid); it != _pveRefs.end())
+        {
+            CombatReference* stale = it->second;
+            LOG_ERROR("entities.unit.combat", "CombatManager::PutReference: duplicate PvE combat state at {} being inserted for {} vs {} -- force-ending the stale reference instead of asserting.",
+                (void*)ref, _owner->GetGUID().ToString(), guid.ToString());
+            stale->EndCombat();
+        }
+        _pveRefs[guid] = ref;
     }
 }
 

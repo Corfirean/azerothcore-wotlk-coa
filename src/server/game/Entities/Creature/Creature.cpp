@@ -1492,6 +1492,9 @@ bool Creature::isTappedBy(Player const* player) const
 
 void Creature::SaveToDB()
 {
+    if (m_privateCreatureData)
+        return;
+
     // this should only be used when the creature has already been loaded
     // preferably after adding to map, because mapid may not be valid otherwise
     CreatureData const* data = sObjectMgr->GetCreatureData(m_spawnId);
@@ -1507,6 +1510,9 @@ void Creature::SaveToDB()
 
 void Creature::SaveToDB(uint32 mapid, uint8 spawnMask, uint32 phaseMask)
 {
+    if (m_privateCreatureData)
+        return;
+
     // update in loaded data
     if (!m_spawnId)
         m_spawnId = sObjectMgr->GenerateCreatureSpawnId();
@@ -1808,8 +1814,13 @@ bool Creature::isVendorWithIconSpeak() const
     return m_creatureInfo->IconName == "Speak" && m_creatureData->npcflag & UNIT_NPC_FLAG_VENDOR;
 }
 
-bool Creature::LoadCreatureFromDB(ObjectGuid::LowType spawnId, Map* map, bool addToMap, bool allowDuplicate /*= false*/)
+bool Creature::LoadCreatureFromDB(ObjectGuid::LowType spawnId, Map* map, bool addToMap, bool allowDuplicate /*= false*/,
+    CreatureData const* privateData /*= nullptr*/)
 {
+    if (!map || (privateData && (!map->IsScriptedPrivateInstance() || privateData->mapid != map->GetId()
+        || privateData->spawnId != spawnId || !spawnId || sObjectMgr->GetCreatureData(spawnId))))
+        return false;
+
     if (!allowDuplicate)
     {
         // If an alive instance of this spawnId is already found, skip creation
@@ -1841,6 +1852,12 @@ bool Creature::LoadCreatureFromDB(ObjectGuid::LowType spawnId, Map* map, bool ad
     }
 
     CreatureData const* data = sObjectMgr->GetCreatureData(spawnId);
+    if (privateData)
+    {
+        m_privateCreatureData = std::make_unique<CreatureData>(*privateData);
+        m_privateCreatureData->dbData = false;
+        data = m_privateCreatureData.get();
+    }
     if (!data)
     {
         LOG_ERROR("sql.sql", "Creature (SpawnId: {}) not found in table `creature`, can't load. ", spawnId);
@@ -1975,6 +1992,9 @@ bool Creature::hasInvolvedQuest(uint32 quest_id) const
 
 void Creature::DeleteFromDB()
 {
+    if (m_privateCreatureData)
+        return;
+
     if (!m_spawnId)
     {
         LOG_ERROR("entities.unit", "Trying to delete not saved creature: {}", GetGUID().ToString());
@@ -2213,7 +2233,8 @@ void Creature::Respawn(bool force)
                 if (m_spawnId)
                 {
                     GetMap()->RemoveCreatureRespawnTime(m_spawnId);
-                    CreatureData const* data = sObjectMgr->GetCreatureData(m_spawnId);
+                    CreatureData const* data = m_privateCreatureData
+                        ? m_privateCreatureData.get() : sObjectMgr->GetCreatureData(m_spawnId);
                     // Respawn check if spawn has 2 entries
                     if (data->id2)
                     {
@@ -2429,6 +2450,15 @@ void Creature::LoadTemplateImmunities(int32 creatureImmunitiesId)
         _creatureImmunitiesId = 0;
 }
 
+// CoA: Ascension bosses cannot be stunned on any difficulty (#7287), so a class stun cannot cut a boss mechanic
+// short. Stuns the boss puts on itself or gets from its allies still land.
+static bool IsStunImmuneBoss(Creature const* creature, Unit const* caster)
+{
+    if (creature->GetOwnerGUID().IsPlayer() || (caster && (caster == creature || creature->IsFriendlyTo(caster))))
+        return false;
+    return creature->IsDungeonBoss() || creature->isWorldBoss() || creature->GetCreatureTemplate()->rank == CREATURE_ELITE_WORLDBOSS;
+}
+
 // CoA: poisons that count as bleeds still hit bleed-immune NPCs.
 static bool IsIgnoredTemplateMechanicImmunity(Creature const* creature, SpellInfo const* spellInfo, uint32 mechanic)
 {
@@ -2452,13 +2482,17 @@ bool Creature::IsImmunedToSpell(SpellInfo const* spellInfo, Spell const* spell)
         !IsIgnoredTemplateMechanicImmunity(this, spellInfo, spellInfo->Mechanic))
         return true;
 
+    Unit const* caster = spell ? spell->GetCaster() : nullptr;
+    if (spellInfo->Mechanic == MECHANIC_STUN && IsStunImmuneBoss(this, caster))
+        return true;
+
     // The above helper uses the creature_immunities table rather than a
     // simple mask on creature_template.  We can't rely on the old mask field
     // (which has been removed) because it no longer exists and did not always
     // match the runtime immunity set stored in m_spellImmune.
     bool immunedToAllEffects = true;
     for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
-        if (spellInfo->Effects[i].IsEffect() && !IsImmunedToSpellEffect(spellInfo, i))
+        if (spellInfo->Effects[i].IsEffect() && !IsImmunedToSpellEffect(spellInfo, i, caster))
         {
             immunedToAllEffects = false;
             break;
@@ -2475,6 +2509,10 @@ bool Creature::IsImmunedToSpellEffect(SpellInfo const* spellInfo, uint32 index, 
     uint32 mechanic = spellInfo->Effects[index].Mechanic;
     if (mechanic > MECHANIC_NONE && HasMechanicTemplateImmunity(1ULL << mechanic) &&
         !IsIgnoredTemplateMechanicImmunity(this, spellInfo, mechanic))
+        return true;
+
+    if ((mechanic == MECHANIC_STUN || spellInfo->Effects[index].ApplyAuraName == SPELL_AURA_MOD_STUN) &&
+        IsStunImmuneBoss(this, caster))
         return true;
 
     // Tinker heals are designed to repair player-owned mechanical pets and devices
@@ -3234,7 +3272,8 @@ void Creature::GetRespawnPosition(float& x, float& y, float& z, float* ori, floa
 {
     if (m_spawnId)
     {
-        if (CreatureData const* data = sObjectMgr->GetCreatureData(m_spawnId))
+        if (CreatureData const* data = m_privateCreatureData
+            ? m_privateCreatureData.get() : sObjectMgr->GetCreatureData(m_spawnId))
         {
             x = data->posX;
             y = data->posY;

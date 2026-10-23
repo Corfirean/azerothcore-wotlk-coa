@@ -1,6 +1,7 @@
 /* Copyright (C) 2016+ AzerothCore, GNU AGPL v3. */
 #include "AscensionSunCleric.h"
 #include "AscensionSunClericData.h"
+#include "AscensionCustomResourceData.h"
 #include "CellImpl.h"
 #include "GameTime.h"
 #include "GridNotifiers.h"
@@ -112,7 +113,11 @@ void SetHelper(Player* player, uint32 id, bool enabled)
         Cast(player, player, id);
     else if (!enabled)
         player->RemoveAurasDueToSpell(id);
-    if (enabled && id == FortuitousHelper)
+}
+void KeepHelper(Player* player, uint32 id, bool enabled)
+{
+    SetHelper(player, id, enabled);
+    if (enabled)
         if (Aura* aura = player->GetAura(id))
             if (aura->GetDuration() >= 0 || aura->GetMaxDuration() >= 0)
             {
@@ -239,7 +244,8 @@ bool Resource(Player* player, uint32 id, int32 delta)
         return false;
     if (delta > 0 && (player->HasAura(Dawn) || State(player).dawnEvent))
         return true;
-    uint32 after = uint32(std::clamp<int64>(int64(Count(player, id)) + delta, 0, 20));
+    uint32 after = uint32(std::clamp<int64>(int64(Count(player, id)) + delta, 0,
+        int64(AscensionCompatData::SUN_CLERIC_SOLAR_POWER_MAX)));
     if (!after)
         player->RemoveAurasDueToSpell(id);
     else if (Aura* aura = player->GetAura(id))
@@ -345,7 +351,7 @@ void Refresh(Player* player)
     bool healthy = state.healthyAbove80;
     for (auto [talent, helper] : {std::pair(Fortuitous, FortuitousHelper), std::pair(704585u, 707769u),
                                 std::pair(805267u, 807876u), std::pair(300314u, 301341u)})
-        SetHelper(player, helper, healthy && player->HasAura(talent));
+        KeepHelper(player, helper, healthy && player->HasAura(talent));
     bool day = player->IsAlive() && Daytime();
     SetHelper(player, 707768, day && player->HasAura(707078));
     int32 extraHaste = 0;

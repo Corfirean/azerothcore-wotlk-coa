@@ -25,6 +25,15 @@
 #include <map>
 #include <vector>
 
+class Group;
+class InstanceMap;
+class Player;
+namespace lfg
+{
+    struct LfgQueuePolicy;
+    struct LfgProposal;
+}
+
 enum GlobalHook
 {
     GLOBALHOOK_ON_ITEM_DEL_FROM_DB,
@@ -47,6 +56,10 @@ enum GlobalHook
     GLOBALHOOK_ON_INSTANCEID_REMOVED,
     GLOBALHOOK_ON_BEFORE_SET_BOSS_STATE,
     GLOBALHOOK_AFTER_INSTANCE_GAME_OBJECT_CREATE,
+    GLOBALHOOK_ON_RESOLVE_LFG_QUEUE_POLICY,
+    GLOBALHOOK_ON_LFG_PROPOSAL_MADE_GROUP,
+    GLOBALHOOK_ON_INSTANCE_MAP_CREATED,
+    GLOBALHOOK_HAS_LFG_AUTO_FILL_PROVIDER,
     GLOBALHOOK_ON_SPELL_MOD_FAMILY_MASK,
     GLOBALHOOK_END
 };
@@ -106,6 +119,18 @@ public:
 
     // Called when a gameobject is created by an instance
     virtual void AfterInstanceGameObjectCreate(Map* /*instance*/, GameObject* /*go*/) { }
+
+    // Called when LFG queue policy is resolved for a player or group
+    virtual void OnResolveLfgQueuePolicy(ObjectGuid const& /*guid*/, lfg::LfgQueuePolicy& /*policy*/) { }
+
+    // Called when an LFG proposal successfully forms a group and creates an instance
+    virtual void OnLfgProposalMadeGroup(lfg::LfgProposal const& /*proposal*/, Group* /*group*/) { }
+
+    // Called when an instance map is created for a player before grids are loaded
+    virtual void OnInstanceMapCreated(InstanceMap* /*instanceMap*/, Player* /*player*/) { }
+
+    // Returns true if an auto-fill bot provider is active for LFG
+    virtual bool HasLfgAutoFillProvider() const { return false; }
 };
 
 #endif

@@ -158,7 +158,8 @@
       "metric": "aura",
       "spell": 801895,
       "caster": "control",
-      "equals": 0
+      "equals": 0,
+      "within_ms": 250
     },
     {
       "action": "assert",

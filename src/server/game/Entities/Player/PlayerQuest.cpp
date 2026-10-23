@@ -58,8 +58,16 @@ int32 Player::GetQuestLevel(Quest const* quest) const
 {
     if (!quest)
         return GetLevel();
-    return LocalLevelScaling::EffectiveQuestLevel(quest->GetQuestLevel(), GetLevel(),
-        LocalLevelScaling::ScalingCurveFor(LocalLevelScaling::QuestScalingEnabled(this), quest->GetQuestId()));
+
+    if (!LocalLevelScaling::ContentScalingActive.load(std::memory_order_relaxed))
+        return LocalLevelScaling::EffectiveQuestLevel(quest->GetQuestLevel(), GetLevel(),
+            LocalLevelScaling::ScalingCurveFor(LocalLevelScaling::QuestScalingEnabled(this), quest->GetQuestId()));
+
+    int32 const baseLevel = LocalLevelScaling::GetEffectiveQuestBaseLevel(quest);
+    if (LocalLevelScaling::QuestScalingEnabled(this))
+        return LocalLevelScaling::ScaleQuestLevel(baseLevel, GetLevel());
+
+    return baseLevel > 0 ? baseLevel : GetLevel();
 }
 
 void Player::PrepareQuestMenu(ObjectGuid guid)
@@ -271,7 +279,7 @@ bool Player::CanSeeStartQuest(Quest const* quest)
         SatisfyQuestPrevChain(quest, false) && SatisfyQuestBreadcrumb(quest, false) && SatisfyQuestDay(quest, false) && SatisfyQuestWeek(quest, false) &&
         SatisfyQuestMonth(quest, false) && SatisfyQuestSeasonal(quest, false))
     {
-        return GetLevel() + sWorld->getIntConfig(CONFIG_QUEST_HIGH_LEVEL_HIDE_DIFF) >= quest->GetMinLevel();
+        return GetLevel() + sWorld->getIntConfig(CONFIG_QUEST_HIGH_LEVEL_HIDE_DIFF) >= LocalLevelScaling::GetEffectiveQuestMinLevel(quest);
     }
 
     return false;
@@ -1053,7 +1061,8 @@ bool Player::SatisfyQuestSkill(Quest const* qInfo, bool msg) const
 
 bool Player::SatisfyQuestLevel(Quest const* qInfo, bool msg) const
 {
-    if (GetLevel() < qInfo->GetMinLevel())
+    uint32 const minLevel = LocalLevelScaling::GetEffectiveQuestMinLevel(qInfo);
+    if (GetLevel() < minLevel)
     {
         if (msg)
             SendCanTakeQuestResponse(INVALIDREASON_QUEST_FAILED_LOW_LEVEL);
@@ -1524,7 +1533,7 @@ uint32 Player::CalculateQuestRewardXP(Quest const* quest)
     sScriptMgr->OnPlayerBeforeGetLevelForXPGain(this, level);
 
     // apply world quest rate
-    uint32 xp = uint32(quest->XPValue(level, LocalLevelScaling::QuestScalingEnabled(this)) * GetQuestRate(quest->IsDFQuest(), quest->GetQuestLevel()));
+    uint32 xp = uint32(quest->XPValue(level, LocalLevelScaling::QuestScalingEnabled(this)) * GetQuestRate(quest->IsDFQuest(), quest->GetQuestLevel(), quest));
 
     // handle SPELL_AURA_MOD_XP_QUEST_PCT auras; a NO_BONUS_EXPERIENCE challenge drops
     // the positive bonuses but keeps penalties.
@@ -1764,11 +1773,12 @@ QuestGiverStatus Player::GetQuestDialogStatus(Object* questgiver)
         if (!quest)
             continue;
 
+        QuestStatus status = GetQuestStatus(questId);
+        bool const holdsQuest = status == QUEST_STATUS_COMPLETE || status == QUEST_STATUS_INCOMPLETE;
         ConditionList conditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_QUEST_AVAILABLE, quest->GetQuestId());
-        if (!sConditionMgr->IsObjectMeetToConditions(this, conditions))
+        if (!holdsQuest && !sConditionMgr->IsObjectMeetToConditions(this, conditions))
             continue;
 
-        QuestStatus status = GetQuestStatus(questId);
         if (status == QUEST_STATUS_COMPLETE && !GetQuestRewardStatus(questId))
         {
             result2 = DIALOG_STATUS_REWARD;

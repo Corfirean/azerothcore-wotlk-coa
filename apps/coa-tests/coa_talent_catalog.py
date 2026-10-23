@@ -1,11 +1,15 @@
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 STUBS = {
+    "ItemTemplate.h": "#pragma once\n" + re.search(
+        r"enum ItemModType\b.*?\n};",
+        (ROOT / "src/server/game/Entities/Item/ItemTemplate.h").read_text(encoding="utf-8"), re.S)[0] + "\n",
     "Define.h": """#pragma once
 #include <cstddef>
 #include <cstdint>
@@ -32,6 +36,16 @@ using int64 = std::int64_t;
     "DBCStores.h": """#pragma once
 #include <string>
 #include <string_view>
+#include "AscensionFreepickRules.h"
+namespace AscensionFreepick
+{
+inline Realm ReadRealm()
+{
+    Realm realm;
+    realm.ConquestOfAzeroth = true;
+    return realm;
+}
+}
 inline std::string DbcDirectory;
 inline std::string GetClientDBCPath(std::string_view name) { return DbcDirectory + std::string(name); }
 """,

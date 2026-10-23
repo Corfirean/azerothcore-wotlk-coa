@@ -33,6 +33,7 @@
 #include "DBCEnums.h"
 #include "DatabaseEnv.h"
 #include "Field.h"
+#include "LocalLevelScaling.h"
 #include "Log.h"
 #include "Map.h"
 #include "Player.h"
@@ -113,6 +114,9 @@ namespace
 
     void ApplyFlex(Creature* creature)
     {
+        if (LocalLevelScaling::ContentScalingActive.load(std::memory_order_relaxed))
+            return;
+
         if (!creature || !creature->GetMap() || !creature->GetMap()->IsRaid())
             return;
 

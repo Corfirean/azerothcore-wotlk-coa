@@ -37,6 +37,7 @@ void WorldSession::HandleAutostoreLootItemOpcode(WorldPacket& recvData)
     Player* player = GetPlayer();
     ObjectGuid lguid = player->GetLootGUID();
     Loot* loot = nullptr;
+    bool bonusCacheOverflow = false;
     uint8 lootSlot = 0;
 
     recvData >> lootSlot;
@@ -76,6 +77,7 @@ void WorldSession::HandleAutostoreLootItemOpcode(WorldPacket& recvData)
         }
 
         loot = &pItem->loot;
+        bonusCacheOverflow = pItem->GetEntry() == 1478051 || pItem->GetEntry() == 1478052;
     }
     else if (lguid.IsCorpse())
     {
@@ -109,7 +111,10 @@ void WorldSession::HandleAutostoreLootItemOpcode(WorldPacket& recvData)
 
     InventoryResult msg;
     LootItem* lootItem = player->StoreLootItem(lootSlot, loot, msg);
-    if (msg != EQUIP_ERR_OK && lguid.IsItem() && loot->loot_type != LOOT_CORPSE)
+    bool const fullBonusCache = bonusCacheOverflow &&
+        (msg == EQUIP_ERR_INVENTORY_FULL || msg == EQUIP_ERR_BAG_FULL);
+    if (lootItem && msg != EQUIP_ERR_OK && lguid.IsItem() &&
+        (loot->loot_type != LOOT_CORPSE || fullBonusCache))
     {
         lootItem->is_looted = true;
         loot->NotifyItemRemoved(lootItem->itemIndex);
@@ -580,6 +585,7 @@ void WorldSession::HandleLootMasterGiveOpcode(WorldPacket& recvData)
     target->SendNewItem(newitem, uint32(item.count), false, false, true);
     LocalLevelScaling::NotifyMasterLoot(target, newitem);
     target->UpdateLootAchievements(&item, loot);
+    sScriptMgr->OnPlayerMasterLootItem(target, newitem, uint32(item.count), lootguid);
 
     // mark as looted
     item.count = 0;

@@ -23,6 +23,7 @@
 #include "Util.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
+#include "Config.h"
 
 uint8  RaceMgr::_maxRaces = 0;
 
@@ -51,6 +52,8 @@ void RaceMgr::LoadRaces()
     _hordeRaceMask    = 0;
     _allianceRaceMask = 0;
 
+    bool const customRacesEnabled = sConfigMgr->GetOption<bool>("CoACustomRaces.Enable", false);
+
     for (auto const& raceEntry : sChrRacesStore)
     {
         if (!raceEntry)
@@ -62,10 +65,13 @@ void RaceMgr::LoadRaces()
         if (raceEntry->Flags & CHRRACES_FLAGS_NOT_PLAYABLE)
             continue;
 
+        if (!customRacesEnabled && raceId > RACE_DRAENEI)
+            continue;
+
         if (GetMaxRaces() <= raceId)
             SetMaxRaces(raceId + 1);
 
-        uint32 raceBit = (1 << (raceId - 1));
+        uint32 raceBit = (1u << ((raceId - 1) & 31)); // races above 32 share a mask bit (CoA Custom)
 
         _playableRaceMask |= raceBit;
 

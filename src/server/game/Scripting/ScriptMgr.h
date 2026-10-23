@@ -367,6 +367,7 @@ public: /* PlayerScript */
     void OnPlayerTemporarySpellLearnNotice(Player* player, uint32 spellId, bool sent);
     void OnPlayerTemporarySpellRemoveNotice(Player* player, uint32 spellId, bool sent);
     void OnPlayerSpellChargeConsumed(Player* player, SpellInfo const* spellInfo, Spell* spell, uint32 recoveryMs, uint64 nowEpochMs);
+    void OnPlayerSendSpellChargeStates(Player const* player);
     void OnPlayerSpellCooldownCalculated(Player* player, SpellInfo const* spellInfo, Spell* spell, uint32 recoveryMs);
     void OnPlayerDelete(ObjectGuid guid, uint32 accountId);
     void OnPlayerFailedDelete(ObjectGuid guid, uint32 accountId);
@@ -393,6 +394,7 @@ public: /* PlayerScript */
     void OnPlayerUnequip(Player* player, Item* it);
     void OnPlayerJoinBG(Player* player);
     void OnPlayerJoinArena(Player* player);
+    void OnPetitionOffered(Player* player, ObjectGuid petitionGuid);
     void OnPlayerGetMaxPersonalArenaRatingRequirement(Player const* player, uint32 minSlot, uint32& maxArenaRating) const;
     void OnPlayerLootItem(Player* player, Item* item, uint32 count, ObjectGuid lootguid);
     void OnPlayerBeforeFillQuestLootItem(Player* player, LootItem& item);
@@ -462,6 +464,7 @@ public: /* PlayerScript */
     bool OnPlayerCanCastItemUseSpell(Player* player, Item* item, SpellCastTargets const& targets, uint8 cast_count, uint32 glyphIndex);
     void OnPlayerApplyAmmoBonuses(Player* player, ItemTemplate const* proto, float& currentAmmoDPS);
     void OnPlayerGetAmmoDisplay(Player* player, SpellInfo const* spellInfo, uint32& displayId, uint32& inventoryType);
+    void OnPlayerGetShapeshiftModel(Player* player, uint8 form, uint32 spellId, uint32& modelId);
     bool OnPlayerCanEquipItem(Player* player, uint8 slot, uint16& dest, Item* pItem, bool swap, bool not_loading);
     bool OnPlayerCanUnequipItem(Player* player, uint16 pos, bool swap);
     bool OnPlayerCanUseItem(Player* player, ItemTemplate const* proto, InventoryResult& result);
@@ -481,6 +484,8 @@ public: /* PlayerScript */
     bool OnPlayerNotSetArenaTeamInfoField(Player* player, uint8 slot, ArenaTeamInfoType type, uint32 value);
     bool OnPlayerCanJoinLfg(Player* player, uint8 roles, lfg::LfgDungeonSet& dungeons, std::string const& comment);
     bool OnPlayerCanEnterMap(Player* player, MapEntry const* entry, InstanceTemplate const* instance, MapDifficulty const* mapDiff, bool loginCheck);
+    void OnResolveDungeonAccessLevels(Player const* player, uint32 mapId, Difficulty difficulty, uint8& minLevel, uint8& maxLevel);
+    void OnResolveLfgRewardLevel(Player const* player, uint32 dungeonId, uint8& level);
     bool OnPlayerCanInitTrade(Player* player, Player* target);
     bool OnPlayerCanSetTradeItem(Player* player, Item* tradedItem, uint8 tradeSlot);
     void OnPlayerSetServerSideVisibility(Player* player, ServerSideVisibilityType& type, AccountTypes& sec);
@@ -526,6 +531,9 @@ public: /* PlayerScript */
     bool OnPlayerQuestGiverChooseReward(Player* player, Object* questGiver, Quest const* quest, uint32 reward);
     bool OnPlayerRefreshQuestGiver(Player* player, Object* questGiver, Quest const* quest);
     void OnPlayerCoAProgress(Player* player, CoAProgressEvent event, uint32 value);
+    void OnPlayerCoAPrestige(Player* player, CharacterDatabaseTransaction trans);
+    void OnPlayerCoAPrestigeSaved(Player* player);
+    void OnPlayerMasterLootItem(Player* player, Item* item, uint32 count, ObjectGuid lootguid);
     std::optional<uint32> OnPlayerGetGameModeMask(Player const* player);
 
     // Anti cheat
@@ -596,6 +604,10 @@ public: /* GlobalScript */
     void OnInstanceIdRemoved(uint32 instanceId);
     void OnBeforeSetBossState(uint32 id, EncounterState newState, EncounterState oldState, Map* instance);
     void AfterInstanceGameObjectCreate(Map* instance, GameObject* go);
+    void OnResolveLfgQueuePolicy(ObjectGuid const& guid, lfg::LfgQueuePolicy& policy);
+    void OnLfgProposalMadeGroup(lfg::LfgProposal const& proposal, Group* group);
+    void OnInstanceMapCreated(InstanceMap* instanceMap, Player* player);
+    bool HasLfgAutoFillProvider() const;
 
 public: /* Scheduled scripts */
     uint32 IncreaseScheduledScriptsCount() { return ++_scheduledScripts; }
@@ -613,6 +625,7 @@ public: /* UnitScript */
     void ModifySpellDamageTaken(Unit* target, Unit* attacker, int32& damage, SpellInfo const* spellInfo);
     void ModifySpellEffectBaseValue(Unit const* caster, SpellInfo const* spellInfo,
         uint8 effectIndex, float& value);
+    void ResolveSpellCast(Unit* caster, SpellInfo const*& spellInfo);
     void ModifyHealReceived(Unit* target, Unit* healer, uint32& addHealth, SpellInfo const* spellInfo);
     void OnBeforeHealAbsorb(HealInfo& healInfo);
     void OnAfterAuraEffectCalculateAmount(AuraEffect const* effect, Unit* caster, int32& amount);
@@ -654,6 +667,7 @@ public: /* AllGameobjectScript */
 public: /* AllMapScript */
     void OnBeforeCreateInstanceScript(InstanceMap* instanceMap, InstanceScript** instanceData, bool load, std::string data, uint32 completedEncounterMask);
     void OnDestroyInstance(MapInstanced* mapInstanced, Map* map);
+    void OnResolveEncounterMechanic(Map* map, uint32 encounterId, uint32 mechanicId, uint8 mechanicType, uint32 authoredValue, uint32& resolvedValue);
 
 public: /* BattlefieldScript */
     void OnBattlefieldPlayerEnterZone(Battlefield* bf, Player* player);

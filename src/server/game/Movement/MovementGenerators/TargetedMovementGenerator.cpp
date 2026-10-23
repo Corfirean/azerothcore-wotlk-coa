@@ -101,6 +101,15 @@ bool ChaseMovementGenerator<T>::DispatchSplineToPosition(T* owner, float x, floa
 {
     Creature* cOwner = owner->ToCreature();
 
+    bool isBot = false;
+    if constexpr (std::is_same_v<T, Player>)
+    {
+        isBot = owner->IsBot();
+    }
+
+    if (isBot && !owner->CanFly())
+        forceDest = false;
+
     if (owner->IsHovering())
         owner->UpdateAllowedPositionZ(x, y, z);
 
@@ -109,6 +118,12 @@ bool ChaseMovementGenerator<T>::DispatchSplineToPosition(T* owner, float x, floa
         uint32 pathType = i_path->GetPathType();
         if (pathType & PATHFIND_NOPATH)
             return false;
+
+        if (isBot && !owner->CanFly())
+        {
+            if (pathType & (PATHFIND_NOPATH | PATHFIND_NOT_USING_PATH | PATHFIND_INCOMPLETE))
+                return false;
+        }
 
         // For pets, treat incomplete paths as failures to avoid clipping through geometry
         // Players and Player-controlled units have more erratic movement, skip failure
@@ -210,10 +225,17 @@ bool ChaseMovementGenerator<T>::DoUpdate(T* owner, uint32 time_diff)
         return true;
     }
 
+    bool isBot = false;
+    if constexpr (std::is_same_v<T, Player>)
+    {
+        isBot = owner->IsBot();
+    }
+
     bool forceDest =
+        (isBot ? owner->CanFly() :
         //(cOwner && (cOwner->isWorldBoss() || cOwner->IsDungeonBoss())) || // force for all bosses, even not in instances
-        (GetTarget()->IsPlayer() && GetTarget()->ToPlayer()->IsGameMaster()) || // for .npc follow
-        (owner->CanFly())
+        ((GetTarget()->IsPlayer() && GetTarget()->ToPlayer()->IsGameMaster()) || // for .npc follow
+        (owner->CanFly())))
         ; // closes "bool forceDest", that way it is more appropriate, so we can comment out crap whenever we need to
 
     Unit* target = GetTarget();
@@ -605,9 +627,17 @@ bool FollowMovementGenerator<T>::DoUpdate(T* owner, uint32 time_diff)
             followingMaster = true;
     }
 
+    bool isBot = false;
+    if constexpr (std::is_same_v<T, Player>)
+    {
+        isBot = owner->IsBot();
+    }
+
     bool forceDest =
-        (followingMaster) || // allow pets following their master to cheat while generating paths
-        (GetTarget()->IsPlayer() && GetTarget()->ToPlayer()->IsGameMaster()) // for .npc follow
+        (isBot ? owner->CanFly() :
+        ((followingMaster) || // allow pets following their master to cheat while generating paths
+        (GetTarget()->IsPlayer() && GetTarget()->ToPlayer()->IsGameMaster()) || // for .npc follow
+        (owner->CanFly())))
         ; // closes "bool forceDest", that way it is more appropriate, so we can comment out crap whenever we need to
 
     bool targetIsMoving = false;
@@ -675,7 +705,14 @@ bool FollowMovementGenerator<T>::DoUpdate(T* owner, uint32 time_diff)
             owner->UpdateAllowedPositionZ(x, y, z);
 
         bool success = i_path->CalculatePath(x, y, z, forceDest);
-        if (!success || (i_path->GetPathType() & PATHFIND_NOPATH && !followingMaster))
+        bool pathInvalid = !success || (i_path->GetPathType() & PATHFIND_NOPATH && !followingMaster);
+        if (isBot && !owner->CanFly())
+        {
+            if (i_path->GetPathType() & (PATHFIND_NOPATH | PATHFIND_NOT_USING_PATH))
+                pathInvalid = true;
+        }
+
+        if (pathInvalid)
         {
             if (!owner->IsStopped())
                 owner->StopMoving();

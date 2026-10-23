@@ -369,6 +369,7 @@ namespace lfg
         Lfg5Guids queues;                                      ///< Queue Ids to remove/readd
         LfgGuidList showorder;                                 ///< Show order in update window
         LfgProposalPlayerContainer players;                    ///< Players data
+        LfgQueuePolicy policy;                                 ///< Queue policy (composition & challenge size)
     };
 
     // Stores all rolecheck info of a group that wants to join
@@ -466,6 +467,10 @@ namespace lfg
         LfgDungeonSet const& GetSelectedDungeons(ObjectGuid guid);
         /// Get current lfg state
         LfgState GetState(ObjectGuid guid);
+        /// Get the pending proposal id a player is a member of (0 if none) -- needed by anything
+        /// that has to call UpdateProposal() without already knowing the id a real client would
+        /// have learned from its own SMSG_LFG_PROPOSAL_UPDATE packet (mod-coa-playerbots).
+        uint32 GetProposalIdForPlayer(ObjectGuid guid) const;
         /// Get current dungeon
         uint32 GetDungeon(ObjectGuid guid, bool asId = true);
         /// Get the map id of the current dungeon
@@ -530,7 +535,7 @@ namespace lfg
         /// Checks if given dungeon map is disabled
         bool IsDungeonDisabled(uint32 mapId, Difficulty difficulty) const;
         /// Gets the random dungeon reward corresponding to given dungeon and player level
-        LfgReward const* GetRandomDungeonReward(uint32 dungeon, uint8 level);
+        LfgReward const* GetRandomDungeonReward(uint32 dungeon, uint8 level, Player const* player = nullptr);
         /// Returns all random and seasonal dungeons for given level and expansion
         LfgDungeonSet GetRandomAndSeasonalDungeons(uint8 level, uint8 expansion);
         /// Teleport a player to/from selected dungeon

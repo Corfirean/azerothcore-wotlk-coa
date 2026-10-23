@@ -1,3 +1,8 @@
+-- creature_template.family must hold 301 and 304 before the rows below are inserted. The creature families migration
+-- (rev_20261003_20) widens it as well, but it was merged after this one, so a database that applies migrations in
+-- history order (the Manager does) reached this INSERT with a TINYINT column. Repeating the ALTER is harmless.
+ALTER TABLE `creature_template` MODIFY COLUMN `family` SMALLINT UNSIGNED NOT NULL DEFAULT 0;
+
 -- Hero-learnable Ascension summons whose creature never existed, built from the live client cache where it was harvested.
 INSERT INTO `creature_template` (`entry`, `name`, `subname`, `minlevel`, `maxlevel`, `faction`, `speed_walk`, `speed_run`, `rank`, `BaseAttackTime`, `RangeAttackTime`, `unit_class`, `family`, `type`, `HealthModifier`, `ManaModifier`, `ScriptName`) VALUES
 (43286, 'Fungarian', NULL, 1, 80, 35, 1, 1.14286, 0, 2000, 2000, 1, 0, 4, 0.22, 1.0, 'npc_ascension_summoned_effect'),

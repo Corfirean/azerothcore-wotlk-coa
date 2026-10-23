@@ -198,27 +198,26 @@ void Quest::LoadQuestTemplateAddon(Field* fields)
     }
 }
 
-uint32 Quest::XPValue(uint8 playerLevel, bool levelScaling) const
+uint32 Quest::RoundQuestXP(uint32 rawXp)
 {
-    int32 quest_level = Level == -1 ? playerLevel : Level;
-    if (LocalLevelScaling::QuestCurve const* curve = LocalLevelScaling::ScalingCurveFor(levelScaling, Id))
+    if (rawXp <= 100)
     {
-        int32 const scaledLevel = LocalLevelScaling::EffectiveQuestLevel(Level, playerLevel, curve);
-        if (scaledLevel != (Level > 0 ? Level : int32(playerLevel)))
-        {
-            if (RewardXPDifficulty >= 10)
-                return 0;
-            quest_level = scaledLevel;
-        }
+        return 5 * ((rawXp + 2) / 5);
     }
-
-    QuestXPEntry const* xpentry = sQuestXPStore.LookupEntry(quest_level);
-    if (!xpentry)
+    if (rawXp <= 500)
     {
-        return 0;
+        return 10 * ((rawXp + 5) / 10);
     }
+    if (rawXp <= 1000)
+    {
+        return 25 * ((rawXp + 12) / 25);
+    }
+    return 50 * ((rawXp + 25) / 50);
+}
 
-    int32 diffFactor = 2 * (quest_level - playerLevel) + 20;
+uint32 Quest::CalculateQuestXP(uint32 baseExp, int32 questLevel, uint8 playerLevel)
+{
+    int32 diffFactor = 2 * (questLevel - playerLevel) + 20;
     if (diffFactor < 1)
     {
         diffFactor = 1;
@@ -228,22 +227,35 @@ uint32 Quest::XPValue(uint8 playerLevel, bool levelScaling) const
         diffFactor = 10;
     }
 
-    uint32 xp = diffFactor * xpentry->Exp[RewardXPDifficulty] / 10;
-    if (xp <= 100)
+    uint32 const rawXp = diffFactor * baseExp / 10;
+    return RoundQuestXP(rawXp);
+}
+
+uint32 Quest::XPValue(uint8 playerLevel, bool levelScaling) const
+{
+    if (RewardXPDifficulty >= 10)
+        return 0;
+    int32 const baseLevel = LocalLevelScaling::GetEffectiveQuestBaseLevel(this);
+    int32 quest_level = levelScaling && LocalLevelScaling::QuestEnabled.load(std::memory_order_relaxed) ?
+        LocalLevelScaling::ScaleQuestLevel(baseLevel, playerLevel) : (baseLevel == -1 ? playerLevel : baseLevel);
+    if (!LocalLevelScaling::ContentScalingActive.load(std::memory_order_relaxed))
+        quest_level = LocalLevelScaling::EffectiveQuestLevel(Level, playerLevel,
+            LocalLevelScaling::ScalingCurveFor(levelScaling, Id));
+    QuestXPEntry const* xpentry = sQuestXPStore.LookupEntry(quest_level);
+    if (!xpentry)
     {
-        xp = 5 * ((xp + 2) / 5);
+        return 0;
     }
-    else if (xp <= 500)
+
+    uint32 xp = CalculateQuestXP(xpentry->Exp[RewardXPDifficulty], quest_level, playerLevel);
+
+    // Optional discount on experience, off by default: levelling through content far below the
+    // character is what the scaling system exists to allow. See QuestXpKeepSharePercent.
+    uint32 const xpFloor = LocalLevelScaling::QuestXpKeepSharePercent.load(std::memory_order_relaxed);
+    if (uint32 const keep = LocalLevelScaling::RewardKeepPercent(xpFloor, baseLevel, uint8(quest_level));
+        keep < 100)
     {
-        xp = 10 * ((xp + 5) / 10);
-    }
-    else if (xp <= 1000)
-    {
-        xp = 25 * ((xp + 12) / 25);
-    }
-    else
-    {
-        xp = 50 * ((xp + 25) / 50);
+        xp = xp * keep / 100;
     }
 
     return xp;
@@ -330,7 +342,8 @@ uint32 Quest::GetRewMoneyMaxLevel(bool levelScaling) const
 
     rewMoney = (XPValue(sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL), levelScaling) * (6 * COPPER));
     // https://wowpedia.fandom.com/wiki/Quest?oldid=1035002 Formula is XP gained * 6c
-    return static_cast<int32>(rewMoney * sWorld->getRate(RATE_REWARD_BONUS_MONEY));
+    uint32 const finalMoney = static_cast<int32>(rewMoney * sWorld->getRate(RATE_REWARD_BONUS_MONEY));
+    return LocalLevelScaling::GetEffectiveQuestMoneyMaxLevel(this, finalMoney);
 }
 
 bool Quest::IsAutoAccept() const

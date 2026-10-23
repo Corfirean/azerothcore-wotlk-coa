@@ -116,21 +116,30 @@ Map* MapInstanced::CreateInstanceForPlayer(const uint32 mapId, Player* player)
 
     if (player->GetScriptedPrivateMapId() == mapId)
     {
-        if (!IsNonRaidDungeon() || player->GetScriptedPrivateMembers().size() > 5)
+        if (!IsNonRaidDungeon() &&
+            !(IsDungeon() &&
+                player->LoadsScriptedPrivateDatabaseSpawns()))
+        {
             return nullptr;
+        }
 
         uint32 id = player->GetScriptedPrivateInstanceId();
         if (id)
         {
             Map* existing = FindInstanceMap(id);
-            return existing && existing->IsScriptedPrivateInstance()
-                && existing->ToInstanceMap()->GetScriptedPrivateOwner() == player->GetScriptedPrivateOwner()
-                && existing->ToInstanceMap()->IsScriptedPrivateMember(player->GetGUID()) ? existing : nullptr;
+            return existing &&
+                existing->IsScriptedPrivateInstance() &&
+                existing->GetScriptedPrivateOwner() ==
+                    player->GetScriptedPrivateOwner() &&
+                existing->IsScriptedPrivateMember(
+                    player->GetGUID())
+                ? existing
+                : nullptr;
         }
 
         id = sMapMgr->GenerateInstanceId();
         player->SetScriptedPrivateInstanceId(id);
-        return CreateInstance(id, nullptr, DUNGEON_DIFFICULTY_NORMAL, player);
+        return CreateInstance(id, nullptr, player->GetDifficulty(IsRaid()), player);
     }
 
     if (IsBattlegroundOrArena())
@@ -224,9 +233,11 @@ InstanceMap* MapInstanced::CreateInstance(uint32 InstanceId, InstanceSave* save,
     bool const privateInstance = player && player->GetScriptedPrivateMapId() == GetId()
         && player->GetScriptedPrivateInstanceId() == InstanceId;
     if (privateInstance)
-        map->SetScriptedPrivateOwner(player->GetScriptedPrivateOwner(), player->GetScriptedPrivateMembers());
+        map->SetScriptedPrivateOwner(player->GetScriptedPrivateOwner(), player->GetScriptedPrivateMembers(),
+            player->LoadsScriptedPrivateDatabaseSpawns());
     ASSERT(map->IsDungeon());
     m_InstancedMaps[InstanceId] = map;
+    sScriptMgr->OnInstanceMapCreated(map, player);
 
     if (!privateInstance)
     {
@@ -299,6 +310,17 @@ bool MapInstanced::DestroyInstance(InstancedMaps::iterator& itr)
     sScriptMgr->OnDestroyInstance(this, itr->second);
 
     itr->second->UnloadAll();
+
+    // UnloadAll() bails out (logs, does not tear down grids/transports) instead of unloading if
+    // a player linked to this exact instance between the HavePlayers() check above and now (see
+    // its comment -- AddPlayerToMap() takes no lock, and MapUpdater runs maps concurrently) --
+    // deleting the map object out from under that still-linked player would just trade one
+    // dangling-pointer crash for another, so leave it alive and retry on a later cycle instead.
+    if (itr->second->HavePlayers())
+    {
+        ++itr;
+        return false;
+    }
 
     // erase map
     delete itr->second;
