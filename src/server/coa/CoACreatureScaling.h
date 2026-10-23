@@ -6,6 +6,11 @@ class Creature;
 
 namespace CreatureScaling
 {
+using CombatAuthority = bool (*)(Creature const* creature);
+void SetCombatAuthority(CombatAuthority authority);
+
+void SetHealthBudgetAuthority(CombatAuthority authority);
+
 float HealthMultiplier(Creature const* creature);
 
 class TestOverride

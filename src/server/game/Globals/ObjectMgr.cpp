@@ -4633,7 +4633,9 @@ void ObjectMgr::LoadPlayerInfo()
 
                 for (uint32 raceIndex = RACE_HUMAN; raceIndex < sRaceMgr->GetMaxRaces(); ++raceIndex)
                 {
-                    if (raceMask == 0 || ((1u << ((raceIndex - 1) & 31)) & raceMask))
+                    bool const stockRace = raceIndex >= RACE_HUMAN && raceIndex <= RACE_DRAENEI && raceIndex != 9;
+                    bool const customRaceClassSkill = !stockRace && raceMask != 0 && classMask != 0;
+                    if (raceMask == 0 || customRaceClassSkill || ((1u << ((raceIndex - 1) & 31)) & raceMask))
                     {
                         for (uint32 classIndex = CLASS_WARRIOR; classIndex < MAX_CLASSES; ++classIndex)
                         {
@@ -4722,6 +4724,8 @@ void ObjectMgr::LoadPlayerInfo()
                         if (PlayerInfo* info = racial.RaceId < sRaceMgr->GetMaxRaces() ? _playerInfo[racial.RaceId][classIndex] : nullptr)
                             for (uint32 spell : racial.Spells)
                             {
+                                if (!spell)
+                                    continue;
                                 info->customSpells.push_back(spell);
                                 ++count;
                             }
@@ -7656,6 +7660,10 @@ AreaTriggerTeleport const* ObjectMgr::GetGoBackTrigger(uint32 Map) const
  */
 AreaTriggerTeleport const* ObjectMgr::GetMapEntranceTrigger(uint32 Map) const
 {
+    // Exits from linked instances (e.g. Blackwing Lair into Blackrock Spire) also target this map, and the store is
+    // unordered: prefer triggers placed outside instances, then the lowest trigger id.
+    AreaTriggerTeleport const* best = nullptr;
+    std::pair<bool, uint32> bestRank;
     for (AreaTriggerTeleportContainer::const_iterator itr = _areaTriggerTeleportStore.begin(); itr != _areaTriggerTeleportStore.end(); ++itr)
     {
         if (itr->second.target_mapId == Map) // Id is used to determine correct Scarlet Monastery instance
@@ -7663,10 +7671,17 @@ AreaTriggerTeleport const* ObjectMgr::GetMapEntranceTrigger(uint32 Map) const
             // xinef: no need to check, already done at loading
             //AreaTriggerEntry const* atEntry = sAreaTriggerStore.LookupEntry(itr->first);
             //if (atEntry)
-            return &itr->second;
+            AreaTrigger const* source = GetAreaTrigger(itr->first);
+            MapEntry const* sourceMap = source ? sMapStore.LookupEntry(source->map) : nullptr;
+            std::pair<bool, uint32> rank(!sourceMap || sourceMap->Instanceable(), itr->first);
+            if (!best || rank < bestRank)
+            {
+                best = &itr->second;
+                bestRank = rank;
+            }
         }
     }
-    return nullptr;
+    return best;
 }
 
 void ObjectMgr::SetHighestGuids()

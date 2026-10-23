@@ -103,6 +103,7 @@ struct Loot
     uint32 lootOwnerGUID = 1;
     uint32 sourceWorldObjectGUID = 2;
     uint32 unlootedCount = 0;
+    uint32 maxItemCount = MAX_NR_LOOT_ITEMS;
     std::vector<LootItem> items;
     std::vector<LootItem> quest_items;
     void AddItem(LootStoreItem const& original);

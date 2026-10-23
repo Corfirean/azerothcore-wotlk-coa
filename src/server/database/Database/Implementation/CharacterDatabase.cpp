@@ -35,6 +35,10 @@ void CharacterDatabaseConnection::DoPrepareStatements()
             "PRIMARY KEY (account, challengeId, level)) "
             "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+    PrepareStatement(CHAR_SEL_RAF_DELIVERY, "SELECT mail_id FROM raf_reward_delivery WHERE claim_id = ?", CONNECTION_SYNCH);
+    PrepareStatement(CHAR_INS_RAF_DELIVERY, "INSERT INTO raf_reward_delivery (claim_id, account_id, guid, mail_id) VALUES (?, ?, ?, ?)", CONNECTION_SYNCH);
+    PrepareStatement(CHAR_SEL_RAF_RECIPIENT, "SELECT account FROM characters WHERE guid = ?", CONNECTION_SYNCH);
+
     PrepareStatement(CHAR_SEL_COA_ACCOUNT_CHALLENGE_COMPLETION,
         "SELECT 1 FROM coa_account_challenge_completion WHERE account = ? AND challengeId = ? AND level = ? LIMIT 1",
         CONNECTION_SYNCH);
@@ -52,7 +56,8 @@ void CharacterDatabaseConnection::DoPrepareStatements()
     PrepareStatement(CHAR_DEL_WORLDFORGED_LOOT,
         "DELETE FROM character_worldforged_loot WHERE guid = ?", CONNECTION_ASYNC);
     PrepareStatement(CHAR_SEL_LOTTERY_RECENT_WINNERS,
-        "SELECT winner_name, gold_copper, winner_tickets, house_win, complimentary_tickets FROM coa_lottery_winner "
+        "SELECT winner_name, gold_copper, winner_tickets, house_win, complimentary_tickets, total_tickets "
+        "FROM coa_lottery_winner "
         "ORDER BY drawn_at DESC, round_id DESC LIMIT 5", CONNECTION_SYNCH);
     PrepareStatement(CHAR_SEL_LOTTERY_WINNER_IDENTITY,
         "SELECT name, account FROM characters WHERE guid = ? AND deleteDate IS NULL "
@@ -888,12 +893,57 @@ void CharacterDatabaseConnection::DoPrepareStatements()
     PrepareStatement(CHAR_INS_MANASTORM_CACHE_INVENTORY, "INSERT INTO character_inventory (guid, bag, slot, item) VALUES (?, ?, ?, ?)", CONNECTION_ASYNC);
     PrepareStatement(CHAR_SEL_MANASTORM_INVENTORY_ITEM, "SELECT COUNT(*) FROM character_inventory ci INNER JOIN item_instance ii ON ii.guid = ci.item AND ii.owner_guid = ci.guid WHERE ci.guid = ? AND ci.item = ?", CONNECTION_SYNCH);
 
+#ifdef MOD_MANASTORM_ENDLESS
+    PrepareStatement(CHAR_SEL_MANASTORM_COMPLETION_REWARD, "SELECT remainder_bp, earned FROM character_manastorm_completion_reward_state WHERE guid = ? AND mode = ? AND track = ? AND reward_key = ? LIMIT 1", CONNECTION_SYNCH);
+    PrepareStatement(CHAR_REP_MANASTORM_COMPLETION_REWARD, "INSERT INTO character_manastorm_completion_reward_state (guid, mode, track, reward_key, remainder_bp, earned) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE remainder_bp = VALUES(remainder_bp), earned = VALUES(earned)", CONNECTION_ASYNC);
+#endif
     PrepareStatement(CHAR_REP_APPEARANCE_OUTFIT,
         "REPLACE INTO character_appearance_outfit (guid, name, appearances) VALUES (?, ?, ?)", CONNECTION_ASYNC);
     PrepareStatement(CHAR_DEL_APPEARANCE_OUTFIT,
         "DELETE FROM character_appearance_outfit WHERE guid = ? AND name = ?", CONNECTION_ASYNC);
 
     PrepareStatement(CHAR_INS_PLAYER_ANTICHEAT_ALERT, "INSERT INTO player_anticheat_alert (account, guid, name, reason, details, size) VALUES (?, ?, ?, ?, ?, ?)", CONNECTION_ASYNC);
+#ifdef MOD_MANASTORM_ENDLESS
+    PrepareStatement(CHAR_SEL_MANASTORM_XP_LEVEL,
+        "SELECT level, playerFlags FROM characters WHERE guid = ?", CONNECTION_SYNCH);
+    PrepareStatement(CHAR_SEL_MANASTORM_FLOOR_XP,
+        "SELECT base_xp FROM character_manastorm_pending_experience WHERE guid = ?", CONNECTION_SYNCH);
+    PrepareStatement(CHAR_ADD_MANASTORM_FLOOR_XP,
+        "INSERT INTO character_manastorm_pending_experience (guid, base_xp) VALUES (?, ?) "
+        "ON DUPLICATE KEY UPDATE base_xp = base_xp + VALUES(base_xp)", CONNECTION_ASYNC);
+    PrepareStatement(CHAR_CLAIM_MANASTORM_FLOOR_XP,
+        "UPDATE character_manastorm_pending_experience SET base_xp = base_xp - ? WHERE guid = ?", CONNECTION_ASYNC);
+#endif
+
+    PrepareStatement(CHAR_SEL_PORTABLE_SESSION, "SELECT guid, session_id, character_id, imported_revision, baseline_generation, state, checkpoint_seq, save_seq FROM coa_portable_session WHERE guid = ?", CONNECTION_ASYNC);
+    PrepareStatement(CHAR_UPD_PORTABLE_SESSION_SAVE, "UPDATE coa_portable_session SET save_seq = save_seq + 1, updated_at = UNIX_TIMESTAMP() WHERE guid = ? AND session_id = ?", CONNECTION_ASYNC);
+    PrepareStatement(CHAR_UPD_PORTABLE_SESSION_CHECKPOINT, "UPDATE coa_portable_session SET save_seq = save_seq + 1, checkpoint_seq = ?, updated_at = UNIX_TIMESTAMP() WHERE guid = ? AND session_id = ?", CONNECTION_ASYNC);
+    PrepareStatement(CHAR_UPD_PORTABLE_SESSION_BASELINE, "UPDATE coa_portable_session SET save_seq = save_seq + 1, state = 1, updated_at = UNIX_TIMESTAMP() WHERE guid = ? AND session_id = ?", CONNECTION_ASYNC);
+    PrepareStatement(CHAR_UPD_PORTABLE_SESSION_ENDED, "UPDATE coa_portable_session SET save_seq = save_seq + 1, state = 3, updated_at = UNIX_TIMESTAMP() WHERE guid = ? AND session_id = ?", CONNECTION_ASYNC);
+    PrepareStatement(CHAR_UPD_PORTABLE_SESSION_ACTIVE, "UPDATE coa_portable_session SET state = 2, updated_at = UNIX_TIMESTAMP() WHERE guid = ? AND session_id = ? AND state = 1", CONNECTION_ASYNC);
+    PrepareStatement(CHAR_INS_PORTABLE_CHARACTER, "INSERT INTO characters (guid, account, `name`, race, class, gender, `level`, xp, money, skin, face, hairStyle, hairColor, facialStyle, bankSlots, restState, playerFlags, position_x, position_y, position_z, map, instance_id, instance_mode_mask, orientation, taximask, online, cinematic, totaltime, leveltime, logout_time, is_logout_resting, rest_bonus, resettalents_cost, resettalents_time, extra_flags, stable_slots, at_login, zone, death_expire_time, arenaPoints, totalHonorPoints, todayHonorPoints, yesterdayHonorPoints, totalKills, todayKills, yesterdayKills, chosenTitle, knownCurrencies, watchedFaction, drunk, health, power1, power2, power3, power4, power5, power6, power7, latency, talentGroupsCount, activeTalentGroup, exploredZones, equipmentCache, ammoId, knownTitles, actionBars, grantableLevels, innTriggerId, extraBonusTalentCount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_ITEM, "INSERT INTO item_instance (guid, itemEntry, owner_guid, creatorGuid, giftCreatorGuid, `count`, duration, charges, `flags`, enchantments, randomPropertyId, durability, playedTime, `text`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_INVENTORY, "INSERT INTO character_inventory (guid, `bag`, `slot`, `item`) VALUES (?, ?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_GIFT, "INSERT INTO character_gifts (guid, item_guid, `entry`, `flags`) VALUES (?, ?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_SPELL, "INSERT INTO character_spell (guid, `spell`, specMask) VALUES (?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_TALENT, "INSERT INTO character_talent (guid, `spell`, specMask) VALUES (?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_SKILL, "INSERT INTO character_skills (guid, skill, value, `max`) VALUES (?, ?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_GLYPH, "INSERT INTO character_glyphs (guid, talentGroup, glyph1, glyph2, glyph3, glyph4, glyph5, glyph6) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_REPUTATION, "INSERT INTO character_reputation (guid, faction, standing, `flags`) VALUES (?, ?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_QUEST, "INSERT INTO character_queststatus (guid, quest, status, explored, timer, mobcount1, mobcount2, mobcount3, mobcount4, itemcount1, itemcount2, itemcount3, itemcount4, itemcount5, itemcount6, playercount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_QUEST_REWARDED, "INSERT INTO character_queststatus_rewarded (guid, quest, `active`) VALUES (?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_ACTION, "INSERT INTO character_action (guid, spec, button, action, `type`) VALUES (?, ?, ?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_PET, "INSERT INTO character_pet (id, `entry`, owner, modelid, CreatedBySpell, PetType, `level`, `exp`, Reactstate, `name`, renamed, `slot`, curhealth, curmana, curhappiness, savetime, abdata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_PET_SPELL, "INSERT INTO pet_spell (guid, `spell`, `active`) VALUES (?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_PET_DECLINED, "INSERT INTO character_pet_declinedname (id, owner, genitive, dative, accusative, instrumental, prepositional) VALUES (?, ?, ?, ?, ?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_SETTING, "INSERT INTO character_settings (guid, `source`, `data`) VALUES (?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_ACCOUNT_DATA, "INSERT INTO character_account_data (guid, `type`, `time`, `data`) VALUES (?, ?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_APPEARANCE, "INSERT INTO character_appearance (guid, category_id, appearance_id) VALUES (?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_APPEARANCE_SETTINGS, "INSERT INTO character_appearance_settings (guid, can_see_item, can_see_spell) VALUES (?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_APPEARANCE_OUTFIT, "INSERT INTO character_appearance_outfit (guid, `name`, appearances) VALUES (?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_HOMEBIND, "INSERT INTO character_homebind (guid, mapId, zoneId, posX, posY, posZ) VALUES (?, ?, ?, ?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_INS_PORTABLE_SESSION, "INSERT INTO coa_portable_session (guid, session_id, character_id, imported_revision, baseline_generation, `state`, checkpoint_seq, save_seq, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", CONNECTION_BOTH);
+    PrepareStatement(CHAR_SEL_PORTABLE_IMPORT_MARKER, "SELECT guid FROM character_settings WHERE source = 'coa.portable.import' AND data = ?", CONNECTION_SYNCH);
 }
 
 CharacterDatabaseConnection::CharacterDatabaseConnection(MySQLConnectionInfo& connInfo) : MySQLConnection(connInfo)

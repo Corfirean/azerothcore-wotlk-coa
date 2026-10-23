@@ -87,6 +87,7 @@
 // which it uses instead of the warrior's combo point.
 constexpr AuraStateType ASCENSION_AURA_STATE_TARGET_DODGED = AuraStateType(24);
 constexpr uint32 ASCENSION_SPELL_HELLKNIGHT = 800703;
+constexpr uint32 ASCENSION_SPELL_WEAVER_FORM_PERIODIC_HASTE = 804981;
 
 float baseMoveSpeed[MAX_MOVE_TYPE] =
 {
@@ -1477,6 +1478,8 @@ thread_local bool TriggerLoopLogged = false;
 
 SpellCastResult Unit::CastSpell(SpellCastTargets const& targets, SpellInfo const* spellInfo, CustomSpellValues const* value, TriggerCastFlags triggerFlags, Item* castItem, AuraEffect const* triggeredByAura, ObjectGuid originalCaster)
 {
+    sScriptMgr->ResolveSpellCast(this, spellInfo);
+
     if (!spellInfo)
     {
         LOG_ERROR("entities.unit", "CastSpell: unknown spell by caster {}", GetGUID().ToString());
@@ -4874,6 +4877,10 @@ bool Unit::CanCastSpellWhileMoving(SpellInfo const* info) const
 {
     if (!info)
         return false;
+    // All movement gates must agree on the active Manastorm mixture.
+    // Its aura 313 family differs from CoA class spells such as Elemental Burst.
+    if (HasManastormMovementGrace())
+        return true;
     if (IsPlayer() && getClass() == CLASS_STARCALLER &&
         (info->Id == 801990 || info->Id == 802682 || (HasAura(704772) && !info->IsPositive())))
         return true;
@@ -4889,6 +4896,10 @@ bool Unit::CanCastSpellWhileMoving(SpellInfo const* info) const
         (info->Id == 500213 || info->Id == 504594 ||
          sSpellMgr->GetFirstSpellInChain(info->Id) == 504527 ||
          sSpellMgr->GetFirstSpellInChain(info->Id) == 801387))
+        return true;
+    if (IsPlayer() && getClass() == CLASS_CHRONOMANCER && info->SpellFamilyName == 28 &&
+        (info->SpellFamilyFlags[1] & 0x00001000) && (info->SpellFamilyFlags[2] & 0x02000000) &&
+        HasAura(570067))
         return true;
     // Copied aura 313 grants movement only to spells selected by its family mask.
     return HasAuraTypeWithAffectMask(SPELL_AURA_313, info);
@@ -6065,12 +6076,12 @@ void Unit::RemoveNotOwnSingleTargetAuras()
 
 bool Unit::HasManastormMovementGrace() const
 {
-    // Aura 313 is a private client extension. Only the eight authored Mobility Mixtures
-    // in an authorized scripted instance enable it; unrelated aura-313 class spells do not.
+    // Only the temporary Mobility Mixture auras grant movement grace.
+    // Learned duration upgrades (1300186-1300192) never grant it by themselves.
     Map const* map = FindMap();
     if (!IsPlayer() || !map || !map->IsScriptedPrivateInstance())
         return false;
-    for (uint32 spell : {1300179u, 1300186u, 1300187u, 1300188u, 1300189u, 1300190u, 1300191u, 1300192u})
+    for (uint32 spell = 1300179; spell <= 1300185; ++spell)
         if (HasAura(spell))
             return true;
     return false;
@@ -6726,6 +6737,15 @@ bool Unit::HasAuraTypeWithAffectMask(AuraType auratype, SpellInfo const* affecte
     AuraEffectList const& mTotalAuraList = GetAuraEffectsByType(auratype);
     for (AuraEffectList::const_iterator i = mTotalAuraList.begin(); i != mTotalAuraList.end(); ++i)
         if ((*i)->IsAffectedOnSpell(affectedSpell))
+            return true;
+    return false;
+}
+
+// Venomancer Weaver Form hastes periodic ticks without shortening the aura, so the duration keeps Protraction.
+bool Unit::HasDurationShorteningPeriodicHaste(SpellInfo const* affectedSpell) const
+{
+    for (AuraEffect const* effect : GetAuraEffectsByType(SPELL_AURA_PERIODIC_HASTE))
+        if (effect->GetId() != ASCENSION_SPELL_WEAVER_FORM_PERIODIC_HASTE && effect->IsAffectedOnSpell(affectedSpell))
             return true;
     return false;
 }
@@ -16729,7 +16749,11 @@ uint32 Unit::GetModelForForm(ShapeshiftForm form, uint32 spellId)
 
     if (IsPlayer())
     {
-        // AscensionIncarnation: the Wardrobe incarnation replaces the form's model.
+        uint32 incarnationModel = 0;
+        sScriptMgr->OnPlayerGetShapeshiftModel(ToPlayer(), form, spellId, incarnationModel);
+        if (incarnationModel)
+            return incarnationModel;
+
         if (uint32 incarnation = GetAscensionIncarnationDisplay(ToPlayer(), form, spellId))
             return incarnation;
 
@@ -18638,6 +18662,25 @@ bool Unit::IsInDisallowedMountForm() const
     if (GetDisplayId() == GetNativeDisplayId())
     {
         return false;
+    }
+
+    // A display form whose spell asks to be allowed while mounted may coexist with the mount, so
+    // it does not block one. The form is kept, and entering it is what dismounts the caster.
+    for (auto const& pair : GetOwnedAuras())
+    {
+        SpellInfo const* auraInfo = pair.second->GetSpellInfo();
+        if (!auraInfo || !auraInfo->HasAttribute(SPELL_ATTR0_ALLOW_WHILE_MOUNTED))
+        {
+            continue;
+        }
+
+        for (SpellEffectInfo const& effect : auraInfo->Effects)
+        {
+            if (effect.IsAura() && effect.ApplyAuraName != SPELL_AURA_MOD_SHAPESHIFT)
+            {
+                return false;
+            }
+        }
     }
 
     CreatureDisplayInfoEntry const* display = sCreatureDisplayInfoStore.LookupEntry(GetDisplayId());
