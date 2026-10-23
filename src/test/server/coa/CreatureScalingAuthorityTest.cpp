@@ -58,6 +58,17 @@ TEST(CreatureScalingAuthority, OpenWorldIsNeverHandedOver)
         Multiplier(settings.damage, Context::World, NoOverrideMap, 40, NotOwned));
 }
 
+TEST(CreatureScalingAuthority, CoreHealthHookSkipsCreaturesABudgetOwnerHasAlreadyFoldedTheMultiplierInto)
+{
+    Settings const settings;
+    float const world = Multiplier(settings.health, Context::World, NoOverrideMap, 40, NotOwned);
+    // With a budget owner registered the hook is a no-op, so World.Health reaches the creature once (through the
+    // owner), never twice; without one the hook applies it as before.
+    EXPECT_FLOAT_EQ(CreatureScaling::HookMultiplier(world, true), 1.0f);
+    EXPECT_FLOAT_EQ(CreatureScaling::HookMultiplier(world, false), world);
+    EXPECT_FLOAT_EQ(CreatureScaling::HookMultiplier(1.0f, false), 1.0f);
+}
+
 TEST(CreatureScalingAuthority, ContextNoneStaysNeutralWhetherOwnedOrNot)
 {
     Settings const settings;

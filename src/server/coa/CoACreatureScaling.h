@@ -15,6 +15,13 @@ namespace CreatureScaling
 using CombatAuthority = bool (*)(Creature const* creature);
 void SetCombatAuthority(CombatAuthority authority);
 
+// Open world counterpart. A module that sets the whole health of a creature itself, and folds HealthMultiplier()
+// (World.Health in the open world) into that health exactly once, registers a second predicate for the creatures it
+// does that for. The core's own health hook then leaves them alone, so the multiplier is applied once whether the
+// core hook or the module runs first at creature level selection. Dungeon and raid health is separately neutral
+// through SetCombatAuthority.
+void SetHealthBudgetAuthority(CombatAuthority authority);
+
 float HealthMultiplier(Creature const* creature);
 
 class TestOverride

@@ -26,6 +26,7 @@ namespace
     std::shared_ptr<CreatureScaling::Settings const> Override;
     std::atomic<bool> Enabled = false;
     std::atomic<CreatureScaling::CombatAuthority> Authority = nullptr;
+    std::atomic<CreatureScaling::CombatAuthority> HealthBudgetAuthority = nullptr;
     std::unordered_set<uint32> FlexHealthEntries;
 
     std::shared_ptr<CreatureScaling::Settings const> Active()
@@ -123,6 +124,11 @@ void CreatureScaling::SetCombatAuthority(CombatAuthority authority)
     Authority = authority;
 }
 
+void CreatureScaling::SetHealthBudgetAuthority(CombatAuthority authority)
+{
+    HealthBudgetAuthority = authority;
+}
+
 float CreatureScaling::HealthMultiplier(Creature const* creature)
 {
     if (!Enabled || !IsEligible(creature) || HasFlexHealth(creature))
@@ -194,7 +200,9 @@ public:
 
     void OnCreatureSelectLevel(CreatureTemplate const*, Creature* creature) override
     {
-        float const multiplier = CreatureScaling::HealthMultiplier(creature);
+        CreatureScaling::CombatAuthority const budgetAuthority = HealthBudgetAuthority;
+        float const multiplier = CreatureScaling::HookMultiplier(CreatureScaling::HealthMultiplier(creature),
+            budgetAuthority && budgetAuthority(creature));
         if (multiplier == 1.0f)
             return;
         uint32 const health = CreatureScaling::Scaled(creature->GetCreateHealth(), multiplier);

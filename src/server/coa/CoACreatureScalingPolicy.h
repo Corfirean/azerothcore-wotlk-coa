@@ -331,6 +331,13 @@ inline float Multiplier(Multipliers const& multipliers, Context context, std::ui
     }
 }
 
+// What the core's own health hook applies at level selection. A creature whose whole health a module sets itself, with
+// the multiplier already folded in once, is skipped, so the result does not depend on which hook runs first.
+inline float HookMultiplier(float multiplier, bool healthBudgetedElsewhere)
+{
+    return healthBudgetedElsewhere ? 1.0f : multiplier;
+}
+
 inline std::uint32_t Scaled(std::uint32_t value, float multiplier)
 {
     if (multiplier <= 0.0f || value == 0)
