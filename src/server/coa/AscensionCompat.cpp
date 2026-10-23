@@ -8,6 +8,7 @@
 #include "AccountMgr.h"
 #include "CoaCustomRacials.h"
 #include "AscensionFelsworn.h"
+#include "AscensionHighRiskPolicy.h"
 #include "AscensionItemScaling.h"
 #include "AscensionFelswornRifts.h"
 #include "AscensionPyromancer.h"
@@ -44,6 +45,7 @@
 #include "AscensionAmmunitionData.h"
 #include "AscensionAverageItemLevel.h"
 #include "AscensionPersonalBank.h"
+#include "AscensionVanityOwnership.h"
 #include "AscensionCollectibleSpellData.h"
 #include "AscensionCustomClassData.h"
 #include "AscensionAuraAmounts.h"
@@ -95,6 +97,7 @@
 #include "GlobalScript.h"
 #include "GroupScript.h"
 #include "GridTerrainData.h"
+#include "Guild.h"
 #include "GuildPackets.h"
 #include "Item.h"
 #include "ItemScript.h"
@@ -414,6 +417,8 @@ constexpr uint32 VANITY_CATEGORY_MOUNTS = 0x04000000;
 constexpr uint32 SPELL_TALENT_LEARNING_CUE = 47292;
 constexpr uint32 VANITY_CATEGORY_COMPANIONS = 0x08000000;
 constexpr uint32 VANITY_CATEGORY_CONSUMABLE = 0x40000000;
+constexpr uint32 ITEM_AURA_OF_EXPERIENCE = 818059;
+constexpr uint8 VANITY_REALM_LEVEL = 60;
 constexpr uint32 ITEM_WONDROUS_WISDOMBALL = 101169;
 constexpr uint32 ITEM_FIX_O_TRON_5000 = 97330;
 constexpr std::size_t COMPANION_SPELLS_PER_BATCH = 4;
@@ -463,6 +468,7 @@ enum class AscensionCompatConfig {
   CLIENT_DBC_DIRECTORY,
   COLLECTIONS_FOR_BOTS,
   RANDOM_BOT_ACCOUNT_PREFIX,
+  STARTER_VANITY_ITEMS,
 
   NUM_CONFIGS,
 };
@@ -495,6 +501,8 @@ public:
         "CoA.AppearanceCatalogPerCategory", 500);
     SetConfigValue<bool>(AscensionCompatConfig::UNLOCK_ALL_VANITY,
                          "CoA.UnlockAllVanity", true);
+    SetConfigValue<std::string>(AscensionCompatConfig::STARTER_VANITY_ITEMS,
+                                "CoA.StarterVanityItems", "");
     SetConfigValue<std::string>(AscensionCompatConfig::REALM_TYPE,
                                 "CoA.RealmType", "live");
     SetConfigValue<std::string>(AscensionCompatConfig::CLASS_MODEL,
@@ -5312,8 +5320,19 @@ private:
   BuildDisplayPatchRows(std::filesystem::path const &clientDbcDirectory) const {
     std::filesystem::path const clientDbc =
         clientDbcDirectory / "CreatureDisplayInfo.dbc";
-    std::optional<std::unordered_set<uint32>> const clientDisplayIds =
+    std::optional<std::unordered_set<uint32>> clientDisplayIds =
         LoadDbcIds(clientDbc, 16);
+    if (!clientDisplayIds)
+    {
+      std::filesystem::path const serverDbc =
+          std::filesystem::path(sWorld->GetDataPath()) / "dbc" / "CreatureDisplayInfo.dbc";
+      clientDisplayIds = LoadDbcIds(serverDbc, 16);
+      if (clientDisplayIds)
+        LOG_INFO("coa",
+                 "Client DBC copy {} is unavailable; streaming the display ids "
+                 "missing from the server's own {}",
+                 clientDbc.generic_string(), serverDbc.generic_string());
+    }
     bool const haveClientSet = clientDisplayIds.has_value();
     if (!haveClientSet)
     {
@@ -5856,7 +5875,7 @@ public:
         {
             Creature* c = player->GetMap()->GetCreature(player->GetCritterGUID());
             isLootbot = c && c->IsAlive() && c->GetOwnerGUID() == player->GetGUID() &&
-                        c->GetEntry() == CREATURE_LOOTBOT_3000;
+                        c->GetEntry() == CREATURE_LOOTBOT_3000 && !player->GetMap()->IsRaid();
         }
 
         if (!hasAppearance && !isLootbot)
@@ -6358,8 +6377,11 @@ public:
         return;
     }
 
-    if (sObjectMgr->GetItemTemplate(itemId))
+    if (ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId))
     {
+      if (RefuseWithoutVanityRealmLevel(player, proto))
+        return;
+
       ItemPosCountVec destinations;
       InventoryResult result =
           player->CanStoreNewItem(NULL_BAG, NULL_SLOT, destinations, itemId, 1);
@@ -6433,6 +6455,33 @@ public:
              state->OwnedVanityItems.size() - vanityBefore);
     return true;
   }
+
+    [[nodiscard]] bool RequiresVanityRealmLevel(ItemTemplate const* proto) const
+    {
+        return proto->ItemId == ITEM_AURA_OF_EXPERIENCE ||
+            (proto->Quality == ITEM_QUALITY_HEIRLOOM && _vanityItems.contains(proto->ItemId));
+    }
+
+    static bool AccountHasVanityRealmLevel(Player* player)
+    {
+        if (player->GetLevel() >= VANITY_REALM_LEVEL)
+            return true;
+
+        return CharacterDatabase.Query(
+            "SELECT 1 FROM `characters` WHERE `account` = {} AND `guid` <> {} AND `level` >= {} LIMIT 1",
+            player->GetSession()->GetAccountId(), player->GetGUID().GetCounter(), VANITY_REALM_LEVEL) != nullptr;
+    }
+
+    bool RefuseWithoutVanityRealmLevel(Player* player, ItemTemplate const* proto) const
+    {
+        if (!RequiresVanityRealmLevel(proto) || AccountHasVanityRealmLevel(player))
+            return false;
+
+        ChatHandler(player->GetSession()).PSendSysMessage(
+            "This item requires you to have a level {} on this realm to be able to {}.", VANITY_REALM_LEVEL,
+            proto->Class == ITEM_CLASS_CONSUMABLE ? "consume" : "use");
+        return true;
+    }
 
   bool GrantMysticAltarVanityItems(Player *player) {
     std::shared_ptr<PlayerCollectionState> state = GetState(player);
@@ -6835,6 +6884,28 @@ private:
       do {
         state.OwnedVanityItems.insert(result->Fetch()[0].Get<uint32>());
       } while (result->NextRow());
+    }
+
+    GrantStarterVanityItems(player, state);
+  }
+
+  void GrantStarterVanityItems(Player *player, PlayerCollectionState &state) {
+    if (player->GetSession()->IsBot() && !LoadsCollectionsForBot(player))
+      return;
+
+    std::string const items = ascensionCompatConfig.GetConfigValue<std::string>(
+        AscensionCompatConfig::STARTER_VANITY_ITEMS);
+    for (std::string_view token : Acore::Tokenize(items, ' ', false)) {
+      uint32 const itemId = Acore::StringTo<uint32>(token).value_or(0);
+      auto const vanity = _vanityItems.find(itemId);
+      if (vanity == _vanityItems.end() || IsConsumableVanityItem(vanity->second) ||
+          !state.OwnedVanityItems.insert(itemId).second)
+        continue;
+
+      CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_INS_ACCOUNT_VANITY_COLLECTION);
+      stmt->SetData(0, state.AccountId);
+      stmt->SetData(1, itemId);
+      CharacterDatabase.Execute(stmt);
     }
   }
 
@@ -8612,13 +8683,23 @@ class AscensionCompatPlayerScript : public PlayerScript {
             player->RemoveAurasDueToSpell(818059);
     }
 
+    static bool CanUseVanityRealmLevelItem(Player* player, Item* item, uint8 castCount)
+    {
+        if (!AscensionCollectionService::Instance().RefuseWithoutVanityRealmLevel(player, item->GetTemplate()))
+            return true;
+
+        if (SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(item->GetTemplate()->Spells[0].SpellId))
+            Spell::SendCastResult(player, spellInfo, castCount, SPELL_FAILED_DONT_REPORT);
+        return false;
+    }
+
 public:
   AscensionCompatPlayerScript()
       : PlayerScript(
             "AscensionCompatPlayerScript",
             {PLAYERHOOK_ON_LOGIN, PLAYERHOOK_ON_LOGOUT, PLAYERHOOK_ON_UPDATE, PLAYERHOOK_ON_SAVE,
              PLAYERHOOK_ON_AFTER_SET_VISIBLE_ITEM_SLOT, PLAYERHOOK_ON_EQUIP, PLAYERHOOK_ON_DELETE,
-             PLAYERHOOK_ON_TAKE_MAIL_ITEM, PLAYERHOOK_CAN_CAST_ITEM_USE_SPELL,
+             PLAYERHOOK_ON_TAKE_MAIL_ITEM, PLAYERHOOK_CAN_CAST_ITEM_USE_SPELL, PLAYERHOOK_CAN_EQUIP_ITEM,
              PLAYERHOOK_ON_STORE_NEW_ITEM, PLAYERHOOK_ON_CREATE_ITEM,
              PLAYERHOOK_ON_PLAYER_COMPLETE_QUEST,
              PLAYERHOOK_ON_PLAYER_IS_CLASS, PLAYERHOOK_ON_LEVEL_CHANGED, PLAYERHOOK_ON_MAP_CHANGED,
@@ -8990,9 +9071,17 @@ public:
       ReconcileAscensionPrimalistWeapon(player);
   }
 
-  bool OnPlayerCanCastItemUseSpell(Player *player, Item *item, SpellCastTargets const &, uint8, uint32) override {
+  bool OnPlayerCanCastItemUseSpell(Player *player, Item *item, SpellCastTargets const &, uint8 castCount,
+                                   uint32) override {
     AscensionCollectionService::Instance().OnItemObtained(player, item);
-    return true;
+    return !ascensionCompatConfig.GetConfigValue<bool>(AscensionCompatConfig::ENABLED) ||
+           CanUseVanityRealmLevelItem(player, item, castCount);
+  }
+
+  bool OnPlayerCanEquipItem(Player* player, uint8, uint16&, Item* item, bool, bool notLoading) override
+  {
+      return !notLoading || !ascensionCompatConfig.GetConfigValue<bool>(AscensionCompatConfig::ENABLED) ||
+          !AscensionCollectionService::Instance().RefuseWithoutVanityRealmLevel(player, item->GetTemplate());
   }
 
     void OnPlayerCompleteQuest(Player* player, Quest const* quest) override
@@ -9334,6 +9423,19 @@ public:
                     if (spellInfo->Effects[EFFECT_0].Effect == SPELL_EFFECT_APPLY_AURA &&
                         spellInfo->Effects[EFFECT_0].ApplyAuraName == SPELL_AURA_NONE)
                         spellInfo->Effects[EFFECT_0].ApplyAuraName = SPELL_AURA_DUMMY;
+                    break;
+                case 40120:
+                    spellInfo->AttributesEx4 |= SPELL_ATTR4_ONLY_FLYING_AREAS;
+                    break;
+                case 287665:
+                case 917000:
+                    for (SpellEffectInfo& effect : spellInfo->Effects)
+                        if (effect.IsAura(SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED))
+                            effect.Effect = 0;
+                    break;
+                case 83086:
+                case 9930889:
+                    spellInfo->AttributesEx6 |= SPELL_ATTR6_NOT_IN_RAID_INSTANCES;
                     break;
                 default:
                     break;
@@ -10050,13 +10152,114 @@ class spell_ascension_experience_potion : public SpellScript
             }
     }
 
+    SpellCastResult CheckAltCharacter()
+    {
+        Player* player = GetCaster()->ToPlayer();
+        if (!player->HasSpell(SPELL_RESILIENT_CONSTITUTION) || AccountHasHigherLevelCharacter(player))
+            return SPELL_CAST_OK;
+
+        ChatHandler(player->GetSession()).SendSysMessage(
+            "This item can only be used on alt characters who are not the highest level on your account.");
+        return SPELL_FAILED_DONT_REPORT;
+    }
+
+    static bool AccountHasHigherLevelCharacter(Player* player)
+    {
+        return CharacterDatabase.Query(
+            "SELECT 1 FROM `characters` WHERE `account` = {} AND `guid` <> {} AND `level` > {} LIMIT 1",
+            player->GetSession()->GetAccountId(), player->GetGUID().GetCounter(), player->GetLevel()) != nullptr;
+    }
+
+    static constexpr uint32 SPELL_RESILIENT_CONSTITUTION = 552011;
+
     void Register() override
     {
+        OnCheckCast += SpellCheckCastFn(spell_ascension_experience_potion::CheckAltCharacter);
         BeforeHit += BeforeSpellHitFn(spell_ascension_experience_potion::SnapshotDuration);
         AfterHit += SpellHitFn(spell_ascension_experience_potion::ExtendDuration);
     }
 };
 
+class spell_ascension_vanity_use_restriction : public SpellScript
+{
+    PrepareSpellScript(spell_ascension_vanity_use_restriction);
+
+    static constexpr uint32 SPELL_BANNER_OF_RECRUITMENT = 100706;
+    static constexpr uint32 SPELL_SUMMON_PORTABLE_TRANSPOLYPORTER = 979611;
+    static constexpr uint32 SPELL_PORTABLE_TRANSPOLYPORTER_TELEPORT = 979612;
+
+    bool Load() override
+    {
+        return ascensionCompatConfig.GetConfigValue<bool>(AscensionCompatConfig::ENABLED) && GetCaster()->IsPlayer();
+    }
+
+    std::string_view Refusal(Player* player)
+    {
+        switch (GetSpellInfo()->Id)
+        {
+            case SPELL_BANNER_OF_RECRUITMENT:
+                return player->GetGuildId() && player->GetRank() <= GR_OFFICER ? std::string_view{}
+                    : "Only usable as Guild Master or Officer.";
+            case SPELL_SUMMON_PORTABLE_TRANSPOLYPORTER:
+            case SPELL_PORTABLE_TRANSPOLYPORTER_TELEPORT:
+                return player->HasAura(HighRisk::HighRiskAura) ? "Cannot be used by High-Risk players."
+                    : std::string_view{};
+            default:
+                return player->GetMap()->IsDungeon() ? "Can only be used on continents and in battlegrounds."
+                    : std::string_view{};
+        }
+    }
+
+    SpellCastResult CheckCast()
+    {
+        Player* player = GetCaster()->ToPlayer();
+        std::string_view const refusal = Refusal(player);
+        if (refusal.empty())
+            return SPELL_CAST_OK;
+
+        ChatHandler(player->GetSession()).SendSysMessage(refusal);
+        return SPELL_FAILED_DONT_REPORT;
+    }
+
+    void Register() override
+    {
+        OnCheckCast += SpellCheckCastFn(spell_ascension_vanity_use_restriction::CheckCast);
+    }
+};
+
+class spell_ascension_stick_on_a_carrot : public AuraScript
+{
+    PrepareAuraScript(spell_ascension_stick_on_a_carrot);
+
+    static constexpr uint8 HIGHEST_EFFECTIVE_LEVEL = 70;
+
+    void CalculateAmount(AuraEffect const*, int32& amount, bool&)
+    {
+        if (GetUnitOwner()->GetLevel() > HIGHEST_EFFECTIVE_LEVEL)
+            amount = 0;
+    }
+
+    void Register() override
+    {
+        DoEffectCalcAmount += AuraEffectCalcAmountFn(spell_ascension_stick_on_a_carrot::CalculateAmount, EFFECT_ALL,
+            SPELL_AURA_ANY);
+    }
+};
+
+}
+
+AscensionVanityOwnership::TestOverride::TestOverride(bool unlockAll, std::string const& starterItems)
+    : _unlockAll(ascensionCompatConfig.GetConfigValue<bool>(AscensionCompatConfig::UNLOCK_ALL_VANITY)),
+      _starterItems(ascensionCompatConfig.GetConfigValue<std::string>(AscensionCompatConfig::STARTER_VANITY_ITEMS))
+{
+    ascensionCompatConfig.OverwriteConfigValue<bool>(AscensionCompatConfig::UNLOCK_ALL_VANITY, unlockAll);
+    ascensionCompatConfig.OverwriteConfigValue<std::string>(AscensionCompatConfig::STARTER_VANITY_ITEMS, starterItems);
+}
+
+AscensionVanityOwnership::TestOverride::~TestOverride()
+{
+    ascensionCompatConfig.OverwriteConfigValue<bool>(AscensionCompatConfig::UNLOCK_ALL_VANITY, _unlockAll);
+    ascensionCompatConfig.OverwriteConfigValue<std::string>(AscensionCompatConfig::STARTER_VANITY_ITEMS, _starterItems);
 }
 
 namespace AscensionCompatData
@@ -10886,6 +11089,8 @@ void AddAscensionCompatScripts() {
   new npc_ascension_training_book();
   RegisterSpellScript(spell_ascension_personal_bank);
   RegisterSpellScript(spell_ascension_experience_potion);
+  RegisterSpellScript(spell_ascension_vanity_use_restriction);
+  RegisterSpellScript(spell_ascension_stick_on_a_carrot);
   RegisterSpellScript(spell_ascension_local_mount);
   RegisterSpellScript(spell_ascension_specialization_slot);
   RegisterSpellScript(spell_ascension_jailers_bargain);
