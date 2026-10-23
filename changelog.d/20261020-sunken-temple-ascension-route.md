@@ -4,4 +4,4 @@ type: changed
 audience: players
 title: Sunken Temple plays like Ascension's shorter run to Shade of Eranikus
 ---
-A Hakkar Worship Altar starts the Avatar of Hakkar fight without an Egg of Hakkar or Hakkari Blood, since each Hakkari Bloodkeeper that dies puts out an Eternal Flame. Jammal'an's barrier is open, Dungeon Finder groups start near the Sanctum, and Eranikus wakes once Hakkar, Jammal'an and Ogom, Dreamscythe and Weaver, and Hazzas and Morphaz are defeated.
+Start Hakkar at the altar without quest items; Bloodkeepers extinguish the flames. Jammal'an's barrier is open, Dungeon Finder starts near the Sanctum, and Eranikus wakes after the required bosses die.
