@@ -304,15 +304,11 @@ inline Context ContextOf(bool battlegroundOrArena, bool scriptedPrivateInstance,
     return dungeon ? Context::Dungeon : Context::World;
 }
 
-// Only dungeon and raid creatures can be taken over by a system that builds their combat budget itself
-// (mod-coa-content-scaling); open world creatures keep CoA.CreatureScaling.World.* together with Local Level Scaling.
 inline bool CanBeHandedOver(Context context)
 {
     return context == Context::Dungeon || context == Context::Raid;
 }
 
-// externallyOwned is the answer of the registered CombatAuthority for this creature. An owned dungeon or raid creature
-// gets the neutral 1.0 (no Dungeon, Raid or Map* entry), because the owner's own budget already accounts for it.
 inline float Multiplier(Multipliers const& multipliers, Context context, std::uint32_t mapId, std::uint8_t level,
     bool externallyOwned = false)
 {
@@ -331,8 +327,6 @@ inline float Multiplier(Multipliers const& multipliers, Context context, std::ui
     }
 }
 
-// What the core's own health hook applies at level selection. A creature whose whole health a module sets itself, with
-// the multiplier already folded in once, is skipped, so the result does not depend on which hook runs first.
 inline float HookMultiplier(float multiplier, bool healthBudgetedElsewhere)
 {
     return healthBudgetedElsewhere ? 1.0f : multiplier;
