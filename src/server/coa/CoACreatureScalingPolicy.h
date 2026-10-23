@@ -304,9 +304,19 @@ inline Context ContextOf(bool battlegroundOrArena, bool scriptedPrivateInstance,
     return dungeon ? Context::Dungeon : Context::World;
 }
 
-inline float Multiplier(Multipliers const& multipliers, Context context, std::uint32_t mapId, std::uint8_t level)
+// Only dungeon and raid creatures can be taken over by a system that builds their combat budget itself
+// (mod-coa-content-scaling); open world creatures keep CoA.CreatureScaling.World.* together with Local Level Scaling.
+inline bool CanBeHandedOver(Context context)
 {
-    if (context == Context::None)
+    return context == Context::Dungeon || context == Context::Raid;
+}
+
+// externallyOwned is the answer of the registered CombatAuthority for this creature. An owned dungeon or raid creature
+// gets the neutral 1.0 (no Dungeon, Raid or Map* entry), because the owner's own budget already accounts for it.
+inline float Multiplier(Multipliers const& multipliers, Context context, std::uint32_t mapId, std::uint8_t level,
+    bool externallyOwned = false)
+{
+    if (context == Context::None || (externallyOwned && CanBeHandedOver(context)))
         return 1.0f;
     if (auto itr = multipliers.maps.find(mapId); itr != multipliers.maps.end())
         return itr->second.Evaluate(level);

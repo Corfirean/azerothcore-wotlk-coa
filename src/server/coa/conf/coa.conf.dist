@@ -63,6 +63,9 @@ CoA.EquippedGearLootChance = 5
 # without spaces ("43:0.3+0.08*level"), or separate the entries with ';' ("43: 0.3 + 0.08 * level; 36: 2.2").
 # World is fitted to live open-world creature health seen in videos of live Ascension (levels 1-59); world damage uses
 # the same formula. Dungeon and Raid keep their earlier estimates.
+# While mod-coa-content-scaling is enabled it owns the health and damage of dungeon and raid creatures: the Dungeon,
+# Raid and Map* values below are then neutral (1.0) for them, so they never stack on its combat budget (tune that with
+# CoAContentScaling.Difficulty.Health.* instead). World values and servers without the module are not affected.
 # Without this section the server keeps these multipliers but leaves the feature disabled.
 CoA.CreatureScaling.Enable = 1
 CoA.CreatureScaling.World.Health = "1.17 + 0.013 * level"

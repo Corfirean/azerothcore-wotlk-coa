@@ -25,6 +25,7 @@ namespace
     std::shared_ptr<CreatureScaling::Settings const> Configured = std::make_shared<CreatureScaling::Settings>();
     std::shared_ptr<CreatureScaling::Settings const> Override;
     std::atomic<bool> Enabled = false;
+    std::atomic<CreatureScaling::CombatAuthority> Authority = nullptr;
     std::unordered_set<uint32> FlexHealthEntries;
 
     std::shared_ptr<CreatureScaling::Settings const> Active()
@@ -64,6 +65,14 @@ namespace
             map->IsRegularDifficulty(), map->IsRaid(), map->IsDungeon());
     }
 
+    bool OwnedElsewhere(CreatureScaling::Context context, Creature const* creature)
+    {
+        if (!CreatureScaling::CanBeHandedOver(context))
+            return false;
+        CreatureScaling::CombatAuthority const authority = Authority;
+        return authority && authority(creature);
+    }
+
     float DamageMultiplier(Unit const* target, Unit const* attacker)
     {
         if (!Enabled || !target || !attacker || !target->GetCharmerOrOwnerPlayerOrPlayerItself())
@@ -74,7 +83,8 @@ namespace
         CreatureScaling::Context const context = ContextOf(creature);
         if (context == CreatureScaling::Context::None)
             return 1.0f;
-        return CreatureScaling::Multiplier(Active()->damage, context, creature->GetMapId(), creature->GetLevel());
+        return CreatureScaling::Multiplier(Active()->damage, context, creature->GetMapId(), creature->GetLevel(),
+            OwnedElsewhere(context, creature));
     }
 
     template <typename T>
@@ -108,11 +118,18 @@ namespace
     }
 }
 
+void CreatureScaling::SetCombatAuthority(CombatAuthority authority)
+{
+    Authority = authority;
+}
+
 float CreatureScaling::HealthMultiplier(Creature const* creature)
 {
     if (!Enabled || !IsEligible(creature) || HasFlexHealth(creature))
         return 1.0f;
-    return CreatureScaling::Multiplier(Active()->health, ::ContextOf(creature), creature->GetMapId(), creature->GetLevel());
+    Context const context = ::ContextOf(creature);
+    return CreatureScaling::Multiplier(Active()->health, context, creature->GetMapId(), creature->GetLevel(),
+        OwnedElsewhere(context, creature));
 }
 
 CreatureScaling::TestOverride::TestOverride()
