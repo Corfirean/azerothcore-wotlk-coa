@@ -11,8 +11,8 @@
 #####################################################################################################
 # Announce  TimeIsTime
 # Settings: 0 = off, 1 = on
-# Default:  1 
-# Example:  TimeIsTime.Announce = 1 
+# Default:  1
+# Example:  TimeIsTime.Announce = 1
 #####################################################################################################
 TimeIsTime.Announce = 1
 
@@ -21,7 +21,7 @@ TimeIsTime.Announce = 1
 # Enable TimeIsTime
 # Settings: 0 = off, 1 = on
 # Default:  1
-# Example:  TimeIsTime.Enable = 1 
+# Example:  TimeIsTime.Enable = 1
 #####################################################################################################
 TimeIsTime.Enable = 1
 
@@ -29,14 +29,14 @@ TimeIsTime.Enable = 1
 #####################################################################################################
 # Adjust the number of game days per real day by altering the Realm Timer
 # Settings: 60 is 1 second (Real Time) = 1 minute (Realm Timer)
-#           
+#
 #           60.0  = 1 Game Day every 24   minutes
-#           30.0  = 1 Game Day every 48   minutes         
+#           30.0  = 1 Game Day every 48   minutes
 #           15.0  = 1 Game Day every 96   minutes or 1.6  Hours
 #           7.5   = 1 Game Day every 192  minutes or 3.2  Hours
-#           3.75  = 1 Game Day every 384  minutes or 6.4  Hours        
+#           3.75  = 1 Game Day every 384  minutes or 6.4  Hours
 #           1.875 = 1 Game Day every 768  minutes or 12.8 Hours
-#           1.0   = 1 Game Day every 1440 minutes or 24.0 Hours 
+#           1.0   = 1 Game Day every 1440 minutes or 24.0 Hours
 # Default:  1.0 (Blizzlike)
 # Example:  TimeIsTime.SpeedRate = 1.0
 #####################################################################################################

@@ -162,4 +162,3 @@ __pycache__/
 # Unrelated legacy client override; not part of the four-file Manastorm package
 /modules/mod-manastorm-endless/client/overlay/Interface/FrameXML/StaticPopup.lua
 !/modules/mod-TimeIsTime/
-
