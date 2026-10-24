@@ -345,7 +345,9 @@ def semicolon_check(file: io, file_path: str) -> None:
                 # Get next non-blank line to detect if we're at the last row
                 next_line = get_next_non_blank_line(line_number)
                 
-                if next_line and next_line.startswith('('):
+                if next_line and next_line.upper().startswith('ON DUPLICATE KEY UPDATE'):
+                    inside_values_block = False
+                elif next_line and next_line.startswith('('):
                     # Expect comma if another row follows
                     if not stripped_line.endswith(','):
                         print(f"❌ Missing comma in {file_path} at line {line_number}")
@@ -419,7 +421,7 @@ def backtick_check(file: io, file_path: str) -> None:
                                     "WITH", "RECURSIVE", "COLUMN", "ENGINE", "CHARSET", "COLLATE",
                                     "IF", "ELSEIF", "LOOP", "WHILE", "DO", "HANDLER", "LEAVE",
                                     "ITERATE", "DECLARE", "CURSOR", "FETCH", "OPEN", "CLOSE",
-                                    "ABS", "LEAST", "COUNT", "COALESCE", "MIN", "MAX", "CONCAT", "FIELD",
+                                    "ABS", "LEAST", "COUNT", "COALESCE", "MIN", "MAX", "CONCAT", "FIELD", "SUM", "FLOOR",
                                     "CURRENT_TIMESTAMP", "BINARY", "USING", "EXECUTE", "DEALLOCATE",
                                     "PREPARE", "MESSAGE_TEXT"}:
                     continue
