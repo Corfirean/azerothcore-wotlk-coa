@@ -74,8 +74,12 @@ class ScopedLintTests(unittest.TestCase):
         self.assertIn("unrelated.sql", result.stdout)
 
     def test_sql_builtin_functions_do_not_require_identifier_quotes(self):
-        self.put(self.pending + "functions.sql", "SELECT ABS(`spell_id`), LEAST(`level` * 5, 400) FROM `characters`;\n")
+        self.put(self.pending + "functions.sql", "SELECT ABS(`spell_id`), LEAST(`level` * 5, 400), SUM(`level`), FLOOR(`level` / 2) FROM `characters`;\n")
         self.assert_passes(self.lint("sql", "--files", self.pending + "functions.sql"))
+
+    def test_sql_upsert_continues_after_the_last_value_tuple(self):
+        self.put(self.pending + "upsert.sql", "INSERT INTO `creature_template` (`entry`, `name`) VALUES\n(1, 'One'),\n(2, 'Two')\nON DUPLICATE KEY UPDATE\n`name` = VALUES(`name`);\n")
+        self.assert_passes(self.lint("sql", "--files", self.pending + "upsert.sql"))
 
     def test_sql_selected_file_keeps_style_checks(self):
         result = self.lint("sql", "--files", self.pending + "unrelated.sql")
