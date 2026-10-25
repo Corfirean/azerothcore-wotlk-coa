@@ -283,6 +283,18 @@ class RunnerTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaisesRegex(ValueError, error):
                 run.validate(scenario)
 
+    def test_two_side_accepts_boolean_trade_and_mail(self):
+        for value in ({}, {'trade': True}, {'trade': False, 'mail': True}):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['two_side'] = value
+            self.assertIs(run.validate(scenario), scenario)
+        for value, error in ((True, 'two_side: expected an object'), ({'trade': 1}, 'two_side.trade must be boolean'),
+                             ({'mail': 'true'}, 'two_side.mail must be boolean'), ({'auction': True}, 'two_side')):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['two_side'] = value
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, error):
+                run.validate(scenario)
+
     def test_game_event_needs_an_event_id_and_a_boolean_state(self):
         for step in ({'action': 'game_event', 'event': 12, 'active': True},
                      {'action': 'game_event', 'event': 12, 'active': False}):
@@ -602,13 +614,14 @@ class RunnerTests(unittest.TestCase):
 
     def test_native_client_upload_actions(self):
         self.scenario['steps'].extend([
-            {'action': 'specialization', 'actor': 'caster', 'id': 60},
+            {'action': 'specialization', 'actor': 'caster', 'id': 60, 'entries': [31194]},
             {'action': 'advancement_rank', 'actor': 'caster', 'entry': 34422, 'rank': 1, 'refused': True},
             {'action': 'apply_appearances', 'actor': 'caster', 'selection': {'56': 1451, '57': 0}},
         ])
         self.assertIs(run.validate(self.scenario), self.scenario)
-        for index, key, value in ((-3, 'actor', 'target'), (-3, 'id', 0), (-2, 'rank', 4), (-2, 'actor', 'target'),
-                                   (-2, 'refused', 1), (-1, 'selection', {'x': 1}), (-1, 'selection', {'0': 1}),
+        for index, key, value in ((-3, 'actor', 'target'), (-3, 'id', 0), (-3, 'entries', []),
+                                   (-3, 'entries', [0]), (-3, 'entries', 31194), (-2, 'rank', 4),
+                                   (-2, 'actor', 'target'), (-2, 'refused', 1), (-1, 'selection', {'x': 1}), (-1, 'selection', {'0': 1}),
                                    (-1, 'selection', [1451]), (-1, 'actor', 'target')):
             invalid = copy.deepcopy(self.scenario)
             invalid['steps'][index][key] = value
