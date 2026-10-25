@@ -1603,8 +1603,61 @@ public:
     }
 };
 
+// Centaur Gallop (14001006): casting it again while it is active takes it off, like dismounting.
+class spell_centaur_gallop : public SpellScript
+{
+    PrepareSpellScript(spell_centaur_gallop);
+
+    SpellCastResult CheckCast()
+    {
+        Unit* caster = GetCaster();
+        if (caster->HasAura(GetSpellInfo()->Id))
+        {
+            caster->RemoveAurasDueToSpell(GetSpellInfo()->Id);
+            return SPELL_FAILED_DONT_REPORT;
+        }
+        return SPELL_CAST_OK;
+    }
+
+    void Register() override
+    {
+        OnCheckCast += SpellCheckCastFn(spell_centaur_gallop::CheckCast);
+    }
+};
+
+// Gallop is dismissed when its owner enters combat or is dazed (the periodic dummy of effect 1 checks twice a second).
+class spell_centaur_gallop_aura : public AuraScript
+{
+    PrepareAuraScript(spell_centaur_gallop_aura);
+
+    void Tick(AuraEffect const* /*aurEff*/)
+    {
+        Unit* target = GetTarget();
+        bool dismiss = target->IsInCombat();
+        if (!dismiss)
+        {
+            Unit::AuraEffectList const& slows = target->GetAuraEffectsByType(SPELL_AURA_MOD_DECREASE_SPEED);
+            for (AuraEffect const* slow : slows)
+                if (slow->GetSpellInfo()->Mechanic == MECHANIC_DAZE || (slow->GetSpellInfo()->GetAllEffectsMechanicMask() & (1u << MECHANIC_DAZE)))
+                {
+                    dismiss = true;
+                    break;
+                }
+        }
+        if (dismiss)
+            Remove();
+    }
+
+    void Register() override
+    {
+        OnEffectPeriodic += AuraEffectPeriodicFn(spell_centaur_gallop_aura::Tick, EFFECT_1, SPELL_AURA_PERIODIC_DUMMY);
+    }
+};
+
 void AddSC_race_racials()
 {
+    RegisterSpellScript(spell_centaur_gallop);
+    RegisterSpellScript(spell_centaur_gallop_aura);
     RegisterSpellScript(spell_race_scaled_damage);
     RegisterSpellScript(spell_race_scaled_heal);
     RegisterSpellScript(spell_race_scaled_bleed);

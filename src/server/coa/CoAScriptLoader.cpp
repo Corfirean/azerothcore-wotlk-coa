@@ -55,6 +55,7 @@ void AddSC_CoADungeonNormal();
 void AddSC_CoADungeonCompletion();
 void AddSC_CoADungeonSpoils();
 void AddSC_CoADungeonTuning();
+void AddSC_CoAHideSlots();
 void AddSC_CoAGuardLevel();
 void AddSC_CoATestZoneBonus();
 void AddSC_CoADungeonBossSpells();
@@ -735,6 +736,7 @@ void AddCoAScripts()
     AddSC_CoADungeonCompletion();
     AddSC_CoADungeonSpoils();
     AddSC_CoADungeonTuning();
+    AddSC_CoAHideSlots();
     AddSC_CoAGuardLevel();
     AddSC_CoATestZoneBonus();
     AddSC_CoADungeonBossSpells();
