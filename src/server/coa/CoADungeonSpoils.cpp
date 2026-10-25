@@ -22,6 +22,7 @@
 #include "UnitScript.h"
 #include "WorldScript.h"
 #include <algorithm>
+#include <limits>
 #include <unordered_set>
 #include <vector>
 
@@ -31,7 +32,7 @@ namespace
     constexpr uint32 DungeonSpoils = 2021814;
     constexpr uint32 DungeonSpoilsHeroic = 1202039;
     constexpr uint32 DungeonSpoilsMythic = 1027965;
-    constexpr uint32 SpoilsLevelWindow = 5;
+    constexpr uint32 SpoilsLevelWindow = 2;
 
     std::unordered_set<uint32> MarkBosses;
 
@@ -55,16 +56,26 @@ namespace
         });
     }
 
+    uint32 SpoilsLevelCap(Player const* player, std::list<LootStoreItem*> const& entries)
+    {
+        uint32 lowestLevel = std::numeric_limits<uint32>::max();
+        for (LootStoreItem const* entry : entries)
+            if (ItemTemplate const* item = sObjectMgr->GetItemTemplate(entry->itemid); item && !entry->reference)
+                lowestLevel = std::min(lowestLevel, item->RequiredLevel);
+        return std::max<uint32>(player->GetLevel(), lowestLevel);
+    }
+
     std::vector<LootStoreItem*> SpoilsFor(Player const* player, std::list<LootStoreItem*> const& entries,
         Loot const& loot, bool levelScaled, bool wearableOnly)
     {
         std::vector<LootStoreItem*> spoils;
+        uint32 const levelCap = levelScaled ? SpoilsLevelCap(player, entries) : 0;
         uint32 bestLevel = 0;
         for (LootStoreItem* entry : entries)
         {
             ItemTemplate const* item = sObjectMgr->GetItemTemplate(entry->itemid);
             if (!item || entry->reference || AlreadyDropped(loot, entry) ||
-                (levelScaled && item->RequiredLevel > player->GetLevel()) ||
+                (levelScaled && item->RequiredLevel > levelCap) ||
                 (wearableOnly && !PlayerCanWear(player, item)))
                 continue;
             spoils.push_back(entry);

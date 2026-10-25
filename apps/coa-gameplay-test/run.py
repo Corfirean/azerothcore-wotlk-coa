@@ -168,7 +168,7 @@ ACTIONS = {
     'client_packet': ({'actor', 'opcode'},
                       {'actor', 'opcode', 'fields', 'consumed', 'early', 'cast_before', 'pet_loading_before'}),
     'discover_taxi_node': ({'actor', 'entry'}, {'actor', 'entry'}),
-    'specialization': ({'actor', 'id'}, {'actor', 'id', 'refused'}),
+    'specialization': ({'actor', 'id'}, {'actor', 'id', 'entries', 'refused'}),
     'advancement_rank': ({'actor', 'entry', 'rank'}, {'actor', 'entry', 'rank', 'refused'}),
     'apply_appearances': ({'actor', 'selection'}, {'actor', 'selection'}),
     'sell_item': ({'actor', 'entry', 'item'}, {'actor', 'entry', 'item', 'count'}),
@@ -230,7 +230,7 @@ ACTIONS = {
     'spell_click_nearby': ({'actor', 'entry'}, {'actor', 'entry'}),
     'attack_owned_creature': ({'actor', 'target', 'entry'}, {'actor', 'target', 'entry'}),
     'attack_nearby': ({'actor', 'entry'}, {'actor', 'entry', 'kill', 'damage_pct'}),
-    'summon': ({'actor', 'as', 'entry'}, {'actor', 'as', 'entry', 'distance'}),
+    'summon': ({'actor', 'as', 'entry'}, {'actor', 'as', 'entry', 'distance', 'ai_action'}),
     'loot_nearby': ({'actor', 'entry'}, {'actor', 'entry'}),
     'loot_creature': ({'actor', 'target'}, {'actor', 'target'}),
     'loot_slot': ({'actor'}, {'actor', 'slot', 'item'}),
@@ -305,7 +305,7 @@ def read_json(path):
 def validate(scenario):
     keys(scenario, {'schema', 'name', 'players', 'steps'},
          {'schema', 'name', 'players', 'creatures', 'steps', 'timeout_ms', 'location', 'contract', 'hour',
-          'creature_scaling', 'vanity_ownership'}, 'scenario')
+          'creature_scaling', 'vanity_ownership', 'two_side'}, 'scenario')
     require(type(scenario['schema']) is int and scenario['schema'] == 1, 'Unsupported scenario schema')
     require(isinstance(scenario['name'], str) and scenario['name'].strip(), 'Scenario needs a name')
     number(scenario.get('timeout_ms', 90000), 'timeout_ms', 1, 600000, True)
@@ -320,6 +320,11 @@ def validate(scenario):
         require(isinstance(starter_items, list), 'vanity_ownership.starter_items must be a list')
         for item in starter_items:
             number(item, 'vanity_ownership.starter_items', 1, 2**32 - 1, True)
+    if 'two_side' in scenario:
+        two_side = scenario['two_side']
+        keys(two_side, set(), {'trade', 'mail'}, 'two_side')
+        for name, value in two_side.items():
+            require(type(value) is bool, f'two_side.{name} must be boolean')
     players = scenario['players']
     creatures = scenario.get('creatures', [])
     require(isinstance(players, list) and 1 <= len(players) <= 8, 'Expected 1..8 players')
@@ -555,6 +560,11 @@ def validate(scenario):
         if action == 'specialization':
             require(step['actor'] in player_ids, f'{where}: specialization needs a player')
             number(step['id'], f'{where}.id', 1, 0xFFFF, True)
+            if 'entries' in step:
+                require(type(step['entries']) is list and 0 < len(step['entries']) <= 50,
+                        f'{where}: entries must list 1-50 CharacterAdvancement entries')
+                for index, entry in enumerate(step['entries']):
+                    number(entry, f'{where}.entries[{index}]', 1, 2**32 - 1, True)
             require(type(step.get('refused', False)) is bool, f'{where}: refused must be boolean')
         if action == 'advancement_rank':
             require(step['actor'] in player_ids, f'{where}: advancement_rank needs a player')
