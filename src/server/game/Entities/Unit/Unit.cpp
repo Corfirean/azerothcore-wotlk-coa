@@ -18474,7 +18474,7 @@ uint32 Unit::getRaceMask() const
     switch (race)
     {
         case 12: case 13: case 15: case 16: case 18: case 20: case 22: case 27: case 30:
-        case 32: case 47: case 50: case 65: case 71: case 79: case 80: case 82: case 103: case 112:
+        case 32: case 47: case 50: case 65: case 71: case 79: case 80: case 82: case 103:
             return 1u << (RACE_HUMAN - 1);
         case 19: case 21: case 23: case 24: case 25: case 26: case 28: case 29: case 31:
         case 49: case 51: case 53: case 55: case 56: case 57: case 58: case 69: case 70:
@@ -18487,7 +18487,7 @@ uint32 Unit::getRaceMask() const
             return 1u << (RACE_NIGHTELF - 1);
         case 60: case 63: case 81: case 84: case 90: case 101:
             return 1u << (RACE_UNDEAD_PLAYER - 1);
-        case 17: case 66: case 102: case 106:
+        case 17: case 66: case 102: case 106: case 112:
             return 1u << (RACE_TAUREN - 1);
         default:
             break;

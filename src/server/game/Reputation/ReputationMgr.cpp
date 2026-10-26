@@ -31,12 +31,16 @@ const int32 ReputationMgr::PointsInRank[MAX_REPUTATION_RANK] = {36000, 3000, 300
 const int32 ReputationMgr::Reputation_Cap    =  42999;
 const int32 ReputationMgr::Reputation_Bottom = -42000;
 
-// Custom races share getRaceMask() bits with vanilla (id & 31). Use the
-// starting-zone player faction so Thunder Bluff/Silvermoon/etc. match Camp
-// Narache, Northshire, Teldrassil, and the rest.
+// The 3.3.5 client computes DBC base reputation from (race-1)&31. Standing
+// in SMSG_INITIALIZE_FACTIONS is an offset from that client base. Using the
+// mapped starting-zone mask here made Thunder Bluff send 0 (Tauren base 4000)
+// while the client added Blood Elf base 0 → Neutral, and Silvermoon Friendly.
 static uint32 ReputationRaceMask(Player const* player)
 {
-    return player->getRaceMask();
+    uint8 const race = player->getRace(true);
+    if (!race)
+        return 0;
+    return 1u << ((race - 1) & 31);
 }
 
 ReputationRank ReputationMgr::ReputationToRank(int32 standing)
@@ -220,21 +224,33 @@ void ReputationMgr::SendState(FactionState const* faction)
 
 void ReputationMgr::SendInitialReputations()
 {
-    WorldPacket data(SMSG_INITIALIZE_FACTIONS, (4 + 128 * 5));
-    data << uint32 (0x00000080);
+    // Stock 3.3.5 is 128. Ascension/CoA Faction.dbc uses reputationListID >= 128;
+    // those rows never reached the client until this count is raised.
+    uint32 count = 128;
+    for (FactionStateList::const_iterator itr = _factions.begin(); itr != _factions.end(); ++itr)
+        if (itr->first + 1 > static_cast<int32>(count))
+            count = static_cast<uint32>(itr->first + 1);
+    if (count < 128)
+        count = 128;
+    if (count > 256)
+        count = 256;
+
+    WorldPacket data(SMSG_INITIALIZE_FACTIONS, (4 + count * 5));
+    data << uint32(count);
 
     RepListID a = 0;
 
     for (FactionStateList::iterator itr = _factions.begin(); itr != _factions.end(); ++itr)
     {
-        // fill in absent fields
+        if (itr->first >= static_cast<int32>(count))
+            break;
+
         for (; a != itr->first; a++)
         {
             data << uint8  (0x00);
             data << uint32 (0x00000000);
         }
 
-        // fill in encountered data
         data << uint8  (itr->second.Flags);
         data << uint32 (itr->second.Standing);
 
@@ -243,8 +259,7 @@ void ReputationMgr::SendInitialReputations()
         ++a;
     }
 
-    // fill in absent fields
-    for (; a != 128; a++)
+    for (; a != static_cast<RepListID>(count); a++)
     {
         data << uint8  (0x00);
         data << uint32 (0x00000000);
@@ -662,7 +677,7 @@ void ReputationMgr::ApplyStartingZoneReputation()
     switch (race)
     {
         case 12: case 13: case 15: case 16: case 18: case 20: case 22: case 27: case 30:
-        case 32: case 47: case 50: case 65: case 71: case 79: case 80: case 82: case 103: case 112:
+        case 32: case 47: case 50: case 65: case 71: case 79: case 80: case 82: case 103:
             tmpl = T_HUMAN; break;
         case 19: case 21: case 23: case 24: case 25: case 26: case 28: case 29: case 31:
         case 49: case 51: case 53: case 55: case 56: case 57: case 58: case 69: case 70:
@@ -675,7 +690,7 @@ void ReputationMgr::ApplyStartingZoneReputation()
             tmpl = T_NE; break;
         case 60: case 63: case 81: case 84: case 90: case 101:
             tmpl = T_UD; break;
-        case 17: case 66: case 102: case 106:
+        case 17: case 66: case 102: case 106: case 112:
             tmpl = T_TAUREN; break;
         default:
         {
@@ -748,6 +763,10 @@ void ReputationMgr::ApplyStartingZoneReputation()
         itr->second.needSend = true;
         itr->second.needSave = true;
         SetVisible(&itr->second);
+        if (GetRank(factionEntry) <= REP_HOSTILE)
+            SetAtWar(&itr->second, true);
+        else if (GetRank(factionEntry) >= REP_FRIENDLY)
+            SetAtWar(&itr->second, false);
     }
 }
 
