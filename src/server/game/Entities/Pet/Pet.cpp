@@ -1682,7 +1682,9 @@ void Pet::_SaveAuras(CharacterDatabaseTransaction trans)
             continue;
 
         Aura* aura = itr->second;
-        if (aura->GetDuration() < 60 * IN_MILLISECONDS)
+        // A permanent aura reports duration -1, so it must not be caught by this short-duration
+        // test: doing so drops it from every pet save, including the one taken at logout.
+        if (!aura->IsPermanent() && aura->GetDuration() < 60 * IN_MILLISECONDS)
             continue;
 
         // dont save infinite negative auras! (lavas, transformations etc)
@@ -2290,8 +2292,10 @@ bool Pet::IsPermanentPetFor(Player* owner) const
                 return GetCreatureTemplate()->type == CREATURE_TYPE_UNDEAD;
             else if (owner->IsClass(CLASS_MAGE, CLASS_CONTEXT_PET))
                 return GetEntry() == 37994;
+            else if (owner->IsClass(CLASS_TINKER, CLASS_CONTEXT_PET))
+                return GetCreatureTemplate()->type == CREATURE_TYPE_MECHANICAL;
             else
-                return false;
+                return IsAscensionClass(owner->getClass());
         case HUNTER_PET:
             return true;
         default:

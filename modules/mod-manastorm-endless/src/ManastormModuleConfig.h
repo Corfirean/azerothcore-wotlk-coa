@@ -13,6 +13,9 @@ namespace ManastormModuleConfig
 {
     void Load(bool reload);
     bool Enabled();
+    uint8 AffixMinimumLevel();
+    bool WeeklyCacheLockoutEnabled();
+    uint32 WeeklyCacheLockoutLimit();
     ManastormClientMode ClientMode();
     bool IsReconstructedClientMode();
     bool IsNativeClientMode();

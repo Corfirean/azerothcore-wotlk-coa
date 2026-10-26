@@ -1,6 +1,7 @@
 #include "ManastormModuleConfig.h"
 
 #include "Config.h"
+#include <algorithm>
 #include "Log.h"
 
 namespace ManastormModuleConfig
@@ -8,12 +9,21 @@ namespace ManastormModuleConfig
     namespace
     {
         bool enabled = true;
+        uint8 affixMinimumLevel = 50;
+        bool weeklyCacheLockoutEnabled = true;
+        uint32 weeklyCacheLockoutLimit = 5;
         ManastormClientMode clientMode = ManastormClientMode::Ascension;
     }
 
     void Load(bool reload)
     {
         bool const requestedEnabled = sConfigMgr->GetOption<bool>("Manastorm.Enable", true);
+        weeklyCacheLockoutEnabled = sConfigMgr->GetOption<bool>("Manastorm.WeeklyCacheLockout.Enabled", true);
+        int32 const requestedLimit = sConfigMgr->GetOption<int32>("Manastorm.WeeklyCacheLockout.Limit", 5);
+        weeklyCacheLockoutLimit = requestedLimit >= 0 && requestedLimit <= 255 ? uint32(requestedLimit) : 5;
+        if (requestedLimit < 0 || requestedLimit > 255)
+            LOG_ERROR("module.manastorm.endless", "Invalid Manastorm.WeeklyCacheLockout.Limit={}; "
+                "expected 0..255, using 5.", requestedLimit);
         uint32 const requestedMode = sConfigMgr->GetOption<uint32>("Manastorm.ClientMode", 2);
         if (reload)
         {
@@ -24,10 +34,26 @@ namespace ManastormModuleConfig
                     "keeping enabled={} clientMode={} for this process.", enabled, uint32(clientMode));
             return;
         }
+        affixMinimumLevel = uint8(std::clamp(sConfigMgr->GetOption<uint32>("Manastorm.AffixMinimumLevel", 50), 1u, 80u));
         enabled = requestedEnabled;
         clientMode = requestedMode == 2 ? ManastormClientMode::Ascension : ManastormClientMode::Reconstructed;
         if (requestedMode != 1 && requestedMode != 2)
             LOG_ERROR("module.manastorm.endless", "Invalid Manastorm.ClientMode={}; using Mode 1.", requestedMode);
+    }
+
+    bool WeeklyCacheLockoutEnabled()
+    {
+        return weeklyCacheLockoutEnabled;
+    }
+
+    uint32 WeeklyCacheLockoutLimit()
+    {
+        return weeklyCacheLockoutLimit;
+    }
+
+    uint8 AffixMinimumLevel()
+    {
+        return affixMinimumLevel;
     }
 
     bool Enabled()

@@ -731,6 +731,13 @@ void Spell::InitExplicitTargets(SpellCastTargets const& targets)
 {
     m_targets = targets;
     m_originalTargetGUID = targets.GetObjectTargetGUID();
+    if (m_spellInfo->HasEffect(SPELL_EFFECT_SUMMON_RAF_FRIEND) && m_caster->IsPlayer())
+    {
+        if (m_originalTargetGUID.IsEmpty())
+            m_originalTargetGUID = m_caster->ToPlayer()->GetTarget();
+        m_targets.RemoveObjectTarget();
+        return;
+    }
     // this function tries to correct spell explicit targets for spell
     // client doesn't send explicit targets correctly sometimes - we need to fix such spells serverside
     // this also makes sure that we correctly send explicit targets to client (removes redundant data)
@@ -2039,6 +2046,13 @@ void Spell::SelectEffectTypeImplicitTargets(uint8 effIndex)
     switch (m_spellInfo->Effects[effIndex].Effect)
     {
         case SPELL_EFFECT_SUMMON_RAF_FRIEND:
+        {
+            WorldObject* target = ObjectAccessor::FindPlayer(m_originalTargetGUID);
+            CallScriptObjectTargetSelectHandlers(target, SpellEffIndex(effIndex), SpellImplicitTargetInfo());
+            if (target && target->IsPlayer())
+                AddUnitTarget(target->ToUnit(), 1 << effIndex, false);
+            return;
+        }
         case SPELL_EFFECT_SUMMON_PLAYER:
             if (m_caster->IsPlayer() && m_caster->ToPlayer()->GetTarget())
             {
@@ -3252,7 +3266,7 @@ SpellMissInfo Spell::DoSpellHitOnUnit(Unit* unit, uint32 effectMask, bool scaleA
                     duration = m_originalCaster->ModSpellDuration(aurSpellInfo, unit, duration, positive, effectMask);
 
                     // xinef: haste affects duration of those spells twice
-                    if (m_originalCaster->HasAuraTypeWithAffectMask(SPELL_AURA_PERIODIC_HASTE, aurSpellInfo) || m_spellInfo->HasAttribute(SPELL_ATTR5_SPELL_HASTE_AFFECTS_PERIODIC))
+                    if (m_originalCaster->HasDurationShorteningPeriodicHaste(aurSpellInfo) || m_spellInfo->HasAttribute(SPELL_ATTR5_SPELL_HASTE_AFFECTS_PERIODIC))
                         duration = int32(duration * m_originalCaster->GetFloatValue(UNIT_MOD_CAST_SPEED));
 
                     if (m_spellValue->AuraDuration != 0)
@@ -4185,7 +4199,7 @@ void Spell::handle_immediate()
                 modOwner->ApplySpellMod(m_spellInfo->Id, SPELLMOD_DURATION, duration);
 
             // Apply haste mods
-            if (m_caster->HasAuraTypeWithAffectMask(SPELL_AURA_PERIODIC_HASTE, m_spellInfo) || m_spellInfo->HasAttribute(SPELL_ATTR5_SPELL_HASTE_AFFECTS_PERIODIC))
+            if (m_caster->HasDurationShorteningPeriodicHaste(m_spellInfo) || m_spellInfo->HasAttribute(SPELL_ATTR5_SPELL_HASTE_AFFECTS_PERIODIC))
                 duration = int32(duration * m_caster->GetFloatValue(UNIT_MOD_CAST_SPEED));
 
             m_spellState = SPELL_STATE_CASTING;
@@ -4408,9 +4422,10 @@ void Spell::_handle_finish_phase()
         }
 
         // For trap activation, pass the original target (trap triggerer) so proc trigger spells
-        // like Entrapment can find a valid target to cast on
+        // like Entrapment can find a valid target to cast on; likewise a finishing move's target, which
+        // Ruthlessness gives its combo point to
         Unit* finishVictim = nullptr;
-        if (procAttacker & PROC_FLAG_DONE_TRAP_ACTIVATION)
+        if (procAttacker & PROC_FLAG_DONE_TRAP_ACTIVATION || m_spellInfo->NeedsComboPoints())
             finishVictim = GetOriginalTarget();
 
         Unit::ProcSkillsAndAuras(m_originalCaster, finishVictim, procAttacker, PROC_FLAG_NONE, hitMask, 1, BASE_ATTACK, m_spellInfo, m_triggeredByAuraSpell.spellInfo,
@@ -4448,7 +4463,9 @@ void Spell::SendSpellCooldown()
     // mana/health/etc potions, disabled by client (until combat out as declarate)
     // A triggered spell never clears the potion (Player::UpdatePotionCooldown skips it), so it must not set it either:
     // an item whose second on-use spell is triggered would otherwise leave every potion "not ready" out of combat.
-    if (m_CastItem && !IsIgnoringCooldowns() && (m_CastItem->IsPotion() || m_spellInfo->IsCooldownStartedOnEvent()))
+    if (m_CastItem && !IsIgnoringCooldowns() &&
+        (m_CastItem->IsPotion() || m_spellInfo->IsCooldownStartedOnEvent() ||
+         m_CastItem->GetTemplate()->UsesSharedPotionCooldown(m_spellInfo->Id)))
     {
         // need in some way provided data for Spell::finish SendCooldownEvent
         _player->SetLastPotionId(m_CastItem->GetEntry());
@@ -5798,7 +5815,9 @@ SpellCastResult Spell::CheckCast(bool strict, uint32* /*param1*/, uint32* /*para
             }
 
             // check if we are using a potion in combat for the 2nd+ time. Cooldown is added only after caster gets out of combat
-            if (m_caster->ToPlayer()->GetLastPotionId() && m_CastItem && (m_CastItem->IsPotion() || m_spellInfo->IsCooldownStartedOnEvent()))
+            if (m_caster->ToPlayer()->GetLastPotionId() && m_CastItem &&
+                (m_CastItem->IsPotion() || m_spellInfo->IsCooldownStartedOnEvent() ||
+                 m_CastItem->GetTemplate()->UsesSharedPotionCooldown(m_spellInfo->Id)))
                 return SPELL_FAILED_NOT_READY;
         }
         else if (!IsTriggered() && m_caster->IsCreature() && m_caster->ToCreature()->IsSpellProhibited(m_spellInfo->GetSchoolMask()))
@@ -6642,15 +6661,10 @@ SpellCastResult Spell::CheckCast(bool strict, uint32* /*param1*/, uint32* /*para
                         return SPELL_FAILED_BAD_TARGETS;
 
                     Player* playerCaster = m_caster->ToPlayer();
-                    //
-                    if (!(playerCaster->GetTarget()))
-                        return SPELL_FAILED_BAD_TARGETS;
-
-                    Player* target = ObjectAccessor::FindPlayer(m_caster->ToPlayer()->GetTarget());
-
-                    if (!target ||
-                            !(target->GetSession()->GetRecruiterId() == playerCaster->GetSession()->GetAccountId() || target->GetSession()->GetAccountId() == playerCaster->GetSession()->GetRecruiterId()))
-                        return SPELL_FAILED_BAD_TARGETS;
+                    Player* target = ObjectAccessor::FindPlayer(m_originalTargetGUID);
+                    SpellCastResult const result = playerCaster->GetSession()->CheckRecruitAFriendSummon(target);
+                    if (result != SPELL_CAST_OK)
+                        return result;
 
                     // Xinef: Implement summon pending error
                     if (target->GetSummonExpireTimer() > GameTime::GetGameTime().count())
@@ -7039,7 +7053,7 @@ SpellCastResult Spell::CheckCasterAuras(bool preventionOnly) const
 
     // Glyph of Pain Suppression
     // there is no other way to handle it
-    if (m_spellInfo->Id == 33206 && !m_caster->HasAura(63248))
+    if (m_spellInfo->Id == 33206 && !m_caster->HasAuraOrTwin(63248))
         usableInStun = false;
 
     // Check whether the cast should be prevented by any state you might have.
@@ -8239,13 +8253,7 @@ bool Spell::CheckEffectTarget(Unit const* target, uint32 eff) const
         case SPELL_EFFECT_SUMMON_RAF_FRIEND:
             if (!m_caster->IsPlayer() || !target->IsPlayer())
                 return false;
-            if (m_caster->ToPlayer()->GetSession()->IsARecruiter() && target->ToPlayer()->GetSession()->GetRecruiterId() != m_caster->ToPlayer()->GetSession()->GetAccountId())
-                return false;
-            if (m_caster->ToPlayer()->GetSession()->GetRecruiterId() != target->ToPlayer()->GetSession()->GetAccountId() && target->ToPlayer()->GetSession()->IsARecruiter())
-                return false;
-            if (target->ToPlayer()->GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_RECRUIT_A_FRIEND_BONUS_PLAYER_LEVEL))
-                return false;
-            break;
+            return m_caster->ToPlayer()->GetSession()->CheckRecruitAFriendSummon(target->ToPlayer()) == SPELL_CAST_OK;
         default: // normal case
         {
             uint32 losChecks = LINEOFSIGHT_ALL_CHECKS;

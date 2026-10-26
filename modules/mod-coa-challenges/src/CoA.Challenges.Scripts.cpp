@@ -6,6 +6,7 @@
 #include "Random.h"
 #include "AllCreatureScript.h"
 #include "AccountScript.h"
+#include "AscensionClientLua.h"
 #include "LocalLevelScaling.h"
 
 using namespace Acore::ChatCommands;
@@ -1142,6 +1143,81 @@ namespace CoAChallenges
         creature->CustomData.Erase(AdventureHealthKey);
     }
 
+    // An Adventure player is sent the health their first hit will give a monster before they engage
+    // it. Only the values in that player's update are changed: the monster's own health changes when
+    // ScaleAdventureHealth runs, and a monster it has already scaled is sent unchanged.
+    bool PreviewsAdventureHealth(Creature const* creature, Player const* viewer)
+    {
+        return creature->IsAlive() && !creature->IsCharmedOwnedByPlayerOrPlayer() &&
+            !creature->CustomData.Get<AdventureHealth>(AdventureHealthKey) && !creature->IsFriendlyTo(viewer) &&
+            (!creature->hasLootRecipient() || creature->isTappedBy(viewer));
+    }
+
+    void PatchAdventureHealthPreview(Unit const* unit, ByteBuffer& data, BuildValuesCachePosPointers& pos,
+        Player* viewer)
+    {
+        Creature const* creature = unit ? unit->ToCreature() : nullptr;
+        if (!creature || !viewer)
+            return;
+        uint32 const tier = AdventureModeTier(viewer);
+        if (!tier || !PreviewsAdventureHealth(creature, viewer))
+            return;
+
+        auto const maxHealthPos = pos.other.find(UNIT_FIELD_MAXHEALTH);
+        if (maxHealthPos == pos.other.end())
+            return;
+        uint32 const maxHealth = data.read<uint32>(maxHealthPos->second);
+        if (!maxHealth)
+            return;
+        uint32 const shownMaxHealth = uint32(float(maxHealth) +
+            CalculatePct(float(maxHealth), AdventureModeExtraHealthPct(tier)));
+        data.put<uint32>(maxHealthPos->second, shownMaxHealth);
+        if (auto const healthPos = pos.other.find(UNIT_FIELD_HEALTH); healthPos != pos.other.end())
+            data.put<uint32>(healthPos->second,
+                uint32(uint64(data.read<uint32>(healthPos->second)) * shownMaxHealth / maxHealth));
+    }
+
+    // The hit that taps a monster can end the preview for other Adventure players, while only its current
+    // health changes: send its maximum health again so their bar is rebuilt from the real pool.
+    void ResendMaxHealthOnTap(Unit* victim)
+    {
+        Creature* creature = victim->ToCreature();
+        if (creature && !creature->hasLootRecipient() && !creature->CustomData.Get<AdventureHealth>(AdventureHealthKey))
+            creature->ForceValuesUpdateAtIndex(UNIT_FIELD_MAXHEALTH);
+    }
+
+    constexpr char const* AdventurePreviewKey = "coa_challenges.adventure_preview";
+    constexpr uint32 AdventurePreviewRefreshMs = 1000;
+
+    struct AdventurePreview : DataMap::Base
+    {
+        uint32 tier = 0;
+        uint32 timer = 0;
+    };
+
+    void UpdateAdventureHealthPreview(Player* player, uint32 diff)
+    {
+        AdventurePreview* preview = player->CustomData.GetDefault<AdventurePreview>(AdventurePreviewKey);
+        if (preview->timer > diff)
+        {
+            preview->timer -= diff;
+            return;
+        }
+        preview->timer = AdventurePreviewRefreshMs;
+        uint32 const tier = AdventureModeTier(player);
+        if (tier == preview->tier)
+            return;
+        preview->tier = tier;
+        player->DoForAllVisibleWorldObjects([](WorldObject* object)
+        {
+            if (Creature* creature = object->ToCreature())
+            {
+                creature->ForceValuesUpdateAtIndex(UNIT_FIELD_MAXHEALTH);
+                creature->ForceValuesUpdateAtIndex(UNIT_FIELD_HEALTH);
+            }
+        });
+    }
+
     // ---- STRICT_CHALLENGE_RESTRICTED_TAPPING -----------------------------------
     // A monster's kill rewards (experience, reputation, quest credit and loot)
     // go only to group members in the same restricted challenge as the player
@@ -1699,7 +1775,10 @@ namespace CoAChallenges
             if (Quest const* quest = sObjectMgr->GetQuestTemplate(quest_id))
             {
                 static char const* colors[5] = {"GRAY", "GREEN", "YELLOW", "ORANGE", "RED"};
-                int c = QuestColor(quest->GetQuestLevel(), player->GetLevel());
+                int qLevel = quest->GetQuestLevel();
+                if (qLevel < 0)
+                    return true;
+                int c = QuestColor(uint32(qLevel), player->GetLevel());
                 std::string rule = std::string("CHALLENGE_RULES_TYPE_NO_") + colors[c] + "_QUESTS";
                 if (PlayerHasRule(player, rule.c_str()))
                 {
@@ -2257,6 +2336,7 @@ namespace CoAChallenges
             SpellbindUpdate(player, diff);
             EnforceHighRisk(player);
             UpdateCosmeticElite(player, diff);
+            UpdateAdventureHealthPreview(player, diff);
         }
 
         void OnPlayerRewardKillRewarder(Player* player, KillRewarder* rewarder, bool /*isDungeon*/,
@@ -3719,11 +3799,23 @@ namespace CoAChallenges
     public:
         CoAChallengesUnit() : UnitScript("CoAChallengesUnit", true,
             { UNITHOOK_ON_DAMAGE, UNITHOOK_ON_HEAL, UNITHOOK_MODIFY_HEAL_RECEIVED, UNITHOOK_ON_BEFORE_ROLL_MELEE_OUTCOME_AGAINST, UNITHOOK_CAN_UNIT_ATTACK,
-              UNITHOOK_ON_UNIT_EXIT_COMBAT }) { }
+              UNITHOOK_ON_UNIT_EXIT_COMBAT, UNITHOOK_SHOULD_TRACK_VALUES_UPDATE_POS_BY_INDEX,
+              UNITHOOK_ON_PATCH_VALUES_UPDATE }) { }
 
         void OnUnitExitCombat(Unit* unit) override
         {
             RestoreAdventureHealth(unit);
+        }
+
+        bool ShouldTrackValuesUpdatePosByIndex(Unit const* unit, uint8 /*updateType*/, uint16 index) override
+        {
+            return unit && unit->IsCreature() && (index == UNIT_FIELD_MAXHEALTH || index == UNIT_FIELD_HEALTH);
+        }
+
+        void OnPatchValuesUpdate(Unit const* unit, ByteBuffer& data, BuildValuesCachePosPointers& pos,
+            Player* target) override
+        {
+            PatchAdventureHealthPreview(unit, data, pos, target);
         }
 
         // Open-world PvP range rules (from the client localization):
@@ -3830,6 +3922,7 @@ namespace CoAChallenges
             }
 
             ScaleAdventureHealth(pl, victim);
+            ResendMaxHealthOnTap(victim);
 
             // NO_KILL_*: prevent the killing blow against forbidden creature types.
             if (victim->IsCreature() && damage >= victim->GetHealth() && victim->GetHealth() > 1)
@@ -3912,6 +4005,9 @@ namespace CoAChallenges
             if (!owner)
                 return;
 
+            if (!owner->IsFriendlyTo(creature))
+                return;
+
             ApplyActiveChallengeSpellsToCreature(owner, creature);
         }
     };
@@ -3921,6 +4017,11 @@ namespace CoAChallenges
 void Addmod_coa_challengesScripts()
 {
     RegisterAscensionClientConfig(&CoAChallenges::AppendClientConfig);
+    RegisterAscensionChallengeStateSync([](Player* player)
+    {
+        CoAChallenges::SendActiveList(player);
+        CoAChallenges::SendCriteriaState(player);
+    });
     LocalLevelScaling::ChallengeBlocksOwner.store(&CoAChallenges::LevelScalingBlocks, std::memory_order_relaxed);
     new CoAChallenges::CoAChallengesPlayer();
     new CoAChallenges::CoAChallengesWorld();

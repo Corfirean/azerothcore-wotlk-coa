@@ -710,8 +710,9 @@ enum RBACPermissions
     // custom permissions 1000+
     RBAC_PERM_COMMAND_CHEAT_SPELLCHARGES                     = 1000,
     // 1001 is Command: resettalents in the live auth database.
-    // 1002 and 1003 are left open: jealous-sound/main uses that block for its own permissions.
+    // 1003 is jealous-sound .gear unequip. 1002 stays open.
     RBAC_PERM_COMMAND_RESETTALENTS_SELF                      = 1001,
+    RBAC_PERM_COMMAND_GEAR_UNEQUIP                           = 1003,
     RBAC_PERM_COMMAND_GROOT_AWARD                            = 1005,
     RBAC_PERM_COMMAND_GROOT_AUDIT                            = 1006,
     RBAC_PERM_MAX

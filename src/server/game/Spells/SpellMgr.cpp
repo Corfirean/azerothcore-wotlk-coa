@@ -675,7 +675,12 @@ uint32 SpellMgr::GetSpellWithRank(uint32 spell_id, uint32 rank, bool strict) con
     if (SpellChainNode const* node = GetSpellChainNode(spell_id))
     {
         if (rank != node->rank)
-            return GetSpellWithRank(node->rank < rank ? node->next->Id : node->prev->Id, rank, strict);
+        {
+            SpellInfo const* step = node->rank < rank ? node->next : node->prev;
+            if (!step)
+                return strict ? 0 : spell_id;
+            return GetSpellWithRank(step->Id, rank, strict);
+        }
     }
     else if (strict && rank > 1)
         return 0;
@@ -1621,8 +1626,8 @@ void SpellMgr::LoadSpellRequired()
         {
             if (mSpellReq.contains(twin->second))
                 continue;
-            auto const reqTwin = _spellTwins.find(spellReq);
-            twinRequirements.emplace_back(twin->second, reqTwin != _spellTwins.end() ? reqTwin->second : spellReq);
+            // the requirement's own copy at the same offset, also when it is a namesake (Reborn Bear Form)
+            twinRequirements.emplace_back(twin->second, GetSpellTwinFor(spellReq, twin->second));
         }
     }
     for (auto const& [spellId, spellReq] : twinRequirements)
@@ -1667,9 +1672,9 @@ void SpellMgr::LoadSpellLearnSkills()
                     }
                     else
                     {
-                        dbc_node.value = dbc_node.step * 75;
+                        dbc_node.value = GetSkillValueForStep(dbc_node.skill, dbc_node.step);
                     }
-                    dbc_node.maxvalue = dbc_node.step * 75;
+                    dbc_node.maxvalue = GetSkillValueForStep(dbc_node.skill, dbc_node.step);
                     break;
                 case SPELL_EFFECT_DUAL_WIELD:
                     dbc_node.skill = SKILL_DUAL_WIELD;
@@ -3474,8 +3479,12 @@ void SpellMgr::LoadSpellInfoCustomAttributes()
     }
     else
     {
-        for (count = 0; result->NextRow(); ++count)
+        count = 0;
+
+        do
         {
+            ++count;
+
             Field const* fields = result->Fetch();
 
             uint32 const spellId = fields[0].Get<uint32>();
@@ -3535,7 +3544,7 @@ void SpellMgr::LoadSpellInfoCustomAttributes()
 
             spellInfo->AttributesCu |= attributes;
             databaseAttributes[spellId] = attributes;
-        }
+        } while (result->NextRow());
 
         for (auto const& [source, twin] : _spellTwins)
         {

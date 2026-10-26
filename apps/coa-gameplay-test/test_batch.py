@@ -293,7 +293,8 @@ SHIPPED_EXCLUSIVE = {'bloodforged-high-risk-drop', 'coa-prestige-chromie-spawns'
                      'native-fixture-descendant-cleanup-producer', 'native-fixture-descendant-cleanup-consumer',
                      'vanilla-dungeons-normal', 'vanilla-dungeons-heroic', 'vanilla-dungeons-mythic',
                      'vanilla-dungeons-health', 'mythic-plus-keystone-run', 'mythic-plus-client-data-at-login',
-                     'test-zone-bonus-command', 'test-zone-bonus-westfall'}
+                     'test-zone-bonus-command', 'test-zone-bonus-westfall', 'void-portal-capture',
+                     'path-to-ascension-arena-solo-queue-tutorial', 'molten-core-lucifron-encounter'}
 UTC_EVENING = datetime(2026, 9, 24, 22, 40, tzinfo=timezone.utc)
 
 
@@ -910,6 +911,51 @@ class BatchTests(unittest.TestCase):
 
     def test_creature_scaling_cases_run_exclusively_without_a_policy_entry(self):
         self.write(self.definitions / 'scenarios' / 'beta.json', {**SCENARIOS['beta'], 'creature_scaling': True})
+        code, result = self.simulated('--lanes', '3', '--scenario', 'beta', *SLOW[:3])
+        self.assertEqual(code, 0, self.stderr.getvalue())
+        admissions = self.events('lanes.log')
+        self.assertEqual((admissions[0]['name'], admissions[0]['exclusive'], admissions[0]['running']),
+                         ('Beta', True, []))
+        self.assertEqual([event['exclusive'] for event in admissions[1:]], [False] * 3)
+        self.assertEqual(result['simulation']['exclusive'], ['beta'])
+
+    def test_vanity_ownership_cases_run_exclusively_without_a_policy_entry(self):
+        self.write(self.definitions / 'scenarios' / 'beta.json',
+                   {**SCENARIOS['beta'], 'vanity_ownership': {'unlock_all': False}})
+        code, result = self.simulated('--lanes', '3', '--scenario', 'beta', *SLOW[:3])
+        self.assertEqual(code, 0, self.stderr.getvalue())
+        admissions = self.events('lanes.log')
+        self.assertEqual((admissions[0]['name'], admissions[0]['exclusive'], admissions[0]['running']),
+                         ('Beta', True, []))
+        self.assertEqual([event['exclusive'] for event in admissions[1:]], [False] * 3)
+        self.assertEqual(result['simulation']['exclusive'], ['beta'])
+
+    def test_two_side_cases_run_exclusively_without_a_policy_entry(self):
+        self.write(self.definitions / 'scenarios' / 'beta.json', {**SCENARIOS['beta'], 'two_side': {'trade': True}})
+        code, result = self.simulated('--lanes', '3', '--scenario', 'beta', *SLOW[:3])
+        self.assertEqual(code, 0, self.stderr.getvalue())
+        admissions = self.events('lanes.log')
+        self.assertEqual((admissions[0]['name'], admissions[0]['exclusive'], admissions[0]['running']),
+                         ('Beta', True, []))
+        self.assertEqual([event['exclusive'] for event in admissions[1:]], [False] * 3)
+        self.assertEqual(result['simulation']['exclusive'], ['beta'])
+
+    def test_game_event_cases_run_exclusively_without_a_policy_entry(self):
+        self.write(self.definitions / 'scenarios' / 'beta.json',
+                   {**SCENARIOS['beta'], 'steps': [{'action': 'game_event', 'event': 12, 'active': True},
+                                                   *SCENARIOS['beta']['steps']]})
+        code, result = self.simulated('--lanes', '3', '--scenario', 'beta', *SLOW[:3])
+        self.assertEqual(code, 0, self.stderr.getvalue())
+        admissions = self.events('lanes.log')
+        self.assertEqual((admissions[0]['name'], admissions[0]['exclusive'], admissions[0]['running']),
+                         ('Beta', True, []))
+        self.assertEqual([event['exclusive'] for event in admissions[1:]], [False] * 3)
+        self.assertEqual(result['simulation']['exclusive'], ['beta'])
+
+    def test_encounter_cases_run_exclusively_without_a_policy_entry(self):
+        self.write(self.definitions / 'scenarios' / 'beta.json',
+                   {**SCENARIOS['beta'], 'steps': [{'action': 'encounter_start', 'actor': 'caster', 'boss_entry': 36},
+                                                   *SCENARIOS['beta']['steps']]})
         code, result = self.simulated('--lanes', '3', '--scenario', 'beta', *SLOW[:3])
         self.assertEqual(code, 0, self.stderr.getvalue())
         admissions = self.events('lanes.log')

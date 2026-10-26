@@ -11,7 +11,8 @@ Sources live in `src/server/coa/`, focused regressions in `apps/coa-tests/`, and
 configuration templates in `src/server/coa/conf/`. They install to
 `etc/modules/coa.conf` and `etc/modules/coa_bugreport.conf`; runtime configuration is
 supplied there, not by committing live local credentials. CoA logs under `coa`,
-`coa.gameplay_test` and `coa.highrisk`.
+`coa.gameplay_test`, `coa.highrisk` and `coa.hotpatch`. Server-sent interface Lua is described in
+`client-hot-patch.md`.
 
 This fork, CoA included, is licensed under the root `LICENSE` (GNU GPL v2), like
 AzerothCore. Most CoA source files still carry the short "GNU AGPL v3" notice from
@@ -430,12 +431,10 @@ zone gets its buff, players entering later get it for the time left, and a secon
 scroll of the same kind is refused while one is active. The registry lives in
 memory, so a restart clears active blessings.
 
-Keeper's Scroll: Steadfast (91770) ships as an empty dummy; the server rewrites it
-into +25% mounted speed with the stacking mount speed aura Crusader Aura uses. Its
-client row has no tooltip either. When preparing a requested client update, run
-`apps/coa-spells/keepers_scroll_steadfast.py --input <Spell.dbc> --output
-<candidate-Spell.dbc>`; it edits one row in a separate output and never packages or
-installs a client archive.
+Keeper's Scroll: Steadfast's item spell (91770) is an empty dummy with no tooltip,
+so its blessing is the aura spell 91769 instead: +25% mounted speed for one hour
+with the client's own tooltip. A scroll whose blessing is a different spell gives
+it to the user as well.
 
 ## Login and natural regeneration
 

@@ -219,9 +219,15 @@ void SyncAuras(Player* player, State& state)
             ++wanted[spell];
     for (auto const& [spell, stacks] : state.Auras)
         if (!wanted.contains(spell))
+        {
             player->RemoveAurasDueToSpell(spell);
+            if (Enchant const* enchant = Loaded.FindSpell(spell); enchant && enchant->Taught)
+                player->removeSpell(enchant->Taught, SPEC_MASK_ALL, true);
+        }
     for (auto const& [spell, stacks] : wanted)
     {
+        if (Enchant const* enchant = Loaded.FindSpell(spell); enchant && enchant->Taught && !player->HasSpell(enchant->Taught))
+            player->learnSpell(enchant->Taught, true);
         Aura* aura = player->GetAura(spell);
         if (!aura)
             aura = player->AddAura(spell, player);
@@ -356,8 +362,8 @@ void GrantReforgeProgress(Player* player, State& state, Enchant const& rolled)
     state.Progress = progress.Points;
     state.Level = progress.Level;
     SaveHeader(player, state);
-    if (levels)
-        player->AddItem(MYSTIC_EXTRACT, levels);
+    if (levels && player->AddItem(MYSTIC_EXTRACT, levels))
+        sScriptMgr->OnPlayerCoAProgress(player, CoAProgressEvent::MysticExtractEarned, levels);
 }
 
 void HandleReforgeItem(Player* player, State& state, WorldPacket& packet)
@@ -382,6 +388,7 @@ void HandleReforgeItem(Player* player, State& state, WorldPacket& packet)
         ApplyCharge(player, ReforgeCharge(character));
         GrantReforgeProgress(player, state, *rolled);
         player->AddSpellCooldown(REFORGE_SPELL, 0, REFORGE_COOLDOWN, true);
+        sScriptMgr->OnPlayerCoAProgress(player, CoAProgressEvent::MysticScrollReforged, rolled->Spell);
     }
     WorldPacket response(SMSG_REFORGE_RANDOM_ENCHANT_RESULT, 40);
     response << REFORGE_RESULTS[result] << uint32(rolled && result == REFORGE_OK ? rolled->Spell : 0);
@@ -452,6 +459,7 @@ void HandleSaveCollectionReforge(Player* player, State& state, WorldPacket& pack
     SendResult(player, SMSG_COLLECTION_REFORGE_RANDOM_ENCHANT_RESULT,
         COLLECTION_REFORGE_RESULTS[COLLECTION_REFORGE_OK]);
     SavePreset(player, character);
+    sScriptMgr->OnPlayerCoAProgress(player, CoAProgressEvent::MysticCollectionApplied, uint32(staged.size()));
 }
 
 void CompleteDisenchant(Player* player, State& state, Character const& character, uint32 spell, uint32 bought)
@@ -462,6 +470,7 @@ void CompleteDisenchant(Player* player, State& state, Character const& character
         if (uint32 const held = ExtractCost(character, *enchant) - std::min(bought, ExtractCost(character, *enchant)))
             player->DestroyItemCount(MYSTIC_EXTRACT, held, true);
     Learn(player, state, spell);
+    sScriptMgr->OnPlayerCoAProgress(player, CoAProgressEvent::MysticEnchantExtracted, spell);
 }
 
 void HandleDisenchantItem(Player* player, State& state, WorldPacket& packet)
@@ -613,6 +622,7 @@ void HandleSaveApply(Player* player, State& state, WorldPacket& packet)
     SendResult(player, SMSG_APPLY_RANDOM_ENCHANT_RESULT, APPLY_RESULTS[APPLY_OK]);
     SavePreset(player, character);
     LOG_INFO("coa", "{} applied {} mystic scroll(s)", player->GetName(), consumed.size());
+    sScriptMgr->OnPlayerCoAProgress(player, CoAProgressEvent::MysticScrollApplied, uint32(consumed.size()));
 }
 
 void HandleDestroy(Player* player, State& state, WorldPacket& packet)
@@ -648,7 +658,11 @@ void HandlePurchaseScroll(Player* player)
     {
         player->ModifyMoney(-int32(price));
         if (Item* item = player->StoreNewItem(destination, UNTARNISHED_MYSTIC_SCROLL, true))
+        {
             player->SendNewItem(item, 1, true, false);
+            sScriptMgr->OnPlayerCoAProgress(player, CoAProgressEvent::MysticScrollPurchased,
+                UNTARNISHED_MYSTIC_SCROLL);
+        }
     }
     SendResult(player, SMSG_PURCHASE_MYSTIC_SCROLL_RESULT, PURCHASE_RESULTS[result]);
 }
@@ -682,6 +696,7 @@ void HandleActivatePreset(Player* player, State& state, WorldPacket& packet)
     uint32 const preset = packet.read<uint32>();
     ClientConfig const config = CurrentClientConfig();
     uint32 const result = CheckPresetActivate(Describe(player, config), preset, uint32(state.Presets.size()));
+    uint32 const previous = state.ActivePreset;
     if (result == PRESET_SET_ACTIVE_OK)
     {
         Slots const before = state.Active();
@@ -691,6 +706,8 @@ void HandleActivatePreset(Player* player, State& state, WorldPacket& packet)
         SendChangedSlots(player, before, state.Active());
     }
     SendResult(player, SMSG_SET_ACTIVE_RANDOM_ENCHANT_PRESET_RESULT, PRESET_SET_ACTIVE_RESULTS[result]);
+    if (result == PRESET_SET_ACTIVE_OK && preset != previous)
+        sScriptMgr->OnPlayerCoAProgress(player, CoAProgressEvent::MysticPresetActivated, preset);
 }
 
 void HandleUnlockPreset(Player* player, State& state)
@@ -1005,7 +1022,7 @@ public:
 };
 }
 
-bool ApplyGuide(Player* player, std::vector<GuideEnchant> const& guide)
+bool ApplyGuide(Player* player, std::vector<GuideEnchant> const& guide, bool learnMissing)
 {
     State* state = Ready ? Find(player) : nullptr;
     if (!state || guide.empty())
@@ -1013,6 +1030,9 @@ bool ApplyGuide(Player* player, std::vector<GuideEnchant> const& guide)
     ClientConfig const config = CurrentClientConfig();
     Character character = Describe(player, config);
     character.Known = &state->Known;
+    if (learnMissing)
+        for (uint32 spell : GuideLessons(Loaded, character, guide))
+            Learn(player, *state, spell);
     Slots const before = state->Active();
     Slots const after = GuideSlots(Loaded, character, before, guide);
     if (after == before)
@@ -1024,6 +1044,67 @@ bool ApplyGuide(Player* player, std::vector<GuideEnchant> const& guide)
     SyncAuras(player, *state);
     SendChangedSlots(player, before, after);
     return true;
+}
+
+uint32 ClearActivePreset(Player* player)
+{
+    State* state = Ready ? Find(player) : nullptr;
+    if (!state)
+        return 0;
+    Slots const before = state->Active();
+    uint32 cleared = 0;
+    for (uint32 slot = 0; slot < SLOT_COUNT; ++slot)
+        if (before[slot])
+        {
+            state->Active()[slot] = 0;
+            SaveSlot(player, state->ActivePreset, slot, 0);
+            ++cleared;
+        }
+    if (cleared)
+    {
+        SyncAuras(player, *state);
+        SendChangedSlots(player, before, state->Active());
+    }
+    return cleared;
+}
+
+std::optional<Collection> Summarize(Player const* player)
+{
+    State const* state = Ready ? Find(player) : nullptr;
+    if (!state)
+        return std::nullopt;
+    uint32 const classId = player->getClass();
+    std::array<bool, REALM_COUNT> const gates = AscensionFreepick::RealmGates();
+    auto const quality = [classId](Enchant const& enchant)
+    {
+        return std::min<uint32>(QualityOf(enchant, classId), QUALITY_MAX - 1);
+    };
+    Collection collection;
+    for (Enchant const& enchant : Loaded.Rows)
+        if (enchant.Item && ClassAllowed(enchant, classId) && RealmAllows(enchant, gates))
+            collection.Offered[quality(enchant)] = true;
+    for (uint32 spell : state->Known)
+        if (Enchant const* enchant = Loaded.FindSpell(spell))
+        {
+            ++collection.Known[quality(*enchant)];
+            collection.KnownWorldforged += enchant->Worldforged ? 1 : 0;
+        }
+    collection.KnownTotal = uint32(state->Known.size());
+    ClientConfig const config = CurrentClientConfig();
+    bool const fusion = Describe(player, config).Fusion();
+    Slots const& active = state->Presets[state->ActivePreset];
+    for (uint32 slot = 0; slot < SLOT_COUNT; ++slot)
+    {
+        if (!SlotValid(slot, fusion))
+            continue;
+        ++collection.OpenSlots;
+        if (!active[slot])
+            continue;
+        ++collection.FilledSlots;
+        if (Enchant const* enchant = Loaded.FindSpell(active[slot]))
+            ++collection.Active[quality(*enchant)];
+    }
+    return collection;
 }
 }
 

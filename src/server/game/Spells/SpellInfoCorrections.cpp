@@ -22,6 +22,10 @@
 #include "SpellInfo.h"
 #include "SpellMgr.h"
 
+// Warcraft Reborn crossover Mystic Enchants (stock talent + 1,300,000) already carry Ascension's own retargeting at
+// Reborn spells (Improved Devotion Aura's modifier names Reborn Devotion Aura); a stock correction would undo it
+constexpr uint32 CROSSOVER_TWIN_OFFSET = 1300000;
+
 inline bool SameSpellTuning(SpellInfo const* first, SpellInfo const* second)
 {
     for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
@@ -58,7 +62,8 @@ inline void ApplySpellFix(std::initializer_list<uint32> spellIds, void(*fix)(Spe
         std::vector<SpellInfo*> twins;
         auto const [begin, end] = sSpellMgr->GetSpellTwins().equal_range(spellId);
         for (auto itr = begin; itr != end; ++itr)
-            if (SpellInfo const* twin = sSpellMgr->GetSpellInfo(itr->second); twin && SameSpellTuning(spellInfo, twin))
+            if (SpellInfo const* twin = sSpellMgr->GetSpellInfo(itr->second); twin && SameSpellTuning(spellInfo, twin) &&
+                itr->second - spellId != CROSSOVER_TWIN_OFFSET)
                 twins.push_back(const_cast<SpellInfo*>(twin));
 
         fix(const_cast<SpellInfo*>(spellInfo));
@@ -5457,6 +5462,18 @@ void SpellMgr::LoadSpellInfoCorrections()
     ApplySpellFix({ 2100246 }, [](SpellInfo* spellInfo)
     {
         spellInfo->Effects[EFFECT_0].RadiusEntry = sSpellRadiusStore.LookupEntry(EFFECT_RADIUS_10_YARDS);
+    });
+
+    // CoA: Baron Geddon's Living Bomb - Knock Up (2105712) is a pure vertical KNOCK_BACK (MiscValue 0,
+    // so Spell::EffectKnockBack's speedxy stays 0) whose EffectBasePoints 499 gives a fixed damage value
+    // of 500 (DieSides 1), read by EffectKnockBack as speedz = damage * 0.1 = 50.0 yd/s. With
+    // Movement::gravity = 19.29110527038574, the DBC apex (speedz^2 / (2 * gravity)) is about 64.8 yards,
+    // which a player confirmed in-game by going through the ceiling of Geddon's room. Geddon's own vmap
+    // ceiling height could not be measured without a server deploy, so this halves the apex instead
+    // (speedz / sqrt(2)): BasePoints 353 gives damage 354, speedz 35.4 yd/s, apex about 32.5 yards.
+    ApplySpellFix({ 2105712 }, [](SpellInfo* spellInfo)
+    {
+        spellInfo->Effects[EFFECT_0].BasePoints = 353;
     });
 
     for (uint32 i = 0; i < GetSpellInfoStoreSize(); ++i)

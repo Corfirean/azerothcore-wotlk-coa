@@ -15,6 +15,41 @@ import run
 
 
 class RunnerTests(unittest.TestCase):
+    def with_players(self, schema, count):
+        scenario = copy.deepcopy(self.scenario)
+        scenario['schema'] = schema
+        template = scenario['players'][0]
+        scenario['players'] += [{**template, 'id': f'raider{index}'} for index in range(count - 1)]
+        return scenario
+
+    def test_schema_2_accepts_twenty_five_players(self):
+        scenario = self.with_players(2, 25)
+        self.assertIs(run.validate(scenario), scenario)
+
+    def test_schema_2_rejects_twenty_six_players(self):
+        with self.assertRaisesRegex(ValueError, r'1\.\.25 players'):
+            run.validate(self.with_players(2, 26))
+
+    def test_schema_1_still_rejects_nine_players(self):
+        with self.assertRaisesRegex(ValueError, r'1\.\.8 players'):
+            run.validate(self.with_players(1, 9))
+
+    def test_schema_2_timeout_limit(self):
+        scenario = self.with_players(2, 1)
+        scenario['timeout_ms'] = 1200000
+        self.assertIs(run.validate(scenario), scenario)
+        scenario['timeout_ms'] = 1200001
+        with self.assertRaisesRegex(ValueError, 'too large'):
+            run.validate(scenario)
+        legacy = self.with_players(1, 1)
+        legacy['timeout_ms'] = 600001
+        with self.assertRaisesRegex(ValueError, 'too large'):
+            run.validate(legacy)
+
+    def test_unknown_schema_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'Unsupported scenario schema'):
+            run.validate(self.with_players(3, 1))
+
     def test_player_account_sharing_requires_an_earlier_player(self):
         self.scenario['players'].append({'id': 'alt', 'race': 1, 'class': 1, 'account_of': 'caster'})
         self.assertIs(run.validate(self.scenario), self.scenario)
@@ -46,6 +81,22 @@ class RunnerTests(unittest.TestCase):
                                      'metric': 'health', 'min': 1, field: 1})
             with self.subTest(field=field), self.assertRaises(ValueError):
                 run.validate(scenario)
+
+    def test_nearby_creature_health_pct_needs_a_player_and_entry(self):
+        step = {'action': 'assert', 'actor': 'caster', 'metric': 'nearby_creature_health_pct', 'entry': 12118,
+                'equals': 100}
+        scenario = copy.deepcopy(self.scenario)
+        scenario['steps'].append(step)
+        self.assertIs(run.validate(scenario), scenario)
+        for change in ({'actor': 'target'}, {'entry': 0}, {'entry': '12118'}):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['steps'].append({**step, **change})
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                run.validate(scenario)
+        scenario = copy.deepcopy(self.scenario)
+        scenario['steps'].append({key: value for key, value in step.items() if key != 'entry'})
+        with self.assertRaises(ValueError):
+            run.validate(scenario)
 
     def test_player_packet_fields_require_a_player(self):
         step = {'action': 'client_packet', 'actor': 'caster', 'opcode': 364, 'consumed': False}
@@ -252,6 +303,48 @@ class RunnerTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaisesRegex(ValueError, 'creature_scaling must be boolean'):
                 run.validate(scenario)
 
+    def test_vanity_ownership_needs_unlock_all_and_accepts_starter_item_ids(self):
+        for value in ({'unlock_all': False}, {'unlock_all': True, 'starter_items': []},
+                      {'unlock_all': False, 'starter_items': [98457, 134987]}):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['vanity_ownership'] = value
+            self.assertIs(run.validate(scenario), scenario)
+        for value, error in (({}, 'vanity_ownership'), ({'unlock_all': 0}, 'unlock_all must be boolean'),
+                             ({'unlock_all': False, 'starter_items': 98457}, 'starter_items must be a list'),
+                             ({'unlock_all': False, 'starter_items': [0]}, 'vanity_ownership.starter_items'),
+                             ({'unlock_all': False, 'starter_items': ['98457']}, 'vanity_ownership.starter_items'),
+                             ({'unlock_all': False, 'extra': 1}, 'vanity_ownership')):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['vanity_ownership'] = value
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, error):
+                run.validate(scenario)
+
+    def test_two_side_accepts_boolean_trade_and_mail(self):
+        for value in ({}, {'trade': True}, {'trade': False, 'mail': True}):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['two_side'] = value
+            self.assertIs(run.validate(scenario), scenario)
+        for value, error in ((True, 'two_side: expected an object'), ({'trade': 1}, 'two_side.trade must be boolean'),
+                             ({'mail': 'true'}, 'two_side.mail must be boolean'), ({'auction': True}, 'two_side')):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['two_side'] = value
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, error):
+                run.validate(scenario)
+
+    def test_game_event_needs_an_event_id_and_a_boolean_state(self):
+        for step in ({'action': 'game_event', 'event': 12, 'active': True},
+                     {'action': 'game_event', 'event': 12, 'active': False}):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['steps'].insert(0, step)
+            self.assertIs(run.validate(scenario), scenario)
+        for step, error in (({'action': 'game_event', 'event': 12, 'active': 1}, 'active must be boolean'),
+                            ({'action': 'game_event', 'event': 0, 'active': True}, r'\.event'),
+                            ({'action': 'game_event', 'event': 12}, 'step 0')):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['steps'].insert(0, step)
+            with self.subTest(step=step), self.assertRaisesRegex(ValueError, error):
+                run.validate(scenario)
+
     def test_hour_timezone_is_a_posix_offset_placing_local_time_at_the_start_of_that_hour(self):
         for utc_hour, hour, expected in ((10, 12, 'UTC-01:01'), (23, 0, 'UTC-00:01'), (1, 23, 'UTC+02:59'),
                                          (12, 0, 'UTC-11:01'), (12, 23, 'UTC-10:01'), (5, 5, 'UTC+00:59'),
@@ -393,6 +486,166 @@ class RunnerTests(unittest.TestCase):
             del invalid['steps'][-1][field]
             with self.subTest(missing=field), self.assertRaises(ValueError):
                 run.validate(invalid)
+
+    def with_encounter(self, *steps):
+        scenario = copy.deepcopy(self.scenario)
+        scenario['steps'] += [{'action': 'encounter_start', 'actor': 'caster', 'boss_entry': 36, 'radius': 30},
+                              *steps]
+        return scenario
+
+    def timeline_step(self, **fields):
+        return {'action': 'assert', 'actor': 'caster', 'metric': 'timeline_count', 'event': 'cast', 'min': 0,
+                **fields}
+
+    def test_encounter_start_requires_actor_and_boss_entry(self):
+        scenario = self.with_encounter()
+        self.assertIs(run.validate(scenario), scenario)
+        del scenario['steps'][-1]['radius']
+        self.assertIs(run.validate(scenario), scenario)
+        for change in ({'actor': 'target'}, {'actor': 'absent'}, {'boss_entry': 0}, {'boss_entry': -36},
+                       {'boss_entry': True}, {'boss_entry': 36.5}, {'radius': 0}, {'radius': 201},
+                       {'radius': -5}, {'radius': True}, {'spell': 116}):
+            invalid = self.with_encounter()
+            invalid['steps'][-1].update(change)
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                run.validate(invalid)
+        for field in ('actor', 'boss_entry'):
+            invalid = self.with_encounter()
+            del invalid['steps'][-1][field]
+            with self.subTest(missing=field), self.assertRaises(ValueError):
+                run.validate(invalid)
+        twice = self.with_encounter({'action': 'encounter_start', 'actor': 'caster', 'boss_entry': 36})
+        with self.assertRaisesRegex(ValueError, 'one encounter_start'):
+            run.validate(twice)
+
+    def test_timeline_metrics_require_known_event(self):
+        metrics = ('timeline_count', 'timeline_first_ms', 'timeline_interval_min_ms', 'timeline_interval_max_ms',
+                   'timeline_interval_median_ms')
+        for metric in metrics:
+            for event in ('cast', 'aura_applied', 'aura_removed', 'death', 'enter_combat', 'evade', 'spawn',
+                          'boss_state'):
+                scenario = self.with_encounter(self.timeline_step(metric=metric, event=event))
+                with self.subTest(metric=metric, event=event):
+                    self.assertIs(run.validate(scenario), scenario)
+        for change in ({'event': 'heal'}, {'event': ''}, {'event': 1}, {'spell': 0}, {'source_entry': 0},
+                       {'source_entry': 'boss'}):
+            invalid = self.with_encounter(self.timeline_step(**change))
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                run.validate(invalid)
+        missing = self.with_encounter(self.timeline_step())
+        del missing['steps'][-1]['event']
+        with self.assertRaisesRegex(ValueError, 'event'):
+            run.validate(missing)
+        before = copy.deepcopy(self.scenario)
+        before['steps'].append(self.timeline_step())
+        with self.assertRaisesRegex(ValueError, 'encounter_start'):
+            run.validate(before)
+        other = self.with_encounter({'action': 'assert', 'actor': 'caster', 'metric': 'health', 'event': 'cast',
+                                     'min': 0})
+        with self.assertRaisesRegex(ValueError, 'timeline'):
+            run.validate(other)
+        ordered = self.with_encounter(
+            {'action': 'snapshot', 'actor': 'caster', 'metric': 'timeline_first_ms', 'event': 'spawn',
+             'save_as': 'first_spawn'},
+            self.timeline_step(metric='timeline_first_ms', event='cast', relative_to='first_spawn'))
+        self.assertIs(run.validate(ordered), ordered)
+
+    def test_timeline_state_only_with_boss_state(self):
+        for state in ('NOT_STARTED', 'IN_PROGRESS', 'FAIL', 'DONE', 'SPECIAL'):
+            scenario = self.with_encounter(self.timeline_step(event='boss_state', state=state))
+            with self.subTest(state=state):
+                self.assertIs(run.validate(scenario), scenario)
+        for event, state in (('cast', 'DONE'), ('death', 'DONE'), ('boss_state', 'done'),
+                             ('boss_state', 'TO_BE_DECIDED'), ('boss_state', 3)):
+            invalid = self.with_encounter(self.timeline_step(event=event, state=state))
+            with self.subTest(event=event, state=state), self.assertRaises(ValueError):
+                run.validate(invalid)
+
+    def test_timeline_target_actors_must_exist(self):
+        for field in ('target_actors', 'exclude_target_actors'):
+            for actors in (['caster'], ['target'], ['caster', 'target']):
+                scenario = self.with_encounter(self.timeline_step(**{field: actors}))
+                with self.subTest(field=field, actors=actors):
+                    self.assertIs(run.validate(scenario), scenario)
+            for actors in (['absent'], [], 'caster', ['caster', 'caster'], [1]):
+                invalid = self.with_encounter(self.timeline_step(**{field: actors}))
+                with self.subTest(field=field, actors=actors), self.assertRaises(ValueError):
+                    run.validate(invalid)
+
+    def test_set_health_pct_requires_actor_and_one_target(self):
+        base = {'action': 'set_health_pct', 'actor': 'caster', 'pct': 50}
+        for extra in ({'target': 'target'}, {'entry': 36}):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['steps'].append({**base, **extra})
+            with self.subTest(extra=extra):
+                self.assertIs(run.validate(scenario), scenario)
+        for step in ({**base}, {**base, 'target': 'target', 'entry': 36}, {'action': 'set_health_pct', 'pct': 50,
+                     'target': 'target'}, {**base, 'target': 'absent'}, {**base, 'actor': 'target', 'entry': 36}):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['steps'].append(step)
+            with self.subTest(step=step), self.assertRaises(ValueError):
+                run.validate(scenario)
+
+    def test_set_health_pct_range(self):
+        for pct, valid in ((0, False), (100, False), (1, True), (99, True), (50.5, False), ('50', False)):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['steps'].append({'action': 'set_health_pct', 'actor': 'caster', 'target': 'target', 'pct': pct})
+            with self.subTest(pct=pct):
+                if valid:
+                    self.assertIs(run.validate(scenario), scenario)
+                else:
+                    with self.assertRaises(ValueError):
+                        run.validate(scenario)
+
+    def with_role(self, **fields):
+        scenario = copy.deepcopy(self.scenario)
+        scenario['players'][0].update(fields)
+        return scenario
+
+    def test_role_requires_known_value(self):
+        for fields in ({'role': 'tank'}, {'role': 'tank', 'taunt_spell': 355, 'rotation': [801576]},
+                       {'role': 'healer', 'heal_spell': 500143}, {'role': 'melee', 'rotation': [801576]},
+                       {'role': 'ranged', 'rotation': [133, 116]}):
+            scenario = self.with_role(**fields)
+            with self.subTest(fields=fields):
+                self.assertIs(run.validate(scenario), scenario)
+        for role in ('Tank', 'dps', '', 1, None, ['tank']):
+            with self.subTest(role=role), self.assertRaisesRegex(ValueError, 'role'):
+                run.validate(self.with_role(role=role))
+        for fields in ({'rotation': [801576]}, {'heal_spell': 500143}, {'taunt_spell': 355},
+                       {'role': 'melee', 'taunt_spell': 355}, {'role': 'tank', 'heal_spell': 500143},
+                       {'role': 'healer', 'heal_spell': 500143, 'rotation': [801576]}, {'role': 'ranged'}):
+            with self.subTest(fields=fields), self.assertRaises(ValueError):
+                run.validate(self.with_role(**fields))
+
+    def test_healer_requires_heal_spell(self):
+        with self.assertRaisesRegex(ValueError, 'heal_spell'):
+            run.validate(self.with_role(role='healer'))
+        for spell in (0, -1, 2**32, '500143', 1.5, None):
+            with self.subTest(spell=spell), self.assertRaisesRegex(ValueError, 'heal_spell'):
+                run.validate(self.with_role(role='healer', heal_spell=spell))
+
+    def test_rotation_spells_are_positive_ids(self):
+        for rotation in ([0], [-5], [801576, 0], ['801576'], [1.5], [], 801576, [801576, 801576]):
+            with self.subTest(rotation=rotation), self.assertRaisesRegex(ValueError, 'rotation'):
+                run.validate(self.with_role(role='melee', rotation=rotation))
+        for spell in (0, 2**32, '355'):
+            with self.subTest(taunt=spell), self.assertRaisesRegex(ValueError, 'taunt_spell'):
+                run.validate(self.with_role(role='tank', taunt_spell=spell))
+
+    def test_melee_attacks_taken_needs_a_player(self):
+        for extra in ({}, {'target': 'target'}):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['steps'].append({'action': 'assert', 'actor': 'caster', 'metric': 'melee_attacks_taken',
+                                      'equals': 0, **extra})
+            with self.subTest(extra=extra):
+                self.assertIs(run.validate(scenario), scenario)
+        for change in ({'actor': 'target'}, {'target': 'absent'}):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['steps'].append({'action': 'assert', 'actor': 'caster', 'metric': 'melee_attacks_taken',
+                                      'equals': 0, **change})
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                run.validate(scenario)
 
     def test_cancel_mount_requires_player(self):
         self.scenario['steps'].append({'action': 'cancel_mount', 'actor': 'caster'})
@@ -557,13 +810,14 @@ class RunnerTests(unittest.TestCase):
 
     def test_native_client_upload_actions(self):
         self.scenario['steps'].extend([
-            {'action': 'specialization', 'actor': 'caster', 'id': 60},
+            {'action': 'specialization', 'actor': 'caster', 'id': 60, 'entries': [31194]},
             {'action': 'advancement_rank', 'actor': 'caster', 'entry': 34422, 'rank': 1, 'refused': True},
             {'action': 'apply_appearances', 'actor': 'caster', 'selection': {'56': 1451, '57': 0}},
         ])
         self.assertIs(run.validate(self.scenario), self.scenario)
-        for index, key, value in ((-3, 'actor', 'target'), (-3, 'id', 0), (-2, 'rank', 4), (-2, 'actor', 'target'),
-                                   (-2, 'refused', 1), (-1, 'selection', {'x': 1}), (-1, 'selection', {'0': 1}),
+        for index, key, value in ((-3, 'actor', 'target'), (-3, 'id', 0), (-3, 'entries', []),
+                                   (-3, 'entries', [0]), (-3, 'entries', 31194), (-2, 'rank', 4),
+                                   (-2, 'actor', 'target'), (-2, 'refused', 1), (-1, 'selection', {'x': 1}), (-1, 'selection', {'0': 1}),
                                    (-1, 'selection', [1451]), (-1, 'actor', 'target')):
             invalid = copy.deepcopy(self.scenario)
             invalid['steps'][index][key] = value

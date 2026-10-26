@@ -4,9 +4,11 @@
 #include "AscensionFreepickRules.h"
 #include "AscensionCoATalentState.h"
 #include "AscensionWildcard.h"
+#include "AscensionSpecialization.h"
 #include "Battleground.h"
 #include "Chat.h"
 #include "Config.h"
+#include "DBCStores.h"
 #include "GameEventMgr.h"
 #include "Item.h"
 #include "Log.h"
@@ -22,6 +24,7 @@
 #include "Tokenize.h"
 #include "World.h"
 #include <algorithm>
+#include <array>
 #include <string_view>
 #include <unordered_set>
 
@@ -311,6 +314,22 @@ UploadResult ApplyEntries(Player* player, Build const& base, std::vector<Entry> 
 }
 }
 
+std::uint32_t PrestigeSpecialization(Player* player)
+{
+    if (!IsFreepickHero(player))
+        return 0;
+    std::vector<Entry> const before = StoredEntries(player);
+    std::vector<Entry> kept;
+    for (Entry const& entry : before)
+        if (Row const* row = Loaded.Find(entry.EntryId); row && (row->Group == 1 || row->Has(ROW_RETAINED)))
+            kept.push_back(entry);
+    Store(player, kept);
+    Store(player, kept, SpecializationBuildSetting(ActiveSpecialization(player)));
+    SyncSpells(player, before, kept);
+    SendSpecializationState(player);
+    return uint32(before.size() - kept.size());
+}
+
 UploadResult ApplyUpload(Player* player, std::vector<AscensionCoATalentState::KnownEntry> const& upload)
 {
     std::vector<Entry> wanted;
@@ -354,6 +373,10 @@ bool SwitchSpecialization(Player* player, std::uint32_t index, std::string& erro
     std::uint32_t const previous = ActiveSpecialization(player);
     if (index == previous)
         return true;
+
+    error = AscensionSpecializationSwitchRefusal(player, previous + 1, index + 1);
+    if (!error.empty())
+        return false;
 
     std::vector<Entry> const before = StoredEntries(player);
     Build next(Loaded, CurrentRealm, player->GetLevel(), StoredEntries(player, SpecializationBuildSetting(index)));
@@ -461,14 +484,48 @@ std::uint32_t InvestedEssence(Player const* player, std::uint32_t classType, std
     return talent ? build.TabTE(classType, tab, 0) : build.TabAE(classType, tab, 0);
 }
 
+constexpr std::array<uint32, 1> SKILL_COMPANION_SPELLS = { 56815 };
+
+void LearnSkillCompanions(Player* player, uint32 spellId)
+{
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    if (!spellInfo)
+        return;
+    SkillLineAbilityMapBounds const bounds = sSpellMgr->GetSkillLineAbilityMapBounds(spellId);
+    for (auto itr = bounds.first; itr != bounds.second; ++itr)
+    {
+        uint32 const skill = itr->second->SkillLine;
+        if (player->HasSkill(skill))
+            continue;
+        for (SkillLineAbilityEntry const* ability : GetSkillLineAbilitiesBySkillLine(skill))
+        {
+            if (ability->Spell == spellId || ability->AcquireMethod != SKILL_LINE_ABILITY_LEARNED_ON_SKILL_LEARN ||
+                player->HasSpell(ability->Spell))
+                continue;
+            SpellInfo const* companion = sSpellMgr->GetSpellInfo(ability->Spell);
+            if (companion && std::string_view(companion->SpellName[0]) == spellInfo->SpellName[0])
+                player->learnSpell(ability->Spell);
+        }
+    }
+}
+
 class AscensionFreepickPlayer final : public PlayerScript
 {
 public:
-    AscensionFreepickPlayer() : PlayerScript("AscensionFreepickPlayer", { PLAYERHOOK_ON_LOGIN }) { }
+    AscensionFreepickPlayer() : PlayerScript("AscensionFreepickPlayer", { PLAYERHOOK_ON_LOGIN, PLAYERHOOK_ON_LEARN_SPELL })
+    { }
 
     void OnPlayerLogin(Player* player) override
     {
         Synchronize(player);
+        for (uint32 spellId : SKILL_COMPANION_SPELLS)
+            if (player->HasSpell(spellId))
+                LearnSkillCompanions(player, spellId);
+    }
+
+    void OnPlayerLearnSpell(Player* player, uint32 spellId) override
+    {
+        LearnSkillCompanions(player, spellId);
     }
 };
 

@@ -41,6 +41,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <unordered_set>
 
 class Item;
 struct DungeonProgressionRequirements;
@@ -965,6 +966,11 @@ public:
         return nullptr;
     }
 
+    [[nodiscard]] bool IsRaidEncounterKillCredit(uint32 creatureEntry) const
+    {
+        return _raidEncounterKillCreditStore.contains(creatureEntry);
+    }
+
     void LoadQuests();
     void LoadQuestMoneyRewards();
     void LoadQuestStartersAndEnders()
@@ -1423,6 +1429,7 @@ public:
     // profanity names
     void LoadProfanityNamesFromDB();
     void LoadProfanityNamesFromDBC();
+    void LoadCoANameFilter();
     [[nodiscard]] bool IsProfanityName(std::string_view name) const;
     void AddProfanityPlayerName(std::string const& name);
 
@@ -1576,6 +1583,7 @@ private:
     AreaTriggerScriptContainer _areaTriggerScriptStore;
     DungeonProgressionRequirementsContainer _accessRequirementStore;
     DungeonEncounterContainer _dungeonEncounterStore;
+    std::unordered_set<uint32> _raidEncounterKillCreditStore;
 
     RepRewardRateContainer _repRewardRateStore;
     RepOnKillContainer _repOnKillStore;
@@ -1599,6 +1607,7 @@ private:
     //character profanity names
     typedef std::set<std::wstring> ProfanityNamesContainer;
     ProfanityNamesContainer _profanityNamesStore;
+    std::set<std::string> _coaNameFilterStore;
 
     //chat filter (Aho-Corasick automaton; matches any banned word as substring of input)
     std::unique_ptr<Acore::AhoCorasick<wchar_t>> _chatFilterAutomaton;

@@ -16,6 +16,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <unordered_set>
 
 namespace
@@ -63,17 +64,23 @@ namespace
             map->IsRegularDifficulty(), map->IsRaid(), map->IsDungeon());
     }
 
-    float DamageMultiplier(Unit const* target, Unit const* attacker)
+    float DamageValue(Unit const* target, Unit const* attacker,
+        CreatureScaling::Multipliers CreatureScaling::Settings::* values)
     {
         if (!Enabled || !target || !attacker || !target->GetCharmerOrOwnerPlayerOrPlayerItself())
             return 1.0f;
         Creature const* creature = attacker->ToCreature();
-        if (!IsEligible(creature) || !creature->IsHostileTo(target))
+        if (!IsEligible(creature) || creature->IsFriendlyTo(target))
             return 1.0f;
         CreatureScaling::Context const context = ContextOf(creature);
         if (context == CreatureScaling::Context::None)
             return 1.0f;
-        return CreatureScaling::Multiplier(Active()->damage, context, creature->GetMapId());
+        return CreatureScaling::Multiplier((*Active()).*values, context, creature->GetMapId(), creature->GetLevel());
+    }
+
+    float DamageMultiplier(Unit const* target, Unit const* attacker)
+    {
+        return DamageValue(target, attacker, &CreatureScaling::Settings::damage);
     }
 
     template <typename T>
@@ -85,16 +92,31 @@ namespace
             damage = T(CreatureScaling::Scaled(uint32(damage), multiplier));
     }
 
+    CreatureScaling::Formula ReadFormula(std::string const& key, CreatureScaling::Formula const& fallback)
+    {
+        std::string const text = sConfigMgr->GetOption<std::string>(key, fallback.Text());
+        if (std::optional<CreatureScaling::Formula> formula = CreatureScaling::Formula::Parse(text))
+            return *formula;
+        LOG_ERROR("server.loading", "{} = \"{}\" is neither a number nor a formula of level; using {}", key, text,
+            fallback.Text());
+        return fallback;
+    }
+
     CreatureScaling::Multipliers ReadMultipliers(std::string const& kind, CreatureScaling::Multipliers const& defaults)
     {
         CreatureScaling::Multipliers result;
-        result.world = sConfigMgr->GetOption<float>("CoA.CreatureScaling.World." + kind, defaults.world);
-        result.dungeon = sConfigMgr->GetOption<float>("CoA.CreatureScaling.Dungeon." + kind, defaults.dungeon);
-        result.raid = sConfigMgr->GetOption<float>("CoA.CreatureScaling.Raid." + kind, defaults.raid);
+        result.world = ReadFormula("CoA.CreatureScaling.World." + kind, defaults.world);
+        result.dungeon = ReadFormula("CoA.CreatureScaling.Dungeon." + kind, defaults.dungeon);
+        result.raid = ReadFormula("CoA.CreatureScaling.Raid." + kind, defaults.raid);
         result.maps = CreatureScaling::ParseMapMultipliers(sConfigMgr->GetOption<std::string>(
             "CoA.CreatureScaling.Map" + kind, CreatureScaling::FormatMapMultipliers(defaults.maps), false));
         return result;
     }
+}
+
+float CreatureScaling::DamageMultiplier(Unit const* target, Unit const* attacker)
+{
+    return ::DamageMultiplier(target, attacker);
 }
 
 CreatureScaling::TestOverride::TestOverride()
@@ -126,6 +148,7 @@ public:
         settings->enabled = sConfigMgr->GetOption<bool>("CoA.CreatureScaling.Enable", false);
         settings->health = ReadMultipliers("Health", defaults.health);
         settings->damage = ReadMultipliers("Damage", defaults.damage);
+        settings->damageSpread = ReadMultipliers("DamageSpread", defaults.damageSpread);
         std::lock_guard<std::mutex> lock(SettingsMutex);
         Configured = std::move(settings);
         Publish();
@@ -144,11 +167,12 @@ public:
         }
         auto settings = Active();
         LOG_INFO("server.loading",
-            ">> CoA creature scaling {}: health {}/{}/{}, damage {}/{}/{} (world/dungeon/raid), "
+            ">> CoA creature scaling {}: health {}/{}/{}, damage {}/{}/{}, damage spread {}/{}/{} (world/dungeon/raid), "
             "{} map health overrides, {} flex health entries kept",
-            settings->enabled ? "enabled" : "disabled", settings->health.world, settings->health.dungeon,
-            settings->health.raid, settings->damage.world, settings->damage.dungeon, settings->damage.raid,
-            settings->health.maps.size(), FlexHealthEntries.size());
+            settings->enabled ? "enabled" : "disabled", settings->health.world.Text(), settings->health.dungeon.Text(),
+            settings->health.raid.Text(), settings->damage.world.Text(), settings->damage.dungeon.Text(),
+            settings->damage.raid.Text(), settings->damageSpread.world.Text(), settings->damageSpread.dungeon.Text(),
+            settings->damageSpread.raid.Text(), settings->health.maps.size(), FlexHealthEntries.size());
     }
 };
 
@@ -164,7 +188,8 @@ public:
         CreatureScaling::Context const context = ContextOf(creature);
         if (context == CreatureScaling::Context::None)
             return;
-        float const multiplier = CreatureScaling::Multiplier(Active()->health, context, creature->GetMapId());
+        float const multiplier = CreatureScaling::Multiplier(Active()->health, context, creature->GetMapId(),
+            creature->GetLevel());
         if (multiplier == 1.0f)
             return;
         uint32 const health = CreatureScaling::Scaled(creature->GetCreateHealth(), multiplier);
@@ -179,13 +204,14 @@ public:
 class CoACreatureScalingDamage final : public UnitScript
 {
 public:
-    CoACreatureScalingDamage() : UnitScript("CoACreatureScalingDamage", true, { UNITHOOK_MODIFY_MELEE_DAMAGE,
+    CoACreatureScalingDamage() : UnitScript("CoACreatureScalingDamage", true, { UNITHOOK_MODIFY_MELEE_DAMAGE_RANGE,
         UNITHOOK_MODIFY_SPELL_DAMAGE_TAKEN, UNITHOOK_MODIFY_PERIODIC_DAMAGE_AURAS_TICK })
     { }
 
-    void ModifyMeleeDamage(Unit* target, Unit* attacker, uint32& damage) override
+    void ModifyMeleeDamageRange(Unit* target, Unit* attacker, float& minDamage, float& maxDamage) override
     {
-        ScaleDamage(damage, target, attacker);
+        CreatureScaling::ScaleRange(minDamage, maxDamage, DamageMultiplier(target, attacker),
+            DamageValue(target, attacker, &CreatureScaling::Settings::damageSpread));
     }
 
     void ModifySpellDamageTaken(Unit* target, Unit* attacker, int32& damage, SpellInfo const* spellInfo) override

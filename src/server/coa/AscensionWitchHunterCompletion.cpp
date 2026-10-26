@@ -122,7 +122,9 @@ void ApplyContracts(SpellInfo* info)
         info->InterruptFlags |= SPELL_INTERRUPT_FLAG_MOVEMENT;
         info->ChannelInterruptFlags |= AURA_INTERRUPT_FLAG_MOVE;
     }
-    if ((id == 807364 || id == 805751) && info->IsChanneled())
+    if (Family(info, 0, 2) && info->HasAura(SPELL_AURA_PERIODIC_TRIGGER_SPELL_WITH_VALUE))
+        info->AttributesEx |= SPELL_ATTR1_IS_CHANNELED;
+    if ((id == 807364 || id == 805751 || Family(info, 0, 2)) && info->IsChanneled())
         info->AttributesEx5 &= ~SPELL_ATTR5_ALLOW_ACTION_DURING_CHANNEL;
     if (id == 574149 || id == 574163)
         ConvertCreatureTypeDamage(info, EFFECT_1);
@@ -392,6 +394,30 @@ class witch_hunter_scaling : public UnitScript
     }
 };
 
+class witch_hunter_silver_bolts_shadow_trap : public UnitScript
+{
+  public:
+    witch_hunter_silver_bolts_shadow_trap()
+        : UnitScript("witch_hunter_silver_bolts_shadow_trap", true, {UNITHOOK_MODIFY_SPELL_DAMAGE_TAKEN})
+    {
+    }
+
+    void ModifySpellDamageTaken(Unit* target, Unit* attacker, int32& damage, SpellInfo const* spellInfo) override
+    {
+        Player* player = attacker ? Owner(attacker) : nullptr;
+        if (!player || !target || !spellInfo || !target->HasAura(SPELL_SHADOW_TRAPPED))
+            return;
+        for (AuraEffect* effect : player->GetAuraEffectsByType(SPELL_AURA_MOD_DAMAGE_DONE_VERSUS))
+            if (effect->GetId() == SPELL_SILVER_BOLTS && effect->IsAffectedOnSpell(spellInfo))
+            {
+                if (target->GetCreatureTypeMask() & effect->GetMiscValue())
+                    return;
+                AddPct(damage, effect->GetSpellInfo()->Effects[EFFECT_2].CalcValue(player));
+                return;
+            }
+    }
+};
+
 class spell_ascension_witch_hunter_copy : public SpellScript
 {
     PrepareSpellScript(spell_ascension_witch_hunter_copy);
@@ -416,5 +442,6 @@ void AddAscensionWitchHunterCompletionScripts()
 {
     new witch_hunter_scaling();
     new witch_hunter_resources();
+    new witch_hunter_silver_bolts_shadow_trap();
     RegisterSpellScript(spell_ascension_witch_hunter_copy);
 }
