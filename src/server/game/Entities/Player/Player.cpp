@@ -12367,6 +12367,7 @@ void Player::SendInitialPacketsBeforeAddToMap()
     SendUnlearnSpells();
 
     SendInitialActionButtons();
+    m_reputationMgr->ApplyStartingZoneReputation();
     m_reputationMgr->SendInitialReputations();
     m_achievementMgr->SendAllAchievementData();
 
