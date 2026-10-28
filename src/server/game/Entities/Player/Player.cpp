@@ -30,6 +30,7 @@
 #include "ArenaSeasonMgr.h"
 #include "AscensionIncarnation.h"
 #include "AscensionPooledVitality.h"
+#include "AscensionVanityOwnership.h"
 #include "Battlefield.h"
 #include "BattlefieldMgr.h"
 #include "BattlefieldWG.h"
@@ -7451,8 +7452,9 @@ void Player::_ApplyWeaponDamage(uint8 slot, ItemTemplate const* proto, ScalingSt
             SetAttackTime(OFF_ATTACK, apply ? proto->Delay : BASE_ATTACK_TIME);
     }
 
-    // No need to modify any physical damage for ferals as it is calculated from stats only
-    if (IsInFeralForm())
+    // No need to modify any physical damage for ferals whose form overrides attack speed:
+    // their damage is calculated from stats only
+    if (IsInFeralForm() && IsAttackSpeedOverridenShapeShift())
         return;
 
     if (CanModifyStats() && (GetWeaponDamageRange(attType, MAXDAMAGE) || proto->Delay))
@@ -11620,6 +11622,10 @@ bool Player::BuyItemFromVendorSlot(ObjectGuid vendorguid, uint32 vendorslot, uin
         return false;
     }
 
+    // A vanity item joins the account collection when stored; refresh the open list so it disappears
+    if (AscensionVanityOwnership::OwnsItem(this, item))
+        GetSession()->SendListInventory(vendorguid, GetSession()->GetCurrentVendor());
+
     return crItem->maxcount != 0;
 }
 
@@ -12898,6 +12904,9 @@ void Player::learnSkillRewardedSpells(uint32 skill_id, uint32 skill_value)
 void Player::GetAurasForTarget(Unit* target, bool force /*= false*/)
 {
     if (!target || (!force && target->GetVisibleAuras()->empty()))    // speedup things
+        return;
+
+    if (GetSession()->IsHeadlessBot())
         return;
 
     WorldPacket data(SMSG_AURA_UPDATE_ALL);

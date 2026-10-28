@@ -60,7 +60,8 @@ METRICS = TIMELINE_METRICS | {
     'in_arena', 'arena_team_members', 'arena_team_season_games', 'arena_team_season_wins',
     'battleground_team', 'team', 'name_query_race',
     'map_difficulty', 'nearby_creature_template', 'nearby_creature_max_health', 'nearby_creature_health_pct',
-    'nearby_creature_sent_spellclick',
+    'nearby_creature_sent_spellclick', 'nearby_creature_can_attack', 'nearby_creature_mount_display',
+    'nearby_creature_display', 'nearby_creature_aura_count',
     'spawn_respawn_remaining',
     'spawn_placement', 'spawn_ground_gap', 'spawn_submerged', 'spawn_display_state',
     'point_placement', 'point_ground_gap', 'placement_audit_spawns', 'placement_audit_anomalies',
@@ -110,7 +111,7 @@ METRICS = TIMELINE_METRICS | {
     'spellbook_client_notable', 'spellbook_notify_id_mismatches',
     'spellbook_cues_in_last_buy', 'spellbook_last_buy_cued',
     'spellbook_silent_buys', 'spellbook_multi_announced_buys',
-    'cast_speed_multiplier', 'spell_crit_chance', 'spell_power_cost', 'spell_damage_done', 'melee_damage_done',
+    'cast_speed_multiplier', 'spell_crit_chance', 'spell_power_cost', 'skill_line_for_spell', 'spell_damage_done', 'melee_damage_done',
     'who_count', 'who_class', 'player_name', 'name_lookup', 'loot_count', 'loot_entry', 'loot_received',
     'loot_offered_item_count', 'loot_gold', 'loot_bloodforged', 'loot_required_level', 'loot_item_level', 'loot_base_entry', 'loot_item_armor',
     'carried_item_level', 'carried_item_required_level', 'carried_item_armor', 'carried_item_scaling_level',
@@ -143,7 +144,7 @@ METRICS = TIMELINE_METRICS | {
     'equipped_item',
     'pet_aura_amount', 'pet_aura_amplitude_ms', 'pet_max_health', 'pet_health', 'pet_attack_power',
     'pet_run_speed_rate',
-    'distance', 'spell_proc_count', 'spell_proc_chance', 'aura_proc_rate', 'temporary_spell_replacement',
+    'distance', 'threat', 'threat_per_damage', 'spell_proc_count', 'spell_proc_chance', 'aura_proc_rate', 'temporary_spell_replacement',
     'spell_family_flags',
     'creature_loot_quality_rate', 'equipped_gear_loot_rate',
     'quest_menu_items', 'quest_menu_has', 'player_setting', 'server_packets', 'server_packet_u8', 'server_packet_u32',
@@ -806,6 +807,8 @@ def validate(scenario):
                 require('target' in step, f'{where}: victim metric requires a target')
             if metric == 'can_attack':
                 require(step.get('target') in actor_ids, f'{where}: can_attack metric needs the attacked unit')
+                if 'spell' in step:
+                    number(step['spell'], f'{where}.spell', 1, 2**32 - 1, True)
             if metric == 'carried_aura_count':
                 require(type(step.get('spells')) is list and 0 < len(step['spells']) <= 50,
                         f'{where}: carried_aura_count must list 1-50 spells')
@@ -836,11 +839,16 @@ def validate(scenario):
             if metric == 'creature_query_quest_item':
                 number(step.get('item'), f'{where}.item', 1, 2**32 - 1, True)
             if metric in {'map_id', 'map_difficulty', 'nearby_creature_template', 'nearby_creature_max_health',
-                          'nearby_creature_health_pct', 'nearby_creature_sent_spellclick', 'loot_gear_item_level'}:
+                          'nearby_creature_health_pct', 'nearby_creature_sent_spellclick', 'nearby_creature_can_attack',
+                          'nearby_creature_mount_display', 'nearby_creature_display', 'nearby_creature_aura_count',
+                          'loot_gear_item_level'}:
                 require(step['actor'] in player_ids, f'{where}: dungeon/loot metric needs a player')
             if metric in {'nearby_creature_template', 'nearby_creature_max_health', 'nearby_creature_health_pct',
-                          'nearby_creature_sent_spellclick'}:
+                          'nearby_creature_sent_spellclick', 'nearby_creature_can_attack',
+                          'nearby_creature_mount_display', 'nearby_creature_display', 'nearby_creature_aura_count'}:
                 number(step.get('entry'), f'{where}.entry', 1, 2**32 - 1, True)
+            if metric == 'nearby_creature_aura_count':
+                number(step.get('spell'), f'{where}.spell', 1, 2**31 - 1, True)
             if metric == 'spawn_respawn_remaining':
                 require(step['actor'] in player_ids, f'{where}: spawn respawn metric needs a player')
                 number(step.get('spawn'), f'{where}.spawn', 1, 2**32 - 1, True)
@@ -895,6 +903,7 @@ def validate(scenario):
                     'pet_knows_spell', 'client_knows_spell', 'client_spellbook_copies',
                     'pet_aura_stacks', 'pet_aura_duration_ms', 'charm_aura_stacks', 'spell_active',
                     'dynamic_object', 'dynamic_object_duration_ms', 'dynamic_object_height', 'spell_power_cost',
+                    'skill_line_for_spell',
                     'spell_damage_done', 'spell_damage_taken', 'spell_healing_taken', 'spell_hit_bonus_taken',
                     'spell_cast_count', 'spell_go_count', 'spell_modifier', 'spell_cast_time_ms',
                     'client_cast_time_ms', 'client_attributes', 'client_spell_targets',
@@ -1147,7 +1156,7 @@ def validate(scenario):
                           'client_spell_row_restored',
                           'spellbook_client_notable',
                           'spellbook_cues_in_last_buy', 'spellbook_last_buy_cued',
-                          'cast_speed_multiplier', 'spell_crit_chance', 'spell_power_cost',
+                          'cast_speed_multiplier', 'spell_crit_chance', 'spell_power_cost', 'skill_line_for_spell',
                           'spell_damage_done', 'melee_damage_done',
                           'who_count', 'who_class',
                           'loot_count', 'loot_entry', 'loot_required_level', 'loot_item_level', 'loot_received',
