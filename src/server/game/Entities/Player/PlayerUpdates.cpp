@@ -1909,6 +1909,9 @@ void Player::UpdateTriggerVisibility()
 
 void Player::UpdateForQuestWorldObjects()
 {
+    if (!GetSession() || GetSession()->IsHeadlessBot())
+        return;
+
     if (GetObjectVisibilityContainer().GetVisibleWorldObjectsMap()->empty())
         return;
 
@@ -1987,7 +1990,7 @@ void Player::UpdateTitansGrip()
         RemoveAurasDueToSpell(TitansGripStaffPenalty);
 
     // 10% damage reduce if 2x2h weapons are used
-    if (HasBurningCommander() || !CanTitanGrip())
+    if (HasBurningCommander() || HasValkyrGrip() || !CanTitanGrip())
         RemoveAurasDueToSpell(49152);
     else if (Aura* aur = GetAura(49152))
         aur->RecalculateAmountOfEffects();
