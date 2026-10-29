@@ -32,6 +32,11 @@
 - Итог около 3.6 тыс. экспортов при лимите PE 65 535.
 - Открытый вопрос: остаётся ли raid-difficulty плагином (связан с Content Scaling через FlexHealth); относятся ли боты и Content Scaling к ядру (в roadmap это отдельные этапы 4e–4g).
 
+**Уточнение владельца (2026-10-29):** в ядро также идут lottery, titan-scrolls, craftsmans-codex, dynamic-xp, hero-call-board, portable-sawmill, portablemail, scrolls-of-retreat, teleport-actionbar, treasure-keeper, war-games, woodworking, worldforged-pickups, book-of-artisans, battlehorn, raid-difficulty. Custom Races — **плагин**.
+- Кандидаты в плагины из дерева: ah-bot-plus, npc-enchanter, TimeIsTime (уже работает), custom-races, cfbg (решение не принято).
+- Им нужно **128** недостающих символов (без cfbg — 82).
+- **Custom Races как плагин.** Ядро само читает `CoACustomRaces.Enable` в 12 местах (`DBCStores.cpp` выбирает `dbc_races`, `AscensionCompat.cpp`, `EsteriaRacials`). Плагином станут только скрипты модуля, DBC-оверлеи и клиентский патч. Чтобы выключенная DLL действительно выключала расы (ADR-5), ядро должно опираться на флаг «плагин custom-races загружен», а не на ключ конфига. Иначе CSM обязан синхронно ставить `CoACustomRaces.Enable = 0` во всех мирах. Нужен отдельный пункт до FV1, а также проверка персонажей кастомных рас при отключённом плагине (вход, отображение, сохранение).
+
 **Пункты G1 после обновления 2:**
 
 | Пункт | Статус |
