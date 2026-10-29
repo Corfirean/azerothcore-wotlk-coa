@@ -6,8 +6,47 @@
 
 - **Ветка ядра:** `spike/plugin-host` (worktree `C:\games\coa-work\plugin-spike\core`).
   - База: `49d2fec0a739598ad35f2bb0652cae0fe80e4266`.
-  - Локальный коммит `66bbef337f`.
+  - Локальные коммиты `66bbef337f`, `00346a0a62`, `2aaa8c8469`, `259944db6e`.
   - **Не запушено.** Merge и PR не делались.
+
+## Обновление 2 (2026-10-29, после решения владельца по упавшим плагинам)
+
+Этот раздел заменяет таблицу «Пункты G1…» ниже; остальной отчёт описывает первый прогон.
+
+**Сделано после первого отчёта (host fingerprint `242d118a…a3c2`):**
+
+| Пункт | Результат | Доказательство |
+|---|---|---|
+| Фазы остановки для упавшего плагина (решение владельца: «под барьером») | PASS | `throw-hook-login`: упавший probe прошёл `Stopping` → `Drain` → `Finalize`; его in-process сессия разлогинена, персонаж **сохранён** (`characters.logout_time` 1793248607 → 1793256627, `online=0`), поток присоединён. Хуки упавшего плагина по-прежнему пропускаются. Watchdog в фазах остановки только сообщает о зависании (не завершает процесс, чтобы не потерять сохранение остальных игроков) |
+| Барьер для ручных циклов диспетчеризации | PASS (покрытие) | `ExecuteScript`, `IsValidBoolScript`, `GetReturnAIScript`, `ForeachMaps`, `GetCommands`, `DynamicObjectScript::OnUpdate`, `OnPlayerIsClass`, `OnPlayerGetGameModeMask`, `UnitScript::DealDamage`; при отказе плагина берётся нейтральное значение (например, исходный урон). Отдельным тестом с броском **в этих** путях не проверялось |
+| DB identity guard в ядре | PASS | `Fixture.ExpectedServerUuid`: проверка всех трёх эффективных `*DatabaseInfo` **до** `StartDB`. Неверный UUID → отказ; переопределение `AC_LOGIN_DATABASE_INFO` на `127.0.0.1:1` → отказ; ни один пул БД не открыт (`report/cases/guard.json`) |
+| SPK-5 (реальный ABI-break) | PASS | `probe.dll`, собранный против предыдущего host (`7b46…`), отклонён новым host (`242d…`) до загрузки, оба fingerprint в причине. Изменённые заголовки — `PluginBarrier.h` / `ScriptMgrMacros.h` (не layout класса, используемого плагином; механизм отказа тот же) |
+| SPK-6 | PASS | Rust-инспектор без зависимостей (`tools/coa-plugin-inspect`): принимает текущий probe, отклоняет старый fingerprint, DLL без секции и EXE. Fuzz 10 000 мутаций — **0 паник** (6 348 принято, 3 652 отклонено). C++-парсер host фаззингом не проверялся |
+| SPK-13 | 100/100 PASS | `report/cases/cycles.json`: каждый цикл — код 0, вход и выход персонажа, поток присоединён, 0 хуков после `Stopping`, статический деструктор после `Finalize`, соединения только с fixture; ready 11.2–16.9 с (медиана 13.9) |
+| Регрессия на новом host | PASS | 8 сценариев сбоя без изменений поведения; негативы 12/12 до загрузки |
+| SPK-2 (все in-tree модули против SDK) | Измерено | 31 модуль собран против SDK (`plugins/spk2`, `report/spk2-modules.json`). **Компиляция: 30 из 31 без изменений исходников**; `mod-coa-challenges` не компилируется: включает заголовок другого модуля (`CoA.Prestige.API.h`). **Линковка:** 1 модуль (battlehorn) сразу, остальным не хватает **733** различных символов (`Player` 119, `Unit` 87, `WorldObject` 36, `Creature` 20 …), включая глобальные данные (`sAchievementStore` и другие DBC-хранилища — нужен `dllimport`) |
+
+**Решение владельца по модулям CoA (2026-10-29).** Часть CoA-модулей добавляет базовые функции серверов CoA и навсегда остаётся в ядре. Предварительный список (требует подтверждения): challenges, prestige, mythic-plus, path-to-ascension, spellbook, worldforged-upgrades, destiny-weaver, item-recovery, change-potions, ethereal-bazaar, legendary-items, manastorm-endless, custom-races, а также `mod-ascension` (SQL) и client-compat.
+- Зависимость challenges → prestige остаётся внутри ядра: API «плагин → плагин» для MVP не нужен.
+- 19 оставшимся кандидатам в плагины нужно **487** символов вместо 733; без `mod-coa-raid-difficulty` (269) — около 220.
+- Итог около 3.6 тыс. экспортов при лимите PE 65 535.
+- Открытый вопрос: остаётся ли raid-difficulty плагином (связан с Content Scaling через FlexHealth); относятся ли боты и Content Scaling к ядру (в roadmap это отдельные этапы 4e–4g).
+
+**Пункты G1 после обновления 2:**
+
+| Пункт | Статус |
+|---|---|
+| SPK-1 (1, 2, 4) | PASS |
+| SPK-1 (3) исключения | PASS для всех путей диспетчеризации C++-исключений; SEH (access violation) не перехватывается по дизайну |
+| SPK-1 (5) PageHeap / Application Verifier | **НЕ ВЫПОЛНЕНО** — на этой машине IFEO по имени `worldserver.exe` затронет рабочие и чужие серверы; нужна отдельная VM |
+| SPK-2 | Измерение выполнено; фактический экспорт и линковка всех модулей — работа FV1 |
+| SPK-4 | **ЧАСТИЧНО** — `unit_tests` и старт без регрессий; soak 500 ботов не выполнен (внешних модулей ботов нет в spike-сборке) |
+| SPK-5 | PASS |
+| SPK-6 | PASS (Rust); C++-парсер host без fuzz |
+| SPK-13 | 100 циклов PASS; без Application Verifier / ASan / TSan |
+| SPK-14 | **ЧАСТИЧНО** — чистое окружение, ловушки, контроль соединений, guard в ядре — да; AppContainer / сетевой запрет ОС — нет |
+
+**Вердикты после обновления 2:** SPIKE_PASS — **ДА**. G1_PASS — **НЕТ**. Не закрыты: Application Verifier / sanitizers (нужна отдельная VM), soak с ботами, изоляция на уровне ОС (AppContainer или контейнер). Всё остальное из G1 выполнено.
 - **Нетронутая база для сравнения:** worktree `core-base` (detached на 49d2fec0).
 - **Плагины, SDK, инструменты, логи:** `C:\games\coa-work\plugin-spike\{plugins,sdk,tools,report}`.
 - **Изолированный сервер и БД:** `server\`, `server-base\`, `db\`, `mysql\`.
