@@ -38,6 +38,23 @@
 - Им нужно **82** недостающих символа.
 - **Custom Races как плагин.** Ядро само читает `CoACustomRaces.Enable` в 12 местах (`DBCStores.cpp` выбирает `dbc_races`, `AscensionCompat.cpp`, `EsteriaRacials`). Плагином станут только скрипты модуля, DBC-оверлеи и клиентский патч. Чтобы выключенная DLL действительно выключала расы (ADR-5), ядро должно опираться на флаг «плагин custom-races загружен», а не на ключ конфига. Иначе CSM обязан синхронно ставить `CoACustomRaces.Enable = 0` во всех мирах. Нужен отдельный пункт до FV1, а также проверка персонажей кастомных рас при отключённом плагине (вход, отображение, сохранение).
 
+**Решение владельца: боты (Companions и SQUID) и Content Scaling — плагины.** Замер: исходники без изменений (Companions `origin/master`, Scaling `origin/main`, SQUID `origin/coa`), сборка только против SDK (`plugins/ext`, `report/ext-modules.json`):
+
+| Модуль | Компиляция против SDK | Не хватает при линковке | Что требуется от ядра |
+|---|---|---|---|
+| Companions (106 файлов) | вся | 421 символ (Player 100, Unit 56, WorldSession 22, Group 11, Guild 10 …) | Только экспорт. Существующие правки ядра (login chassis, `Group::GetRolls`, `LFGMgr::GetProposalIdForPlayer`, `OnPetitionOffered`, `AscensionClassServiceBridge`) уже в ядре. `friend class BotMgr` в `Guild.h` даёт доступ к приватному `Guild::_CreateNewBankTab` — заменить узким публичным методом |
+| Content Scaling (20) | вся | 43 (включая `CreatureScaling::SetCombatAuthority` / `SetHealthBudgetAuthority` / `HealthMultiplier`, `sMapStore`) | Только экспорт; новые хуки не нужны |
+| TBC / WotLK packs | вся | по 4 — все из **самого Scaling** (`CoAContentScaling::Instance`, `ContentPackRegistry::*`) | API «плагин → плагин» или packs внутри DLL Scaling |
+| SQUID (728) | 710; 18 файлов не компилируются | — | Инфраструктура `MOD_PLAYERBOTS` в ядре: пул `PlayerbotsDatabase`, statements, транзакции (20 файлов ядра) |
+
+**Особенности `MOD_PLAYERBOTS`, мешающие «всегда включить» инфраструктуру:**
+- `PathGenerator` при флаге поднимает предел полигонов пути 74 → 148 **для всего сервера**;
+- `DATABASE_MASK_ALL` меняет значение;
+- `IWorld` получает новый виртуальный метод;
+- путь SQL `modules/mod-playerbots` захардкожен в `DBUpdater`.
+
+Всё это нужно перевести на поведение, управляемое во время работы, и один раз встроить в базовое ядро.
+
 **Пункты G1 после обновления 2:**
 
 | Пункт | Статус |
