@@ -115,6 +115,19 @@ foreach(SOURCE_MODULE ${MODULES_MODULE_LIST})
   endif()
 endforeach()
 
+# Plugin host: SQUID playerbots is a plugin, but it needs the playerbots infrastructure in the
+# core (database pool, packet/logout hooks, movement helpers). Signed releases always build it
+# (mod-playerbots is in modules/), so the host keeps it on whether or not the module is present.
+if (COA_PLUGIN_HOST AND NOT MOD_PLAYERBOTS_FOUND)
+  set(MOD_PLAYERBOTS_FOUND 1)
+  target_compile_options(database
+    PRIVATE
+      -DMOD_PLAYERBOTS)
+  target_compile_options(game-interface
+    INTERFACE
+      -DMOD_PLAYERBOTS)
+endif()
+
 list(SORT MODULE_GRAPH_KEYS)
 list(REMOVE_DUPLICATES MODULE_GRAPH_KEYS)
 
