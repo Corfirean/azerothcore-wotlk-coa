@@ -267,8 +267,8 @@ protected:
 private:
     WorldConfig _worldConfig;
 
-    static std::atomic_long _stopEvent;
-    static uint8 _exitCode;
+    AC_GAME_API static std::atomic_long _stopEvent;
+    AC_GAME_API static uint8 _exitCode;
     uint32 _shutdownTimer;
     uint32 _shutdownMask;
     std::string _shutdownReason;

@@ -95,6 +95,12 @@ namespace Acore::Plugins
         void DrainBeforeDbClose();
         void Finalize();
 
+        /// Last thing before main() returns. Plugin images are otherwise torn down by the OS after
+        /// worldserver's own statics are gone, so a plugin with non-trivial globals can crash on exit.
+        /// Plugins.ExitMode: 0 = return normally, 1 = flush logs and end the process without running
+        /// static destructors, 2 = unload plugin images (reverse load order) while the host is intact.
+        void BeforeProcessExit(int exitCode);
+
         bool IsPluginAddress(void const* address, Plugin const** owner = nullptr) const;
         bool HasFailure() const { return _failed; }
         void WriteReport(char const* phase) const;
@@ -113,6 +119,7 @@ namespace Acore::Plugins
         std::vector<Plugin> _plugins; // in load order after ResolveOrder()
         bool _failed = false;
         std::string _phase = "none";
+        int _exitCode = -1; // World's exit code when the update loop ended
     };
 }
 

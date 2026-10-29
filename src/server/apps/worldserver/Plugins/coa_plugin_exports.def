@@ -935,10 +935,6 @@ EXPORTS
     ?Zone2MapCoordinates@@YAXAEAM0I@Z
     ?_ApplyItemMods@Player@@QEAAXPEAVItem@@E_N@Z
     ?_CreateNewBankTab@Guild@@AEAAXXZ
-    ?_allianceRaceMask@RaceMgr@@0IA
-    ?_exitCode@World@@0EA
-    ?_maxRaces@RaceMgr@@0EA
-    ?_stopEvent@World@@0U?$atomic@J@std@@A
     ?addActionButton@Player@@QEAAPEAUActionButton@@EIE@Z
     ?cancel@Spell@@QEAAX_N@Z
     ?cast@Spell@@QEAAX_N@Z

@@ -737,6 +737,9 @@ bool PluginManager::OwesShutdown(Plugin const& plugin, char const* phase) const
 void PluginManager::Stopping()
 {
     _phase = "stopping";
+    // main() returns the exit code it has when the update loop ends; the shutdown handlers that
+    // run afterwards may still change World's value.
+    _exitCode = World::GetExitCode();
     for (auto it = _plugins.rbegin(); it != _plugins.rend(); ++it)
     {
         if (it->stopping || !OwesShutdown(*it, "Stopping"))
@@ -776,6 +779,34 @@ void PluginManager::Finalize()
             it->state = State::Stopped;
     }
     WriteReport("finalize");
+}
+
+void PluginManager::BeforeProcessExit(int exitCode)
+{
+    if (_exitCode >= 0)
+        exitCode = _exitCode;
+    // Default 1: measured with SQUID, whose static destructors crash once the world is gone (0xC0000005
+    // with modes 0 and 2). Everything is saved and the databases are closed by now.
+    int32 const mode = sConfigMgr->GetOption<int32>("Plugins.ExitMode", 1, false);
+    if (mode == 2)
+    {
+        // The world, the scripts and the databases are gone; nothing can call into a plugin now.
+        for (auto it = _plugins.rbegin(); it != _plugins.rend(); ++it)
+        {
+            if (!it->module)
+                continue;
+            LOG_INFO("server.plugins", "Plugin '{}': unloading image before process exit.", it->id);
+            FreeLibrary(static_cast<HMODULE>(it->module));
+            it->module = nullptr;
+        }
+    }
+    else if (mode == 1)
+    {
+        LOG_INFO("server.plugins", "Ending the process without static destructors (Plugins.ExitMode = 1), exit code {}.", exitCode);
+        sLog->SetSynchronous();
+        std::fflush(nullptr);
+        TerminateProcess(GetCurrentProcess(), static_cast<UINT>(exitCode));
+    }
 }
 
 bool PluginManager::IsPluginAddress(void const* address, Plugin const** owner) const

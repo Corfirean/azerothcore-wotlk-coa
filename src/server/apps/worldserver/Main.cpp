@@ -306,6 +306,7 @@ int main(int argc, char** argv)
 #ifdef COA_PLUGIN_HOST
         // No script object exists any more, so no hook can reach plugin code after this.
         sPluginMgr->Finalize();
+        sPluginMgr->BeforeProcessExit(World::GetExitCode());
 #endif
     });
 
