@@ -97,8 +97,8 @@ uint32 ScriptMgr::DealDamage(Unit* AttackerUnit, Unit* pVictim, uint32 damage, D
 
     for (auto const& [scriptID, script] : ScriptRegistry<UnitScript>::ScriptPointerList)
     {
-        damage = script->DealDamage(AttackerUnit, pVictim, damage, damagetype,
-                                    scriptHealthLeechDamage);
+        damage = COA_PLUGIN_CALL(script, "UnitScript::DealDamage", damage, script->DealDamage(AttackerUnit, pVictim, damage, damagetype,
+                                    scriptHealthLeechDamage));
     }
 
     return damage;

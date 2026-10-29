@@ -50,6 +50,31 @@ namespace Acore::Plugins
     AC_GAME_API void ReportFatal(void const* caller, char const* reason);
 }
 
+namespace Acore::Plugins
+{
+    /// Guarded call for hand-written dispatch loops that use the hook's return value: a plugin
+    /// script that throws (or belongs to a faulted plugin) yields `fallback`.
+    template<typename R, typename Fn>
+    R Guarded(void const* script, char const* hook, R fallback, Fn&& fn)
+    {
+        if (AnyFaulted.load(std::memory_order_relaxed) && IsSuppressed(script))
+            return fallback;
+        try
+        {
+            return fn();
+        }
+        catch (...)
+        {
+            if (!HandleFault(script, hook, std::current_exception()))
+                throw;
+            return fallback;
+        }
+    }
+}
+
+#define COA_PLUGIN_CALL(script, hook, fallback, expr) \
+    Acore::Plugins::Guarded(script, hook, fallback, [&]() { return (expr); })
+
 #define COA_PLUGIN_SKIP(script) \
     (Acore::Plugins::AnyFaulted.load(std::memory_order_relaxed) && Acore::Plugins::IsSuppressed(script))
 
@@ -73,6 +98,7 @@ namespace Acore::Plugins
 
 #define COA_PLUGIN_GUARD(script, hook, action) action;
 #define COA_PLUGIN_GUARD_BOOL(script, hook, expr) (expr)
+#define COA_PLUGIN_CALL(script, hook, fallback, expr) (expr)
 
 #endif
 

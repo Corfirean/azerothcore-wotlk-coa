@@ -631,7 +631,7 @@ Optional<bool> ScriptMgr::OnPlayerIsClass(Player const* player, Classes unitClas
 
     for (auto const& script : ScriptRegistry<PlayerScript>::EnabledHooks[PLAYERHOOK_ON_PLAYER_IS_CLASS])
     {
-        Optional<bool> scriptResult = script->OnPlayerIsClass(player, unitClass, context);
+        Optional<bool> scriptResult = COA_PLUGIN_CALL(script, "PLAYERHOOK_ON_PLAYER_IS_CLASS", Optional<bool>{}, script->OnPlayerIsClass(player, unitClass, context));
         if (scriptResult)
             return scriptResult;
     }
@@ -1174,7 +1174,7 @@ std::optional<uint32> ScriptMgr::OnPlayerGetGameModeMask(Player const* player)
 {
     uint32 mask = 0;
     for (auto const& script : ScriptRegistry<PlayerScript>::EnabledHooks[PLAYERHOOK_ON_GET_GAME_MODE_MASK])
-        if (script->OnPlayerGetGameModeMask(player, mask))
+        if (COA_PLUGIN_CALL(script, "PLAYERHOOK_ON_GET_GAME_MODE_MASK", false, script->OnPlayerGetGameModeMask(player, mask)))
             return mask;
 
     return std::nullopt;

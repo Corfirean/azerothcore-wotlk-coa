@@ -41,6 +41,7 @@
 #include "MySQLThreading.h"
 #include "OpenSSLCrypto.h"
 #include "OutdoorPvPMgr.h"
+#include "FixtureGuard.h"
 #include "PluginManager.h"
 #include "ProcessPriority.h"
 #include "RASession.h"
@@ -310,6 +311,11 @@ int main(int argc, char** argv)
 
     LOG_INFO("server.loading", "Initializing Scripts...");
     sScriptMgr->Initialize();
+
+#ifdef COA_PLUGIN_HOST
+    if (!Acore::Plugins::CheckFixtureDatabaseIdentity())
+        return 1;
+#endif
 
     // Start the databases
     if (!StartDB())

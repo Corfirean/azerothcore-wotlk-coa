@@ -17,6 +17,7 @@
 
 #include "CommandScript.h"
 #include "Chat.h"
+#include "PluginBarrier.h"
 #include "ScriptMgr.h"
 
 Acore::ChatCommands::ChatCommandTable ScriptMgr::GetChatCommands()
@@ -25,8 +26,9 @@ Acore::ChatCommands::ChatCommandTable ScriptMgr::GetChatCommands()
 
     for (auto const& [scriptID, script] : ScriptRegistry<CommandScript>::ScriptPointerList)
     {
-        Acore::ChatCommands::ChatCommandTable cmds = script->GetCommands();
-        std::move(cmds.begin(), cmds.end(), std::back_inserter(table));
+        COA_PLUGIN_GUARD(script, "GetCommands",
+            Acore::ChatCommands::ChatCommandTable cmds = script->GetCommands();
+            std::move(cmds.begin(), cmds.end(), std::back_inserter(table)))
     }
 
     return table;

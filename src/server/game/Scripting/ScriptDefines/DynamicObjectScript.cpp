@@ -16,6 +16,7 @@
  */
 
 #include "DynamicObjectScript.h"
+#include "PluginBarrier.h"
 #include "ScriptMgr.h"
 
 void ScriptMgr::OnDynamicObjectUpdate(DynamicObject* dynobj, uint32 diff)
@@ -24,7 +25,7 @@ void ScriptMgr::OnDynamicObjectUpdate(DynamicObject* dynobj, uint32 diff)
 
     for (auto const& [scriptID, script] : ScriptRegistry<DynamicObjectScript>::ScriptPointerList)
     {
-        script->OnUpdate(dynobj, diff);
+        COA_PLUGIN_GUARD(script, "DynamicObjectScript::OnUpdate", script->OnUpdate(dynobj, diff))
     }
 }
 

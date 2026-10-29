@@ -78,7 +78,7 @@ namespace
                 continue;
             }
 
-            executeHook(script);
+            COA_PLUGIN_GUARD(script, "ForeachMaps", executeHook(script))
             return;
         }
     }

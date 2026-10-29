@@ -29,7 +29,7 @@ inline Optional<bool> IsValidBoolScript(std::function<bool(ScriptName*)> execute
 
     for (auto const& [scriptID, script] : ScriptRegistry<ScriptName>::ScriptPointerList)
     {
-        if (executeHook(script))
+        if (COA_PLUGIN_CALL(script, "IsValidBoolScript", false, executeHook(script)))
             return true;
     }
 
@@ -44,7 +44,7 @@ inline T* GetReturnAIScript(std::function<T*(ScriptName*)> executeHook)
 
     for (auto const& [scriptID, script] : ScriptRegistry<ScriptName>::ScriptPointerList)
     {
-        if (T* scriptAI = executeHook(script))
+        if (T* scriptAI = COA_PLUGIN_CALL(script, "GetReturnAIScript", static_cast<T*>(nullptr), executeHook(script)))
         {
             return scriptAI;
         }
@@ -61,7 +61,7 @@ inline void ExecuteScript(std::function<void(ScriptName*)> executeHook)
 
     for (auto const& [scriptID, script] : ScriptRegistry<ScriptName>::ScriptPointerList)
     {
-        executeHook(script);
+        COA_PLUGIN_GUARD(script, "ExecuteScript", executeHook(script))
     }
 }
 

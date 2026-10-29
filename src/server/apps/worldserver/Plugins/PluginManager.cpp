@@ -221,20 +221,26 @@ namespace
     }
 
     // Watchdog for synchronous plugin calls. A hung call cannot be interrupted safely inside the
-    // process, so on timeout the report is written and the whole process is terminated. It is
-    // only armed for phases that run before the realm is announced to players.
+    // process. Before the realm is announced the whole process is terminated (nothing has been
+    // served yet); during shutdown terminating would also skip saving every other player, so
+    // there the hang is only reported.
     class PhaseWatchdog
     {
     public:
-        PhaseWatchdog(std::string what, std::chrono::seconds limit) : _what(std::move(what))
+        PhaseWatchdog(std::string what, std::chrono::seconds limit, bool terminate = true) : _what(std::move(what))
         {
-            _thread = std::thread([this, limit]
+            _thread = std::thread([this, limit, terminate]
             {
                 std::unique_lock<std::mutex> lock(_mutex);
                 if (!_cv.wait_for(lock, limit, [this] { return _done; }))
                 {
-                    LOG_FATAL("server.plugins", "Plugin call '{}' did not return within {}s; terminating the process (no saving, no further hooks).", _what, limit.count());
                     sPluginMgr->WriteReport(("hang:" + _what).c_str());
+                    if (!terminate)
+                    {
+                        LOG_FATAL("server.plugins", "Plugin call '{}' has not returned after {}s; shutdown is blocked on it.", _what, limit.count());
+                        return;
+                    }
+                    LOG_FATAL("server.plugins", "Plugin call '{}' did not return within {}s; terminating the process (no saving, no further hooks).", _what, limit.count());
                     sLog->SetSynchronous();
                     TerminateProcess(GetCurrentProcess(), PLUGIN_HANG_EXIT_CODE);
                 }
@@ -688,6 +694,7 @@ bool PluginManager::StartAll()
         }
 
         plugin.state = State::Started;
+        plugin.started = true;
         LOG_INFO("server.plugins", "Plugin '{}' is ready.", plugin.id);
     }
 
@@ -712,15 +719,30 @@ bool PluginManager::HealthyAfterStartup() const
     return !AnyFaulted && std::none_of(_plugins.begin(), _plugins.end(), [](Plugin const& p) { return p.state == State::Faulted; });
 }
 
+bool PluginManager::OwesShutdown(Plugin const& plugin, char const* phase) const
+{
+    if (!plugin.started || (plugin.state != State::Started && plugin.state != State::Faulted))
+        return false;
+
+    // A faulted plugin's hooks stay suppressed, but it still gets its shutdown phases so it can
+    // save and release what it owns (sessions, threads). The entry points are noexcept thunks;
+    // a crash (SEH) inside them is not contained.
+    if (plugin.state == State::Faulted)
+        LOG_WARN("server.plugins", "Plugin '{}' is faulted; running {} anyway so it can save and release what it owns.", plugin.id, phase);
+    else
+        LOG_INFO("server.plugins", "Plugin '{}': {}.", plugin.id, phase);
+    return true;
+}
+
 void PluginManager::Stopping()
 {
     _phase = "stopping";
     for (auto it = _plugins.rbegin(); it != _plugins.rend(); ++it)
     {
-        if (it->state != State::Started || it->stopping)
+        if (it->stopping || !OwesShutdown(*it, "Stopping"))
             continue;
         it->stopping = true;
-        LOG_INFO("server.plugins", "Plugin '{}': Stopping.", it->id);
+        PhaseWatchdog watchdog(it->id + ".onStopping", PhaseTimeout(), false);
         it->descriptor->onStopping();
     }
 }
@@ -730,10 +752,10 @@ void PluginManager::DrainBeforeDbClose()
     _phase = "drain";
     for (auto it = _plugins.rbegin(); it != _plugins.rend(); ++it)
     {
-        if (it->state != State::Started || it->drained)
+        if (it->drained || !OwesShutdown(*it, "DrainBeforeDbClose"))
             continue;
         it->drained = true;
-        LOG_INFO("server.plugins", "Plugin '{}': DrainBeforeDbClose.", it->id);
+        PhaseWatchdog watchdog(it->id + ".onDrainBeforeDbClose", PhaseTimeout(), false);
         CoaPluginStatus const status = it->descriptor->onDrainBeforeDbClose();
         if (status != COA_PLUGIN_OK)
             LOG_ERROR("server.plugins", "Plugin '{}': DrainBeforeDbClose returned {}: {}", it->id, uint32(status), it->descriptor->lastError());
@@ -745,12 +767,13 @@ void PluginManager::Finalize()
     _phase = "finalize";
     for (auto it = _plugins.rbegin(); it != _plugins.rend(); ++it)
     {
-        if (it->state != State::Started || it->finalized)
+        if (it->finalized || !OwesShutdown(*it, "Finalize"))
             continue;
         it->finalized = true;
-        LOG_INFO("server.plugins", "Plugin '{}': Finalize.", it->id);
+        PhaseWatchdog watchdog(it->id + ".onFinalize", PhaseTimeout(), false);
         it->descriptor->onFinalize();
-        it->state = State::Stopped;
+        if (it->state == State::Started)
+            it->state = State::Stopped;
     }
     WriteReport("finalize");
 }
@@ -797,7 +820,9 @@ void PluginManager::WriteReport(char const* phase) const
         Plugin const& p = _plugins[i];
         out << (i ? "," : "") << "\n    {\"id\": \"" << JsonEscape(p.id) << "\", \"state\": \"" << StateName(p.state)
             << "\", \"reason\": \"" << JsonEscape(p.reason) << "\", \"required\": " << (p.required ? "true" : "false")
-            << ", \"loadMs\": " << p.loadMs << ", \"imports\": [";
+            << ", \"loadMs\": " << p.loadMs
+            << ", \"shutdownPhases\": [" << (p.stopping ? "\"stopping\"" : "") << (p.drained ? ", \"drain\"" : "")
+            << (p.finalized ? ", \"finalize\"" : "") << "], \"imports\": [";
         for (std::size_t j = 0; j < p.imports.size(); ++j)
             out << (j ? ", " : "") << "\"" << JsonEscape(p.imports[j]) << "\"";
         out << "]}";

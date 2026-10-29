@@ -63,6 +63,7 @@ namespace Acore::Plugins
         uintptr_t imageBegin = 0;
         uintptr_t imageEnd = 0;
         CoaPluginDescriptor const* descriptor = nullptr;
+        bool started = false;   // onStartup succeeded: shutdown phases are owed, even if it faults later
         bool stopping = false;
         bool drained = false;
         bool finalized = false;
@@ -106,6 +107,7 @@ namespace Acore::Plugins
         void Fail(Plugin& plugin, State state, std::string reason);
         void Unlink(Plugin& plugin, bool deleteScripts);
         bool RunPhase(Plugin& plugin, char const* phase, CoaPluginStatus (*fn)());
+        bool OwesShutdown(Plugin const& plugin, char const* phase) const;
 
         std::filesystem::path _dir;
         std::vector<Plugin> _plugins; // in load order after ResolveOrder()
