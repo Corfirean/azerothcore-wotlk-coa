@@ -64,8 +64,8 @@ public:                                                 // constructors and glob
     void LoadFromDB(PreparedQueryResult result);
     void ApplyStartingZoneReputation();
 public:                                                 // statics
-    static const int32 PointsInRank[MAX_REPUTATION_RANK];
-    static const int32 Reputation_Cap;
+    AC_GAME_API static const int32 PointsInRank[MAX_REPUTATION_RANK];
+    AC_GAME_API static const int32 Reputation_Cap;
     static const int32 Reputation_Bottom;
 
     static ReputationRank ReputationToRank(int32 standing);

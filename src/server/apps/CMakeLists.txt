@@ -134,6 +134,8 @@ foreach(APPLICATION_NAME ${APPLICATIONS_BUILD_LIST})
     set_target_properties(${APP_PROJECT_NAME} PROPERTIES ENABLE_EXPORTS ON)
     # Plugins/FixtureGuard.cpp talks to MySQL directly before any pool is opened.
     target_link_libraries(${APP_PROJECT_NAME} PRIVATE mysql)
+    # Functions the known plugins import (generated from their link errors against the SDK).
+    target_sources(${APP_PROJECT_NAME} PRIVATE ${SOURCE_APP_PATH}/Plugins/coa_plugin_exports.def)
   endif()
 
   target_link_libraries(${APP_PROJECT_NAME}

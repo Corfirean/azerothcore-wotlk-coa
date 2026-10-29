@@ -2441,6 +2441,15 @@ void Guild::SetBankTabText(uint8 tabId, std::string_view text)
 }
 
 // Private methods
+bool Guild::EnsureFirstBankTab()
+{
+    if (_GetPurchasedTabsSize() != 0)
+        return false;
+
+    _CreateNewBankTab();
+    return true;
+}
+
 void Guild::_CreateNewBankTab()
 {
     uint8 tabId = _GetPurchasedTabsSize();                      // Next free id

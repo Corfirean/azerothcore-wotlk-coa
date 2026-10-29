@@ -1,6 +1,7 @@
 #ifndef ASCENSION_COA_TALENT_DATA_H
 #define ASCENSION_COA_TALENT_DATA_H
 
+#include "Define.h"
 #include <array>
 #include <cstdint>
 #include <vector>
@@ -53,8 +54,8 @@ struct CoATalentBudget
     std::uint8_t TE;
 };
 
-extern std::vector<CoATalentEntry> CoATalentEntries;
-extern std::vector<CoASelectableFreeEntry> CoASelectableFreeEntries;
+AC_GAME_API extern std::vector<CoATalentEntry> CoATalentEntries;
+AC_GAME_API extern std::vector<CoASelectableFreeEntry> CoASelectableFreeEntries;
 extern std::vector<CoAAutomaticDependency> CoAAutomaticDependencies;
 extern std::vector<CoASpecialization> CoASpecializations;
 extern std::vector<CoATalentBudget> CoATalentBudgets;
