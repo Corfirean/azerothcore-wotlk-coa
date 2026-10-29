@@ -1,0 +1,15 @@
+# CoA-only script hooks (vs azerothcore-wotlk master)
+
+- `AllBattlegroundScript.h`: +1 CoA-only OnBattlegroundUpdatePlayerScore
+- `AllMapScript.h`: +1 CoA-only OnResolveEncounterMechanic; missing vs upstream: CanSendObjectUpdatesToPlayer
+- `AllSpellScript.h`: +10 CoA-only OnGuardianSummoned, OnSpellBeforeEffects, OnSpellCalculatedTarget, OnSpellCritChance, OnSpellFocusAnswered, OnSpellHitResult, OnSpellInterruptDuration, OnSpellSuccessfulDispel, OnSpellSuccessfulInterrupt, OnSpellSuccessfulSteal; missing vs upstream: OnIsAuraExclusiveBySpecificWith
+- `ArenaScript.h`: +1 CoA-only OnGetStartPersonalRating; missing vs upstream: OnAddMember
+- `DatabaseScript.h`: +4 CoA-only OnDatabaseSelectIndexLogout, OnDatabasesClosing, OnDatabasesKeepAlive, OnDatabasesLoading; missing vs upstream: OnModuleDatabasesClosing, OnModuleDatabasesKeepAlive, OnModuleDatabasesLoading
+- `GlobalScript.h`: +5 CoA-only HasLfgAutoFillProvider, OnInstanceMapCreated, OnLfgProposalMadeGroup, OnResolveLfgQueuePolicy, OnSpellModFamilyMask; missing vs upstream: CanCreateLfgProposal, OnArenaWeekReset
+- `GroupScript.h`: +1 CoA-only OnLootRollStart
+- `PlayerScript.h`: +39 CoA-only OnPetitionOffered, OnPlayerAfterApplyItemMods, OnPlayerBankWithdraw, OnPlayerBankerActivate, OnPlayerBreathInverted, OnPlayerCanEnergize, OnPlayerCanEnterManastorm, OnPlayerCanRegenerate, OnPlayerCanRewardQuest, OnPlayerCanTakeMailItem, OnPlayerCanTakeMailMoney, OnPlayerCanTakeQuest, OnPlayerCoAPrestige, OnPlayerCoAPrestigeSaved, OnPlayerCoAProgress, OnPlayerCreateInitialItems, OnPlayerEnvironmentalDamage, OnPlayerGetAmmoDisplay, OnPlayerGetGameModeMask, OnPlayerGetMaxAllowedLevel, OnPlayerGetNameQueryRace, OnPlayerGetShapeshiftModel, OnPlayerHasNoBonusExperience, OnPlayerHonorableKillingBlow, OnPlayerLearnPetTalent, OnPlayerLearnTrainerSpell, OnPlayerMasterLootItem, OnPlayerNormalizeActionButtonSpell, OnPlayerQuestGiverChooseReward, OnPlayerRefreshQuestGiver, OnPlayerSendSpellChargeStates, OnPlayerSpellChargeConsumed, OnPlayerSpellCooldownCalculated, OnPlayerTakeMailItem, OnPlayerTemporarySpellLearnNotice, OnPlayerTemporarySpellRemoveNotice, OnPlayerTemporarySpellReplacementNotice, OnResolveDungeonAccessLevels, OnResolveLfgRewardLevel; missing vs upstream: OnPlayerAfterMoveItemToInventory, OnPlayerAfterTakeItemFromMail, OnPlayerAfterTrainSpell, OnPlayerBeforePetitionSign, OnPlayerBeforeReceiveSpellListFromTrainer, OnPlayerCanLearnSpell, OnPlayerCanMarkAccountOffline, OnPlayerCreatureKillCredit, OnPlayerGetTrainerSpellState
+- `ServerScript.h`: +2 CoA-only CanPacketReceiveEarly, OnPacketReceived; missing vs upstream: OnPacketSent
+- `SessionScript.h`: +0 CoA-only ; missing vs upstream: OnSessionUpdate, OnWardenCheckExpectedResult
+- `UnitScript.h`: +11 CoA-only CanUnitAttack, ModifyMeleeDamageRange, ModifySpellEffectBaseValue, OnAfterAuraEffectCalculateAmount, OnBeforeHealAbsorb, OnBlock, OnHealthChanged, OnPeriodicDamageResult, OnSendAuraUpdate, ResolveSpellCast, SpellMagnetTarget
+
+Total CoA-only hook methods: 75 (of 561 hook methods in CoA)

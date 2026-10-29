@@ -124,6 +124,49 @@ else()
   set(BUILD_SHARED_LIBS OFF)
 endif()
 
+# Experimental: keep one statically linked core, but export the annotated
+# AC_*_API surface from worldserver so plugins built against the plugin SDK
+# import it instead of carrying their own copy of game.
+option(COA_PLUGIN_HOST "Export the plugin API from worldserver and load plugins listed in plugins/plugins.lock.json" 0)
+if(COA_PLUGIN_HOST)
+  if(BUILD_SHARED_LIBS)
+    message(FATAL_ERROR "COA_PLUGIN_HOST requires a static core (WITH_DYNAMIC_LINKING OFF, no dynamic modules/scripts).")
+  endif()
+  add_compile_definitions(COA_PLUGIN_HOST ACORE_API_USE_DYNAMIC_LINKING
+    ACORE_API_EXPORT_COMMON ACORE_API_EXPORT_DATABASE ACORE_API_EXPORT_SHARED ACORE_API_EXPORT_GAME)
+  if(MSVC)
+    # dll-interface warnings are expected: the host is one image, plugins use the same CRT/STL.
+    add_compile_options(/wd4251 /wd4275)
+  endif()
+
+  # Exact-build ABI fingerprint: plugins built against a different host are refused before
+  # they are loaded. Inputs are written next to the header for diagnostics.
+  file(GLOB_RECURSE COA_PLUGIN_ABI_HEADERS LIST_DIRECTORIES false
+    "${CMAKE_SOURCE_DIR}/src/common/*.h" "${CMAKE_SOURCE_DIR}/src/server/shared/*.h"
+    "${CMAKE_SOURCE_DIR}/src/server/database/*.h" "${CMAKE_SOURCE_DIR}/src/server/game/*.h"
+    "${CMAKE_SOURCE_DIR}/src/server/coa/*.h")
+  list(SORT COA_PLUGIN_ABI_HEADERS)
+  set(COA_PLUGIN_ABI_HEADER_DIGESTS "")
+  foreach(header ${COA_PLUGIN_ABI_HEADERS})
+    file(SHA256 "${header}" header_digest)
+    file(RELATIVE_PATH header_rel "${CMAKE_SOURCE_DIR}" "${header}")
+    string(APPEND COA_PLUGIN_ABI_HEADER_DIGESTS "${header_rel}=${header_digest}\n")
+  endforeach()
+  string(SHA256 COA_PLUGIN_ABI_HEADERS_HASH "${COA_PLUGIN_ABI_HEADER_DIGESTS}")
+  get_directory_property(COA_PLUGIN_ABI_DEFINES COMPILE_DEFINITIONS)
+  string(TOUPPER "${CMAKE_BUILD_TYPE}" COA_PLUGIN_ABI_CONFIG)
+  set(COA_PLUGIN_ABI_INPUTS
+    "pluginApi=1\nplatform=${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}\ncompiler=${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}\nflags=${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${COA_PLUGIN_ABI_CONFIG}}\ndefines=${COA_PLUGIN_ABI_DEFINES}\nheaders=${COA_PLUGIN_ABI_HEADERS_HASH}\n")
+  string(SHA256 COA_PLUGIN_ABI_FINGERPRINT "${COA_PLUGIN_ABI_INPUTS}")
+  set(COA_PLUGIN_ABI_DIR "${CMAKE_BINARY_DIR}/coa_plugin")
+  file(WRITE "${COA_PLUGIN_ABI_DIR}/coa-plugin-abi-inputs.txt" "${COA_PLUGIN_ABI_INPUTS}fingerprint=${COA_PLUGIN_ABI_FINGERPRINT}\n")
+  file(WRITE "${COA_PLUGIN_ABI_DIR}/CoaPluginAbi.h.tmp"
+    "#pragma once\n#define COA_PLUGIN_ABI_FINGERPRINT \"${COA_PLUGIN_ABI_FINGERPRINT}\"\n")
+  configure_file("${COA_PLUGIN_ABI_DIR}/CoaPluginAbi.h.tmp" "${COA_PLUGIN_ABI_DIR}/CoaPluginAbi.h" COPYONLY)
+  include_directories("${COA_PLUGIN_ABI_DIR}")
+  message(STATUS "CoA plugin host ABI fingerprint: ${COA_PLUGIN_ABI_FINGERPRINT}")
+endif()
+
 # Source tree in IDE
 set(WITH_SOURCE_TREE       "hierarchical" CACHE STRING "Build the source tree for IDE's.")
 set_property(CACHE WITH_SOURCE_TREE PROPERTY STRINGS no flat hierarchical)

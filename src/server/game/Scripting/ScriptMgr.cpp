@@ -16,6 +16,7 @@
  */
 
 #include "ScriptMgr.h"
+#include <unordered_set>
 #include "AllScriptsObjects.h"
 #include "InstanceScript.h"
 #include "LFGScripts.h"
@@ -162,10 +163,58 @@ void ScriptMgr::Unload()
         }
 
         ScriptRegistry<typename Info::type>::ScriptPointerList.clear();
+#ifdef COA_PLUGIN_HOST
+        // Plugin images stay mapped, but nothing may reach the deleted scripts any more.
+        // Keep the per-hook slots (dispatch indexes them) and empty each one.
+        for (auto& hookScripts : ScriptRegistry<typename Info::type>::EnabledHooks)
+            hookScripts.clear();
+        ScriptRegistry<typename Info::type>::ALScripts.clear();
+#endif
     });
 
     delete[] SpellSummary;
 }
+
+#ifdef COA_PLUGIN_HOST
+std::size_t ScriptMgr::PurgeScripts(std::function<bool(ScriptObject const*)> const& owned, bool deleteScripts)
+{
+    std::unordered_set<ScriptObject*> purged;
+
+    Acore::for_each<ScriptRegistryTypes>([&]<typename Info>()
+    {
+        using Registry = ScriptRegistry<typename Info::type>;
+
+        for (auto itr = Registry::ScriptPointerList.begin(); itr != Registry::ScriptPointerList.end();)
+        {
+            if (owned(itr->second))
+            {
+                purged.insert(itr->second);
+                itr = Registry::ScriptPointerList.erase(itr);
+            }
+            else
+                ++itr;
+        }
+
+        for (auto& hookScripts : Registry::EnabledHooks)
+            std::erase_if(hookScripts, [&](auto const* script) { return owned(script); });
+
+        std::erase_if(Registry::ALScripts, [&](auto const& entry)
+        {
+            if (!owned(entry.first))
+                return false;
+            purged.insert(entry.first);
+            return true;
+        });
+    });
+
+    if (deleteScripts)
+        for (ScriptObject* script : purged)
+            delete script;
+
+    _scriptCount -= std::min<uint32>(_scriptCount, uint32(purged.size()));
+    return purged.size();
+}
+#endif
 
 void ScriptMgr::LoadDatabase()
 {

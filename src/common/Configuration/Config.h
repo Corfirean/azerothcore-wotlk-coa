@@ -18,6 +18,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include "Define.h"
 #include <cstdint>
 #include <stdexcept>
 #include <string_view>
@@ -41,7 +42,7 @@ struct ConfigPolicy
     ConfigSeverity valueErrorSeverity = ConfigSeverity::Error;
 };
 
-class ConfigMgr
+class AC_COMMON_API ConfigMgr
 {
     ConfigMgr() = default;
     ConfigMgr(ConfigMgr const&) = delete;
@@ -54,6 +55,11 @@ public:
     void Configure(std::string const& initFileName, std::vector<std::string> args, std::string_view modulesConfigList = {}, ConfigPolicy policy = {});
 
     static ConfigMgr* instance();
+
+    /// Adds a module config (plain file name in configs/modules/) that was not known at
+    /// compile time, e.g. one declared by a plugin. Must be called before LoadModulesConfigs().
+    /// Returns false for a duplicate or a name containing a path.
+    bool AddModuleConfigFile(std::string const& fileName);
 
     bool Reload();
 
@@ -89,6 +95,9 @@ class ConfigException : public std::length_error
 public:
     explicit ConfigException(std::string const& message) : std::length_error(message) { }
 };
+
+template<>
+AC_COMMON_API bool ConfigMgr::GetOption<bool>(std::string const& name, bool const& def, bool showLogs) const;
 
 #define sConfigMgr ConfigMgr::instance()
 

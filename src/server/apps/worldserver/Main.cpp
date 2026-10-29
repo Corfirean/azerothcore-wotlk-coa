@@ -41,6 +41,7 @@
 #include "MySQLThreading.h"
 #include "OpenSSLCrypto.h"
 #include "OutdoorPvPMgr.h"
+#include "PluginManager.h"
 #include "ProcessPriority.h"
 #include "RASession.h"
 #include "RealmList.h"
@@ -269,6 +270,16 @@ int main(int argc, char** argv)
     // Set process priority according to configuration settings
     SetProcessPriority("server.worldserver", sConfigMgr->GetOption<int32>(CONFIG_PROCESSOR_AFFINITY, 0), sConfigMgr->GetOption<bool>(CONFIG_HIGH_PRIORITY, true));
 
+#ifdef COA_PLUGIN_HOST
+    // Plugins are checked without being loaded, and their configs registered, before the
+    // module configs are read. Any rejected plugin stops the start here.
+    if (!sPluginMgr->Prepare(Acore::Plugins::PluginManager::DefaultDirectory()))
+    {
+        LOG_ERROR("server.plugins", "Plugin checks failed; see plugins/plugin-boot-report.json. The world was not started.");
+        return 1;
+    }
+#endif
+
     // Loading modules configs before scripts
     sConfigMgr->LoadModulesConfigs();
 
@@ -277,12 +288,24 @@ int main(int argc, char** argv)
         AddScripts();
         AddCoAScripts();
     });
+#ifdef COA_PLUGIN_HOST
+    sScriptMgr->SetModulesLoader([]
+    {
+        AddModulesScripts();
+        sPluginMgr->LoadAndRegister();
+    });
+#else
     sScriptMgr->SetModulesLoader(AddModulesScripts);
+#endif
 
     std::shared_ptr<void> sScriptMgrHandle(nullptr, [](void*)
     {
         sScriptMgr->Unload();
         //sScriptReloadMgr->Unload();
+#ifdef COA_PLUGIN_HOST
+        // No script object exists any more, so no hook can reach plugin code after this.
+        sPluginMgr->Finalize();
+#endif
     });
 
     LOG_INFO("server.loading", "Initializing Scripts...");
@@ -331,6 +354,17 @@ int main(int argc, char** argv)
 
         sScriptMgr->OnAfterUnloadAllMaps();
     });
+
+#ifdef COA_PLUGIN_HOST
+    // PluginsReady: every plugin must be ready before the world socket opens.
+    sPluginMgr->LogHostAddresses();
+    if (!sPluginMgr->StartAll())
+    {
+        LOG_ERROR("server.plugins", "A plugin failed to start; the world socket was not opened.");
+        World::StopNow(ERROR_EXIT_CODE);
+        return 1;
+    }
+#endif
 
     // Start the Remote Access port (acceptor) if enabled
     std::unique_ptr<AsyncAcceptor> raAcceptor;
@@ -383,10 +417,17 @@ int main(int argc, char** argv)
             ClearOnlineAccounts();
     });
 
-    // Set server online (allow connecting now)
-    LoginDatabase.DirectExecute("UPDATE realmlist SET flag = flag & ~{}, population = 0 WHERE id = '{}'", REALM_FLAG_VERSION_MISMATCH, realm.Id.Realm);
-    realm.PopulationLevel = 0.0f;
-    realm.Flags = RealmFlags(realm.Flags & ~uint32(REALM_FLAG_VERSION_MISMATCH));
+    auto announceRealm = []
+    {
+        // Set server online (allow connecting now)
+        LoginDatabase.DirectExecute("UPDATE realmlist SET flag = flag & ~{}, population = 0 WHERE id = '{}'", REALM_FLAG_VERSION_MISMATCH, realm.Id.Realm);
+        realm.PopulationLevel = 0.0f;
+        realm.Flags = RealmFlags(realm.Flags & ~uint32(REALM_FLAG_VERSION_MISMATCH));
+    };
+
+#ifndef COA_PLUGIN_HOST
+    announceRealm();
+#endif
 
     // Start the freeze check callback cycle in 5 seconds (cycle itself is 1 sec)
     std::shared_ptr<FreezeDetector> freezeDetector;
@@ -400,6 +441,18 @@ int main(int argc, char** argv)
     LOG_INFO("server.worldserver", "{} (worldserver-daemon) ready...", GitRevision::GetFullVersion());
 
     sScriptMgr->OnStartup();
+
+#ifdef COA_PLUGIN_HOST
+    // A plugin may still refuse in WorldScript::OnStartup (exception or ReportFatal). The realm
+    // is only announced when none did; otherwise the update loop exits at once.
+    if (sPluginMgr->HealthyAfterStartup())
+        announceRealm();
+    else
+    {
+        LOG_ERROR("server.plugins", "A plugin failed during OnStartup; the realm is not announced and the world is stopping.");
+        World::StopNow(ERROR_EXIT_CODE);
+    }
+#endif
 
     // Launch CliRunnable thread
     std::shared_ptr<std::thread> cliThread;
@@ -415,6 +468,12 @@ int main(int argc, char** argv)
     sToCloud9Sidecar->Init(worldPort, realm.Id.Realm);
 
     WorldUpdateLoop();
+
+#ifdef COA_PLUGIN_HOST
+    // Hooks keep running during the shutdown below (logouts, map unload); plugins only stop
+    // taking new work here.
+    sPluginMgr->Stopping();
+#endif
 
     // Shutdown starts here
     threadPool.reset();
@@ -503,6 +562,11 @@ bool StartDB()
 
 void StopDB()
 {
+#ifdef COA_PLUGIN_HOST
+    // Last point where plugin threads may still use the databases.
+    sPluginMgr->DrainBeforeDbClose();
+#endif
+
     CharacterDatabase.Close();
     WorldDatabase.Close();
     LoginDatabase.Close();

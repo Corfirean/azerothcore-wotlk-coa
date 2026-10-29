@@ -139,7 +139,7 @@ private:
     virtual ~ScriptMgr();
 
 public: /* Initialization */
-    static ScriptMgr* instance();
+    AC_GAME_API static ScriptMgr* instance();
     void Initialize();
     void LoadDatabase();
     void FillSpellSummary();
@@ -170,6 +170,12 @@ public: /* Initialization */
 
 public: /* Unloading */
     void Unload();
+#ifdef COA_PLUGIN_HOST
+    /// Unlinks every registered script for which `owned` is true, e.g. the scripts of a plugin
+    /// whose registration or startup failed. Objects are deleted only when deleteScripts is set:
+    /// once the world is initialised other caches may still point at them.
+    AC_GAME_API std::size_t PurgeScripts(std::function<bool(ScriptObject const*)> const& owned, bool deleteScripts);
+#endif
 
 public: /* SpellScriptLoader */
     void CreateSpellScripts(uint32 spellId, std::list<SpellScript*>& scriptVector);
@@ -1029,5 +1035,62 @@ template<class TScript> std::map<uint32, TScript*> ScriptRegistry<TScript>::Scri
 template<class TScript> std::vector<std::pair<TScript*,std::vector<uint16>>> ScriptRegistry<TScript>::ALScripts;
 template<class TScript> std::vector<std::vector<TScript*>> ScriptRegistry<TScript>::EnabledHooks;
 template<class TScript> uint32 ScriptRegistry<TScript>::_scriptIdCounter = 0;
+
+#if defined(COA_PLUGIN_HOST) || defined(COA_PLUGIN_SDK)
+// The registries are instantiated once, in the host (ScriptDefines/*.cpp). Plugins must
+// import them; without these declarations a plugin would instantiate its own copies.
+#ifdef ACORE_API_EXPORT_GAME
+#  define AC_SCRIPT_REGISTRY_API // dllexport is applied by the instantiation definitions
+#else
+#  define AC_SCRIPT_REGISTRY_API AC_GAME_API
+#endif
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<ALEScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<AccountScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<AchievementCriteriaScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<AchievementScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<AllBattlegroundScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<AllCreatureScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<AllGameObjectScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<AllItemScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<AllMapScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<AllSpellScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<AreaTriggerScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<ArenaScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<ArenaTeamScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<AuctionHouseScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<BattlefieldScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<BattlegroundMapScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<BattlegroundScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<CommandScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<ConditionScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<CreatureScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<DatabaseScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<DynamicObjectScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<FormulaScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<GameEventScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<GameObjectScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<GlobalScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<GroupScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<GuildScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<InstanceMapScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<ItemScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<MailScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<MiscScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<ModuleScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<MovementHandlerScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<OutdoorPvPScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<PetScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<PlayerScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<ServerScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<SpellScriptLoader>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<TicketScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<TransportScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<UnitScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<VehicleScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<WeatherScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<WorldMapScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<WorldObjectScript>;
+extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<WorldScript>;
+#endif
 
 #endif

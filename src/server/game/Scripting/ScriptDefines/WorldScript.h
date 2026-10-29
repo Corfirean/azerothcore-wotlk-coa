@@ -40,7 +40,7 @@ enum WorldHook
     WORLDHOOK_END
 };
 
-class WorldScript : public ScriptObject
+class AC_GAME_API WorldScript : public ScriptObject
 {
 protected:
     WorldScript(char const* name, std::vector<uint16> enabledHooks = std::vector<uint16>());

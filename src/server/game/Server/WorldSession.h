@@ -301,11 +301,11 @@ class LoginQueryHolder : public CharacterDatabaseQueryHolder
         ObjectGuid m_guid;
 
     public:
-        LoginQueryHolder(uint32 accountId, ObjectGuid guid);
+        AC_GAME_API LoginQueryHolder(uint32 accountId, ObjectGuid guid);
 
         ObjectGuid GetGuid() const { return m_guid; }
         uint32 GetAccountId() const { return m_accountId; }
-        bool Initialize();
+        AC_GAME_API bool Initialize();
 };
 
 constexpr Seconds PLAY_TIME_LIMIT_APPROACHING_PARTIAL = Hours(2) + Minutes(30);
@@ -432,8 +432,8 @@ struct PacketCounter
 class WorldSession
 {
 public:
-    WorldSession(uint32 id, std::string&& name, uint32 accountFlags, std::shared_ptr<WorldSocket> sock, AccountTypes sec, uint8 expansion, time_t mute_time, LocaleConstant locale, uint32 recruiter, bool isARecruiter, bool skipQueue, uint32 TotalTime, bool is_bot = false);
-    ~WorldSession();
+    AC_GAME_API WorldSession(uint32 id, std::string&& name, uint32 accountFlags, std::shared_ptr<WorldSocket> sock, AccountTypes sec, uint8 expansion, time_t mute_time, LocaleConstant locale, uint32 recruiter, bool isARecruiter, bool skipQueue, uint32 TotalTime, bool is_bot = false);
+    AC_GAME_API ~WorldSession();
 
     uint32 GetAccountFlags() const { return _accountFlags; }
     bool HasAccountFlag(uint32 flag) const { return (_accountFlags & flag) != 0; }
@@ -464,7 +464,7 @@ public:
     bool VerifyMovementInfo(MovementInfo const& movementInfo, Player* plrMover, Unit* mover, Opcodes opcode) const;
     bool ProcessMovementInfo(MovementInfo& movementInfo, Unit* mover, Player* plrMover, WorldPacket& recvData);
 
-    void SendPacket(WorldPacket const* packet);
+    AC_GAME_API void SendPacket(WorldPacket const* packet);
     // Socketless integration tests can observe native responses without opening a client connection.
     void SetSocketlessPacketObserver(std::function<void(WorldPacket const&)> observer)
     {
@@ -559,7 +559,7 @@ public:
         return (_logoutTime > 0 && currTime >= _logoutTime + 20);
     }
 
-    void LogoutPlayer(bool save, bool redirecting = false);
+    AC_GAME_API void LogoutPlayer(bool save, bool redirecting = false);
     void KickPlayer(bool setKicked = true) { return this->KickPlayer("Unknown reason", setKicked); }
     void KickPlayer(std::string const& reason, bool setKicked = true);
 
@@ -727,7 +727,7 @@ public:                                                 // opcodes handlers
     void HandleCharCreateOpcode(WorldPacket& recvPacket);
     void HandlePlayerLoginOpcode(WorldPacket& recvPacket);
     void HandleCharEnum(PreparedQueryResult result);
-    void HandlePlayerLoginFromDB(LoginQueryHolder const& holder);
+    AC_GAME_API void HandlePlayerLoginFromDB(LoginQueryHolder const& holder);
     void HandlePlayerLoginToCharInWorld(Player* pCurrChar);
     void HandlePlayerLoginToCharOutOfWorld(Player* pCurrChar);
     void HandleCharFactionOrRaceChange(WorldPacket& recvData);

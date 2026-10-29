@@ -46,7 +46,7 @@ Appender* CreateAppender(uint8 id, std::string const& name, LogLevel level, Appe
     return new AppenderImpl(id, name, level, flags, extraArgs);
 }
 
-class Log
+class AC_COMMON_API Log
 {
 typedef std::unordered_map<std::string, Logger> LoggerMap;
 

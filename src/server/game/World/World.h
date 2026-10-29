@@ -324,7 +324,7 @@ private:
     inline void FinalizePlayerWorldSession(WorldSession* session);
 };
 
-std::unique_ptr<IWorld>& getWorldInstance();
+AC_GAME_API std::unique_ptr<IWorld>& getWorldInstance();
 #define sWorld getWorldInstance()
 
 #endif

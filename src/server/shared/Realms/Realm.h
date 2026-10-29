@@ -64,7 +64,7 @@ enum RealmType
 };
 
 // Storage object for a realm
-struct AC_SHARED_API Realm
+struct Realm
 {
     RealmHandle Id;
     uint32 Build;

@@ -129,6 +129,11 @@ foreach(APPLICATION_NAME ${APPLICATIONS_BUILD_LIST})
 
   add_dependencies(${APP_PROJECT_NAME} revision.h)
 
+  if (COA_PLUGIN_HOST AND ${APP_PROJECT_NAME} MATCHES "worldserver")
+    # Produces worldserver.lib (Windows import library); plugins link against it.
+    set_target_properties(${APP_PROJECT_NAME} PROPERTIES ENABLE_EXPORTS ON)
+  endif()
+
   target_link_libraries(${APP_PROJECT_NAME}
     PRIVATE
       acore-core-interface)
