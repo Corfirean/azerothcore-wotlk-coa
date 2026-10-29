@@ -54,6 +54,8 @@ float GetEffectiveQuestRewardRate(Player const* player, Quest const* quest, floa
 
 using CreatureBaseLevelResolver = std::uint8_t (*)(CreatureTemplate const*, Creature const*);
 inline std::atomic<CreatureBaseLevelResolver> CreatureBaseLevelOwner{nullptr};
+using CreatureReferenceLevelResolver = std::uint8_t (*)(Creature const*, std::uint8_t);
+inline std::atomic<CreatureReferenceLevelResolver> CreatureReferenceLevelOwner{nullptr};
 
 std::uint8_t GetEffectiveCreatureBaseLevel(CreatureTemplate const* cinfo, Creature const* creature = nullptr);
 
@@ -360,6 +362,14 @@ inline LevelBand MergeBands(LevelBand a, LevelBand b)
 inline std::uint8_t ScaleDungeonCreatureLevelForViewer(std::uint8_t playerLevel, LevelBand band)
 {
     return std::clamp(playerLevel, band.Low, band.High);
+}
+
+inline std::uint8_t ScaleDungeonCreatureLevelForViewer(std::uint8_t creatureLevel, std::uint8_t playerLevel,
+    LevelBand band, std::uint8_t referenceLevel)
+{
+    int const viewerLevel = std::clamp(playerLevel, band.Low, std::max(band.High, referenceLevel));
+    int const shift = std::min(0, viewerLevel - int(referenceLevel));
+    return static_cast<std::uint8_t>(std::clamp(int(creatureLevel) + shift, 1, 255));
 }
 
 /// Item templates that are not in the world database: lifted copies of authored items, made when

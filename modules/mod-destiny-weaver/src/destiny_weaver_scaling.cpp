@@ -117,6 +117,7 @@ namespace
     {
         std::unordered_set<uint32> WorldMaps;
         std::unordered_map<uint32, LocalLevelScaling::LevelBand> DungeonBands;
+        std::unordered_map<uint32, uint8> DungeonReferenceLevels;
     };
 
     std::atomic<ScalingScope const*> g_scope{nullptr};
@@ -191,6 +192,15 @@ namespace
             auto [itr, inserted] = scope->DungeonBands.try_emplace(dungeon->MapID, band);
             if (!inserted)
                 itr->second = LocalLevelScaling::MergeBands(itr->second, band);
+            if (dungeon->ExpansionLevel == 0 && dungeon->Difficulty == 0)
+            {
+                uint8 const reference = dungeon->TargetLevel >= 1 && dungeon->TargetLevel <= 60
+                    ? static_cast<uint8>(dungeon->TargetLevel) : 60;
+                auto [referenceItr, referenceInserted] =
+                    scope->DungeonReferenceLevels.try_emplace(dungeon->MapID, reference);
+                if (!referenceInserted)
+                    referenceItr->second = std::max(referenceItr->second, reference);
+            }
         }
 
         LOG_INFO("module.destiny_weaver", "creature scaling covers {} open-world map(s) and {} dungeon map(s)",
@@ -395,10 +405,24 @@ namespace
         uint8 level = own;
         if (map->IsDungeon())
         {
-            LocalLevelScaling::LevelBand const* band = DungeonBandFor(map);
-            if (!band)
+            ScalingScope const* scope = Scope();
+            if (!scope)
                 return false;
-            level = LocalLevelScaling::ScaleDungeonCreatureLevelForViewer(viewer->GetLevel(), *band);
+            auto const band = scope->DungeonBands.find(map->GetId());
+            if (band == scope->DungeonBands.end())
+                return false;
+            auto const reference = scope->DungeonReferenceLevels.find(map->GetId());
+            auto const referenceOwner = LocalLevelScaling::CreatureReferenceLevelOwner.load(std::memory_order_relaxed);
+            uint8 const effectiveReference = reference != scope->DungeonReferenceLevels.end()
+                ? (referenceOwner ? referenceOwner(creature, reference->second) : reference->second) : 60;
+            LocalLevelScaling::LevelBand const effectiveBand = referenceOwner
+                ? LocalLevelScaling::LevelBand{ referenceOwner(creature, band->second.Low),
+                    referenceOwner(creature, band->second.High) } : band->second;
+            level = LocalLevelScaling::ContentScalingActive.load(std::memory_order_relaxed) &&
+                reference != scope->DungeonReferenceLevels.end()
+                ? LocalLevelScaling::ScaleDungeonCreatureLevelForViewer(
+                    own, viewer->GetLevel(), effectiveBand, effectiveReference)
+                : LocalLevelScaling::ScaleDungeonCreatureLevelForViewer(viewer->GetLevel(), band->second);
         }
         else
         {
