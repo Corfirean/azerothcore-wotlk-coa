@@ -132,6 +132,8 @@ foreach(APPLICATION_NAME ${APPLICATIONS_BUILD_LIST})
   if (COA_PLUGIN_HOST AND ${APP_PROJECT_NAME} MATCHES "worldserver")
     # Produces worldserver.lib (Windows import library); plugins link against it.
     set_target_properties(${APP_PROJECT_NAME} PROPERTIES ENABLE_EXPORTS ON)
+    # Plugins/FixtureGuard.cpp talks to MySQL directly before any pool is opened.
+    target_link_libraries(${APP_PROJECT_NAME} PRIVATE mysql)
   endif()
 
   target_link_libraries(${APP_PROJECT_NAME}
