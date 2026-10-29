@@ -47,13 +47,21 @@
 | TBC / WotLK packs | вся | по 4 — все из **самого Scaling** (`CoAContentScaling::Instance`, `ContentPackRegistry::*`) | API «плагин → плагин» или packs внутри DLL Scaling |
 | SQUID (728) | 710; 18 файлов не компилируются | — | Инфраструктура `MOD_PLAYERBOTS` в ядре: пул `PlayerbotsDatabase`, statements, транзакции (20 файлов ядра) |
 
-**Особенности `MOD_PLAYERBOTS`, мешающие «всегда включить» инфраструктуру:**
-- `PathGenerator` при флаге поднимает предел полигонов пути 74 → 148 **для всего сервера**;
-- `DATABASE_MASK_ALL` меняет значение;
-- `IWorld` получает новый виртуальный метод;
-- путь SQL `modules/mod-playerbots` захардкожен в `DBUpdater`.
+**Решения и результаты (продолжение):**
+- **Content packs — внутри DLL Content Scaling** (решение владельца). Проверено: при сборке packs в одну цель со Scaling неразрешённых остаётся 43, ни одного из `CoAContentScaling` / `ContentPackRegistry`. API «плагин → плагин» не нужен.
+- **Инфраструктура `MOD_PLAYERBOTS` всегда собирается в ядро плагинов** (коммит `4f7b8738a9`). Подписанные релизы уже собираются с `modules/mod-playerbots`, значит флаг в них всегда включён. Поэтому предел пути 148 в `PathGenerator`, новый метод `IWorld` и `DATABASE_MASK_ALL` — это нынешнее поведение релизов, а не новое. Отдельная настройка не нужна. `MOD_PLAYERBOTS` явно включён в fingerprint (host `87e5a39e…2d29`).
+- **SQUID против SDK этого ядра:** компилируются все 728 файлов без правок исходников. Не хватает 843 символов, из них только 5 связаны с БД (шаблоны `PreparedStatementBase::SetValidData<T>`).
+- **Сборка плагинов:** SDK теперь передаёт `/Z7` вместо `/Zi`. С `/Zi` параллельная сборка большого плагина ломалась на общем PDB (C2471), на ABI это не влияет.
 
-Всё это нужно перевести на поведение, управляемое во время работы, и один раз встроить в базовое ядро.
+**Бюджет экспорта для всех будущих плагинов** (Companions, SQUID, Content Scaling с packs, ah-bot-plus, npc-enchanter, custom-races):
+- **1 039** различных символов сверх уже экспортированных 3 160, итого около 4.2 тыс. при лимите PE 65 535;
+- из них 54 — данные (DBC-хранилища `s*Store`, `LootTemplates_*`, статические поля `RaceMgr` и др.): им нужен `dllimport`, одной import library недостаточно.
+
+**Что ещё нужно от ядра для ботов и Scaling** (новых классов хуков не требуется):
+1. Экспорт измеренного списка (1 039 символов).
+2. Companions: заменить `friend class BotMgr` в `Guild.h` узким публичным API (используется приватный `Guild::_CreateNewBankTab`).
+3. SQUID: SQL `acore_playerbots` применяет CSM или launcher (как сейчас `squid_playerbots.py`), а не `DBUpdater` по захардкоженному пути `modules/mod-playerbots`.
+4. Взаимоисключение Companions и SQUID — конфликт плагинов в CSM и при старте `worldserver`.
 
 **Пункты G1 после обновления 2:**
 
