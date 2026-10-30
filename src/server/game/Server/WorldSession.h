@@ -700,6 +700,7 @@ public:
     bool ValidateRecruitAFriendSummon(ObjectGuid guid, bool agree);
     void ClearRecruitAFriendRequests();
     void UpdateRecruitAFriendRewards(bool force = false);
+    bool RecordRecoveryItem(Item* item, uint32 count = 0);
     bool HandleRecruitAFriendRewardsCommand(std::string const& command);
     void UpdateRecruitMilestoneRewards();
     void RecoverRecruitAFriendRewards(bool recruit = false);
@@ -1335,8 +1336,6 @@ private:
     void moveItems(Item* myItems[], Item* hisItems[]);
 
     bool CanUseBank(ObjectGuid bankerGUID = ObjectGuid::Empty) const;
-
-    bool recoveryItem(Item* pItem);
 
     // logging helper
     void LogUnexpectedOpcode(WorldPacket* packet, char const* status, char const* reason);
