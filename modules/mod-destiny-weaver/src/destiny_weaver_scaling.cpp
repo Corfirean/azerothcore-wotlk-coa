@@ -102,7 +102,7 @@ namespace
     /// The dungeon finder entries whose dungeons scale: the classic five-player dungeons the client's own
     /// scaling list names, plus Blackrock Depths, Lower and Upper Blackrock Spire, Dire Maul, Stratholme
     /// and Scholomance, the classic dungeons the client list leaves out.
-    constexpr char DEFAULT_SCALING_DUNGEONS[] = "1 2 4 6 8 10 12 14 16 18 20 22 24 26 28 30 32 34 36 38 40 44 51 54 163 164 165 272 273 274 276 601 402";
+    constexpr char DEFAULT_SCALING_DUNGEONS[] = "1 2 4 6 8 10 12 14 16 18 20 22 24 26 28 30 32 34 36 38 40 44 51 54 163 164 165 272 273 274 276 601 402 401";
 
     /// Finder entries whose band is set here instead of read from LFGDungeons.dbc, as `entry:low-high`:
     /// Road to De Other Side scales with the character like the classic dungeons (15-59), while its finder row
@@ -117,6 +117,7 @@ namespace
     {
         std::unordered_set<uint32> WorldMaps;
         std::unordered_map<uint32, LocalLevelScaling::LevelBand> DungeonBands;
+        std::unordered_map<uint32, uint8> DungeonReferenceLevels;
     };
 
     std::atomic<ScalingScope const*> g_scope{nullptr};
@@ -191,6 +192,15 @@ namespace
             auto [itr, inserted] = scope->DungeonBands.try_emplace(dungeon->MapID, band);
             if (!inserted)
                 itr->second = LocalLevelScaling::MergeBands(itr->second, band);
+            if (dungeon->ExpansionLevel == 0 && dungeon->Difficulty == 0)
+            {
+                uint8 const reference = dungeon->TargetLevel >= 1 && dungeon->TargetLevel <= 60
+                    ? static_cast<uint8>(dungeon->TargetLevel) : 60;
+                auto [referenceItr, referenceInserted] =
+                    scope->DungeonReferenceLevels.try_emplace(dungeon->MapID, reference);
+                if (!referenceInserted)
+                    referenceItr->second = std::max(referenceItr->second, reference);
+            }
         }
 
         LOG_INFO("module.destiny_weaver", "creature scaling covers {} open-world map(s) and {} dungeon map(s)",
@@ -284,13 +294,19 @@ namespace
 
     /// Whether a creature may be given a view at all, whoever is looking at it.
     ///
-    /// These exclusions are not optional: a creature that belongs to somebody - a pet, a guardian, a
-    /// summon, a totem, a charmed unit - must never be re-levelled, and neither must a trigger, a
-    /// critter or a non-combat pet, which are scenery with a health bar. A world boss is authored for a
-    /// raid at its level, and a creature that cannot be fought keeps its level for everyone. A creature
-    /// that serves (any npcflag but gossip) is decided per character in `ViewableBy`. Both flags are read
-    /// from the creature's spawn and template rather than from its live flags, which scripts toggle during
+    /// These exclusions are not optional: a creature that belongs to a player - a pet, a guardian, a
+    /// totem, a charmed unit - must never be re-levelled, and neither must a trigger, a critter or a
+    /// non-combat pet, which are scenery with a health bar. A guardian or totem of a creature (a Dark Iron
+    /// Land Mine, a boss's totem) stands at its owner's real level and is fought like its owner, so it
+    /// scales like any other creature. A world boss is authored for a raid at its level. A creature that
+    /// serves (any npcflag but gossip) is decided per character in `ViewableBy`. Both flags are read from
+    /// the creature's spawn and template rather than from its live flags, which scripts toggle during
     /// events: a client caches the level it was told, so the view must not appear and vanish with them.
+    ///
+    /// A creature that cannot be fought when it spawns keeps its level until it can be: a boss woken by an
+    /// event (Ironaya, Arugal, Vol'zeen) scales from that moment on and keeps its view afterwards, held by
+    /// its scaling flag, which `OnAllCreatureUpdate` announces with `ForceViewFields`. Scenery that is never
+    /// fought (a Mythical Boon, a prisoner) never gets one.
     ///
     /// The maps are the open world the realm lists and the classic dungeons with a band. Raids,
     /// battlegrounds and arenas never scale, and neither does CoA's scripted private content. A dungeon
@@ -317,9 +333,9 @@ namespace
         else if (!scope->WorldMaps.contains(map->GetId()))
             return false;
 
-        if (creature->IsPet() || creature->IsTotem() || creature->IsGuardian() || creature->IsTrigger() ||
-            creature->IsCritter() || creature->isWorldBoss() ||
-            creature->GetCreatureType() == CREATURE_TYPE_NON_COMBAT_PET || creature->GetCharmerOrOwner())
+        if (creature->IsPet() || creature->IsTrigger() || creature->IsCritter() || creature->isWorldBoss() ||
+            creature->GetCreatureType() == CREATURE_TYPE_NON_COMBAT_PET || creature->IsControlledByPlayer() ||
+            creature->GetCharmerOrOwnerPlayerOrPlayerItself())
             return false;
 
         CreatureTemplate const* info = creature->GetCreatureTemplate();
@@ -330,7 +346,10 @@ namespace
         uint32 unitFlags = 0;
         uint32 dynamicFlags = 0;
         ObjectMgr::ChooseCreatureFlags(info, npcFlags, unitFlags, dynamicFlags, creature->GetCreatureData());
-        return !(unitFlags & (UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_IMMUNE_TO_PC));
+        uint32 const notFightable = UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_IMMUNE_TO_PC;
+        if (!(unitFlags & notFightable))
+            return true;
+        return creature->HasDynamicFlag(UNIT_DYNFLAG_LEVEL_SCALING) || !creature->HasUnitFlag(UnitFlags(notFightable));
     }
 
     /// Whether a creature offers a service (any npcflag but gossip), read from its spawn and template for
@@ -395,10 +414,24 @@ namespace
         uint8 level = own;
         if (map->IsDungeon())
         {
-            LocalLevelScaling::LevelBand const* band = DungeonBandFor(map);
-            if (!band)
+            ScalingScope const* scope = Scope();
+            if (!scope)
                 return false;
-            level = LocalLevelScaling::ScaleDungeonCreatureLevelForViewer(viewer->GetLevel(), *band);
+            auto const band = scope->DungeonBands.find(map->GetId());
+            if (band == scope->DungeonBands.end())
+                return false;
+            auto const reference = scope->DungeonReferenceLevels.find(map->GetId());
+            auto const referenceOwner = LocalLevelScaling::CreatureReferenceLevelOwner.load(std::memory_order_relaxed);
+            uint8 const effectiveReference = reference != scope->DungeonReferenceLevels.end()
+                ? (referenceOwner ? referenceOwner(creature, reference->second) : reference->second) : 60;
+            LocalLevelScaling::LevelBand const effectiveBand = referenceOwner
+                ? LocalLevelScaling::LevelBand{ referenceOwner(creature, band->second.Low),
+                    referenceOwner(creature, band->second.High) } : band->second;
+            level = LocalLevelScaling::ContentScalingActive.load(std::memory_order_relaxed) &&
+                reference != scope->DungeonReferenceLevels.end()
+                ? LocalLevelScaling::ScaleDungeonCreatureLevelForViewer(
+                    own, viewer->GetLevel(), effectiveBand, effectiveReference)
+                : LocalLevelScaling::ScaleDungeonCreatureLevelForViewer(viewer->GetLevel(), band->second);
         }
         else
         {
@@ -1028,8 +1061,12 @@ public:
         if (!creature->IsAlive() || creature->IsEvadingAttacks())
             creature->CustomData.Erase(DAMAGE_REMAINDER_KEY);
 
-        if (creature->IsAlive())
+        if (creature->IsAlive() && !creature->HasDynamicFlag(UNIT_DYNFLAG_LEVEL_SCALING))
+        {
             MarkScalable(creature);
+            if (creature->HasDynamicFlag(UNIT_DYNFLAG_LEVEL_SCALING))
+                ForceViewFields(creature);
+        }
 
         if (creature->HasDynamicFlag(UNIT_DYNFLAG_LEVEL_SCALING) && FactionChanged(creature))
             ForceViewFields(creature);

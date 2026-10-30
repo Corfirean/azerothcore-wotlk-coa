@@ -58,6 +58,21 @@ class CopyServer:
 
 
 class RunnerTests(unittest.TestCase):
+    def test_external_migrations_require_explicitly_disabled_native_updater(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / 'worldserver.conf'
+            for value in ('7', '1', ''):
+                config.write_text(f'Updates.EnableDatabases = {value}\n')
+                self.assertEqual(run.migration_settings(config), {})
+                with self.assertRaises(ValueError):
+                    run.migration_settings(config, True)
+            config.write_text('Updates.EnableDatabases = 7\n')
+            with patch.dict(os.environ, {'AC_UPDATES_ENABLE_DATABASES': '0'}):
+                with self.assertRaises(ValueError):
+                    run.migration_settings(config, True)
+            config.write_text('Updates.EnableDatabases = 0\n')
+            self.assertEqual(run.migration_settings(config, True), {'Updates.EnableDatabases': 0})
+
     def test_affixed_grants_validate_property_and_single_item_count(self):
         step = {'action': 'add_item', 'actor': 'caster', 'item': 13858, 'property': 13202}
         self.scenario['steps'].append(step)
@@ -201,7 +216,8 @@ class RunnerTests(unittest.TestCase):
             run.validate(scenario)
 
     def test_spawn_placement_metrics_need_a_player_guid_and_spawn_type(self):
-        for metric in ('spawn_placement', 'spawn_ground_gap', 'spawn_submerged', 'spawn_display_state'):
+        for metric in ('spawn_placement', 'spawn_ground_gap', 'spawn_submerged', 'spawn_display_state',
+                       'spawn_stand_state', 'spawn_clearance', 'spawn_headroom'):
             step = {'action': 'assert', 'actor': 'caster', 'metric': metric, 'guid': 6942106,
                     'spawn_type': 'gameobject', 'equals': 0}
             if metric == 'spawn_placement':

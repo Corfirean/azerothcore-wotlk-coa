@@ -484,6 +484,7 @@ public: /* PlayerScript */
     void OnPlayerGetMaxSkillValueForLevel(Player* player, uint16& result);
     bool OnPlayerNotSetArenaTeamInfoField(Player* player, uint8 slot, ArenaTeamInfoType type, uint32 value);
     bool OnPlayerCanJoinLfg(Player* player, uint8 roles, lfg::LfgDungeonSet& dungeons, std::string const& comment);
+    bool OnPlayerCanLfgTeleport(Player* player);
     bool OnPlayerCanEnterMap(Player* player, MapEntry const* entry, InstanceTemplate const* instance, MapDifficulty const* mapDiff, bool loginCheck);
     void OnResolveDungeonAccessLevels(Player const* player, uint32 mapId, Difficulty difficulty, uint8& minLevel, uint8& maxLevel);
     void OnResolveLfgRewardLevel(Player const* player, uint32 dungeonId, uint8& level);

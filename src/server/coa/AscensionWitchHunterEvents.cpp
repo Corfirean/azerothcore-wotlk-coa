@@ -17,8 +17,6 @@ namespace
 {
 using namespace AscensionWitchHunter;
 
-constexpr uint8 DESECRATE_SHADOWSTORM_EVENT = 22;
-
 bool Damage(ProcEventInfo const& event)
 {
     return event.GetDamageInfo() && event.GetDamageInfo()->GetDamage();
@@ -174,13 +172,6 @@ class aura_ascension_witch_hunter_event : public AuraScript
             case 680538:
                 return outgoing && Direct(event) && (Dusk(info) || (info && info->Id == 803502));
             case 520277:
-                if (outgoing && Direct(event) && Desecrate(info))
-                {
-                    if (Spell const* spell = event.GetProcSpell();
-                        spell && spell->TryMarkScriptEventHandled(DESECRATE_SHADOWSTORM_EVENT))
-                        Cast(owner, event.GetActionTarget(), 520278);
-                    return false;
-                }
                 return outgoing && Direct(event) && Family(info, 2, 33554432);
             case 681092:
                 return !outgoing && Direct(event) && (event.GetSchoolMask() & 126);
@@ -460,9 +451,31 @@ class aura_ascension_witch_hunter_event : public AuraScript
         OnProc += AuraProcFn(aura_ascension_witch_hunter_event::Proc);
     }
 };
+
+class aura_ascension_witch_hunter_anguish : public AuraScript
+{
+    PrepareAuraScript(aura_ascension_witch_hunter_anguish);
+
+    void ResetDarkflock(AuraEffect const*, AuraEffectHandleModes)
+    {
+        Player* player = GetTarget()->ToPlayer();
+        if (!player)
+            return;
+        for (auto const& [id, state] : player->GetSpellMap())
+            if (state->State != PLAYERSPELL_REMOVED && Family(sSpellMgr->GetSpellInfo(id), 0, 2))
+                player->RemoveSpellCooldown(id, true);
+    }
+
+    void Register() override
+    {
+        AfterEffectApply += AuraEffectApplyFn(aura_ascension_witch_hunter_anguish::ResetDarkflock, EFFECT_0,
+                                              SPELL_AURA_ADD_PCT_MODIFIER, AURA_EFFECT_HANDLE_REAL_OR_REAPPLY_MASK);
+    }
+};
 }
 
 void AddAscensionWitchHunterEventScripts()
 {
     RegisterSpellScript(aura_ascension_witch_hunter_event);
+    RegisterSpellScript(aura_ascension_witch_hunter_anguish);
 }
