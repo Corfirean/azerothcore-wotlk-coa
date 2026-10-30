@@ -97,7 +97,7 @@ namespace Acore::Plugins
 
         /// Last thing before main() returns. Plugin images are otherwise torn down by the OS after
         /// worldserver's own statics are gone, so a plugin with non-trivial globals can crash on exit.
-        /// Plugins.ExitMode: 0 = return normally, 1 = flush logs and end the process without running
+        /// Plugins.ExitMode (default 0): 0 = return normally, 1 = flush logs and end the process without running
         /// static destructors, 2 = unload plugin images (reverse load order) while the host is intact.
         void BeforeProcessExit(int exitCode);
 

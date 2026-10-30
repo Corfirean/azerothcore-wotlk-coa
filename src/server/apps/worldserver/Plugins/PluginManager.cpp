@@ -785,18 +785,23 @@ void PluginManager::BeforeProcessExit(int exitCode)
 {
     if (_exitCode >= 0)
         exitCode = _exitCode;
-    // Default 1: measured with SQUID, whose static destructors crash once the world is gone (0xC0000005
-    // with modes 0 and 2). Everything is saved and the databases are closed by now.
-    int32 const mode = sConfigMgr->GetOption<int32>("Plugins.ExitMode", 1, false);
+    // Default 0, a normal return: plugin statics are destroyed at DLL detach, after the core's own
+    // statics, so a plugin must not call into the core from a static destructor (SQUID did; fixed
+    // there). 1 is kept as an emergency fallback for a plugin that still does.
+    int32 const mode = sConfigMgr->GetOption<int32>("Plugins.ExitMode", 0, false);
     if (mode == 2)
     {
-        // The world, the scripts and the databases are gone; nothing can call into a plugin now.
+        // Diagnostic only. The world, the scripts and the databases are gone; nothing calls into a plugin now.
         for (auto it = _plugins.rbegin(); it != _plugins.rend(); ++it)
         {
             if (!it->module)
                 continue;
             LOG_INFO("server.plugins", "Plugin '{}': unloading image before process exit.", it->id);
             FreeLibrary(static_cast<HMODULE>(it->module));
+            HMODULE stillLoaded = nullptr;
+            if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                    reinterpret_cast<LPCWSTR>(it->imageBegin), &stillLoaded))
+                LOG_WARN("server.plugins", "Plugin '{}': image still loaded after FreeLibrary (another reference holds it); its statics run at process exit.", it->id);
             it->module = nullptr;
         }
     }
