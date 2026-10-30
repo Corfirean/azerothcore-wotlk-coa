@@ -75,10 +75,10 @@
   "steps": [
     {
       "action": "summon",
-      "label": "Spawn 9916212",
+      "label": "Spawn 9916222",
       "actor": "p1",
       "as": "boss",
-      "entry": 9916212,
+      "entry": 9916222,
       "distance": 3
     },
     {

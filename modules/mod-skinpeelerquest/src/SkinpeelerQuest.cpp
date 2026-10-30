@@ -14,6 +14,7 @@
 #include "PlayerScript.h"
 #include "Random.h"
 #include "ServerScript.h"
+#include "SkinpeelerTracking.h"
 #include "Nytharos.h"
 #include "Vaelthara.h"
 #include "Spell.h"
@@ -75,9 +76,22 @@ namespace
     constexpr std::array<uint32, 4> APEX_CLIENT_ITEMS = {
         APEX_PELT_STORMFANG, APEX_PELT_OWLCAT, APEX_PELT_TIDE};
 
-    // Stormfang has no CreatureAI of its own: its brain is the creature update below.
-    // The probe therefore lives in a map the unit script can feed from the damage hook.
-    std::unordered_map<uint32, ApexScaling::Probe> g_stormfangProbes;
+    struct ApexCreatureState : DataMap::Base
+    {
+        ApexScaling::Probe Probe;
+        std::unordered_map<uint32, uint32> NextPounce;
+        std::unordered_map<uint32, uint32> NextStormcall;
+        std::unordered_map<uint32, uint32> NextStormHowl;
+        std::unordered_map<uint32, uint32> NextMeleeSound;
+        std::unordered_map<uint32, uint32> NextThunderclap;
+        std::unordered_map<uint32, uint32> NextRake;
+        std::unordered_map<uint32, ObjectGuid> LastPounce;
+    };
+
+    struct ApexWolfState : DataMap::Base
+    {
+        uint32 NextMove = 0;
+    };
 
     std::vector<Player*> NearbyPlayers(Creature* creature, float radius,
         Player* excluded = nullptr)
@@ -227,23 +241,9 @@ namespace
         if (!wolf->IsInCombat() || !victim)
             return;
 
-        // Keyed by GUID because every summon gets a fresh one. Entries are
-        // pruned on a slow beat: without it the map grows for the whole uptime,
-        // since a wolf despawns instead of reusing its key.
-        static std::unordered_map<uint32, uint32> nextMove;
-        static uint32 nextPrune = 0;
-        uint32 const key = wolf->GetGUID().GetCounter();
+        uint32& nextMove = wolf->CustomData.GetDefault<ApexWolfState>("SkinpeelerWolf")->NextMove;
         uint32 const now = getMSTime();
-
-        if (now >= nextPrune)
-        {
-            nextPrune = now + 30000;
-            for (auto itr = nextMove.begin(); itr != nextMove.end();)
-                itr = (now > itr->second + 30000) ? nextMove.erase(itr) : std::next(itr);
-        }
-
-        auto cooldown = nextMove.find(key);
-        if (cooldown != nextMove.end() && now < cooldown->second)
+        if (now < nextMove)
             return;
 
         std::list<Creature*> wolves;
@@ -262,7 +262,7 @@ namespace
 
             wolf->GetMotionMaster()->MoveChase(
                 victim, 0.0f, static_cast<float>(M_PI) * 0.5f);
-            nextMove[key] = now + 1000;
+            nextMove = now + 1000;
             break;
         }
     }
@@ -343,13 +343,14 @@ namespace
             if (creature->GetReactState() == REACT_AGGRESSIVE && !creature->IsInCombat())
                 creature->SetReactState(REACT_DEFENSIVE);
 
-            static std::unordered_map<uint32, uint32> nextPounce;
-            static std::unordered_map<uint32, uint32> nextStormcall;
-            static std::unordered_map<uint32, uint32> nextStormHowl;
-            static std::unordered_map<uint32, uint32> nextMeleeSound;
-            static std::unordered_map<uint32, uint32> nextThunderclap;
-            static std::unordered_map<uint32, uint32> nextRake;
-            static std::unordered_map<uint32, ObjectGuid> lastPounce;
+            auto& tracking = *creature->CustomData.GetDefault<ApexCreatureState>("SkinpeelerCreature");
+            auto& nextPounce = tracking.NextPounce;
+            auto& nextStormcall = tracking.NextStormcall;
+            auto& nextStormHowl = tracking.NextStormHowl;
+            auto& nextMeleeSound = tracking.NextMeleeSound;
+            auto& nextThunderclap = tracking.NextThunderclap;
+            auto& nextRake = tracking.NextRake;
+            auto& lastPounce = tracking.LastPounce;
             uint32 const key = creature->GetGUID().GetCounter();
             uint32 const now = getMSTime();
 
@@ -362,13 +363,13 @@ namespace
                 nextThunderclap.erase(key);
                 nextRake.erase(key);
                 lastPounce.erase(key);
-                g_stormfangProbes.erase(key);
+                tracking.Probe = ApexScaling::Probe();
                 return;
             }
 
             // Same pool blueprint as the other apex bosses: a deliberately large
             // starting pool, a fifteen second measurement, then the real size.
-            ApexScaling::Probe& probe = g_stormfangProbes[key];
+            ApexScaling::Probe& probe = tracking.Probe;
             if (!creature->IsInCombat())
             {
                 if (probe.Base && !ApexScaling::StillEngaged(creature))
@@ -597,7 +598,11 @@ namespace
 
     // Rebuilt markers follow every quest packet the client processes, so the override
     // is re-applied on the update after one of those, not on a timer.
-    std::unordered_set<uint32> g_apexIconDirty;
+    SkinpeelerTracking::DirtyPlayers g_apexIconDirty;
+
+    struct ApexPlayerState : DataMap::Base, SkinpeelerTracking::PlayerState
+    {
+    };
 
     class SkinpeelerIconTriggerScript : public ServerScript
     {
@@ -619,7 +624,7 @@ namespace
                 case SMSG_QUEST_QUERY_RESPONSE:
                 case SMSG_QUESTUPDATE_COMPLETE:
                     if (session && session->GetPlayer())
-                        g_apexIconDirty.insert(session->GetPlayer()->GetGUID().GetCounter());
+                        g_apexIconDirty.Mark(session->GetPlayer()->GetGUID().GetCounter());
                     break;
                 default:
                     break;
@@ -631,7 +636,12 @@ namespace
     class SkinpeelerTrackScript : public PlayerScript
     {
     public:
-        SkinpeelerTrackScript() : PlayerScript("SkinpeelerTrackScript", {PLAYERHOOK_ON_UPDATE}) { }
+        SkinpeelerTrackScript() : PlayerScript("SkinpeelerTrackScript", {PLAYERHOOK_ON_UPDATE, PLAYERHOOK_ON_LOGOUT}) { }
+
+        void OnPlayerLogout(Player* player) override
+        {
+            g_apexIconDirty.Take(player->GetGUID().GetCounter());
+        }
 
         void OnPlayerUpdate(Player* player, uint32 p_time) override
         {
@@ -639,9 +649,10 @@ namespace
                 return;
 
             uint32 const guid = player->GetGUID().GetCounter();
-            bool const dirty = g_apexIconDirty.count(guid) != 0;
+            bool const dirty = g_apexIconDirty.Take(guid);
+            ApexPlayerState& tracking = *player->CustomData.GetDefault<ApexPlayerState>("SkinpeelerTracking");
 
-            uint32& timer = _timers[guid];
+            uint32& timer = tracking.Timer;
             timer += p_time;
 
             // A quest packet was just sent, so the client has already rebuilt with the
@@ -651,10 +662,11 @@ namespace
 
             timer = 0;
 
-            for (ApexIconNpc const& npc : APEX_ICON_NPCS)
+            for (std::size_t index = 0; index < APEX_ICON_NPCS.size(); ++index)
             {
-                uint32& sent = _lastState[player->GetGUID().GetCounter() * 8 + npc.Entry % 8];
-                uint32& seen = _lastSeen[player->GetGUID().GetCounter() * 8 + npc.Entry % 8];
+                ApexIconNpc const& npc = APEX_ICON_NPCS[index];
+                uint32& sent = tracking.Icons[index].Sent;
+                bool& seen = tracking.Icons[index].Seen;
                 QuestStatus const status = player->GetQuestStatus(npc.QuestId);
                 uint32 state = APEX_ICON_NONE;
 
@@ -678,7 +690,6 @@ namespace
                 }
 
                 bool const firstSight = (seen == 0);
-                bool const dirty = g_apexIconDirty.count(player->GetGUID().GetCounter()) != 0;
                 if (!firstSight && !dirty && sent == state)
                     continue;
 
@@ -693,14 +704,7 @@ namespace
                 seen = 1;
             }
 
-            g_apexIconDirty.erase(player->GetGUID().GetCounter());
-
         }
-
-    private:
-        std::unordered_map<uint32, uint32> _timers;
-        std::unordered_map<uint32, uint32> _lastState;
-        std::unordered_map<uint32, uint32> _lastSeen;
     };
 
     class SkinpeelerStormfangUnitScript : public UnitScript
@@ -717,9 +721,8 @@ namespace
             if (!victim || !victim->IsCreature() || victim->GetEntry() != APEX_STORMSFANG_ENTRY)
                 return;
 
-            auto itr = g_stormfangProbes.find(victim->GetGUID().GetCounter());
-            if (itr != g_stormfangProbes.end())
-                ApexScaling::ObserveProbe(itr->second, damage);
+            if (auto* tracking = victim->CustomData.Get<ApexCreatureState>("SkinpeelerCreature"))
+                ApexScaling::ObserveProbe(tracking->Probe, damage);
         }
 
         void ModifyMeleeDamage(Unit* target, Unit* attacker, uint32& damage) override

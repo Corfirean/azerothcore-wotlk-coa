@@ -1244,3 +1244,13 @@ received: 1 with the spell-click flag, 0 without, -1 when no values update carri
 parsed). The
 `vanilla-dungeons-health` scenario uses real spawns to check video HP, explicitly inferred HP and
 unchanged Normal health. It does not establish the original Ascension scaling formula.
+
+### Externally migrated packaged schemas
+
+For a disposable copy of a release schema whose migrations are owned by Server Manager,
+use `tools/verify_all.py --gameplay-external-db-migrations`. This forwards an explicit
+`--external-db-migrations` mode to the gameplay runner and records `database_migrations`
+in server summaries. The source worldserver configuration must already contain
+`Updates.EnableDatabases = 0`; otherwise execution fails. The default remains native
+migration mode. Qualify signed package migrations separately before using this mode;
+a gameplay pass does not qualify the package migration path.

@@ -349,6 +349,8 @@ class Server:
                                               credentials, self.batch_id,
                                               cache.metadata['world_id'] if cache else self.batch_id, files,
                                               batch.clock_settings) | batch.database_settings
+            overrides.update(run.migration_settings(batch.source_config, batch.args.external_db_migrations))
+            self.summary['database_migrations'] = 'external' if batch.args.external_db_migrations else 'native'
             overrides['WorldServerPort'] = batch.claim_port(overrides['WorldServerPort'])
             run.write_config(batch.source_config, generated, overrides)
             self.serve(run.server_command(batch.binary, generated), run.server_environment(overrides), cache)
@@ -1012,7 +1014,7 @@ class Batch:
             output=directory, startup_timeout=self.args.startup_timeout, fresh_databases=self.args.fresh_databases,
             refresh_world=refresh, world_cache_dir=self.cache_root / f'slot-{slot}',
             staged_module_configs=self.staged if self.args.server_modules_dir else None,
-            copy_workers=self.args.copy_workers,
+            copy_workers=self.args.copy_workers, external_db_migrations=self.args.external_db_migrations,
             should_stop=self.stopping.is_set)
         kind = 'single-mode run' if mode == 'single' else 'isolated rerun'
         started = time.monotonic()
@@ -1283,6 +1285,8 @@ def parser():
                              '(default: off; requires --clock simulated)')
     result.add_argument('--isolated-rerun', action=argparse.BooleanOptionalAction, default=None,
                         help='Rerun failed catalog cases in single mode (default: on for the real clock only)')
+    result.add_argument('--external-db-migrations', action='store_true',
+                        help='Use an externally migrated packaged schema with native updates disabled in source config')
     result.add_argument('--startup-timeout', type=float, default=600)
     mode = result.add_mutually_exclusive_group()
     mode.add_argument('--fresh-databases', action='store_true', help='Use disposable copies without the world cache')

@@ -436,7 +436,7 @@
       "label": "Spawn stormfang",
       "actor": "tank",
       "as": "boss",
-      "entry": 9916212,
+      "entry": 9916222,
       "distance": 3
     },
     {
@@ -965,7 +965,7 @@
       "label": "Killed inside seven minutes",
       "actor": "tank",
       "metric": "nearby_creature_count",
-      "entry": 9916212,
+      "entry": 9916222,
       "max": 0,
       "within_ms": 60000
     }

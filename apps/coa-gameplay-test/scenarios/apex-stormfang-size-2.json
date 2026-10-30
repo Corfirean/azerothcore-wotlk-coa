@@ -298,7 +298,7 @@
       "label": "Spawn stormfang",
       "actor": "tank",
       "as": "boss",
-      "entry": 9916212,
+      "entry": 9916222,
       "distance": 3
     },
     {

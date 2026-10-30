@@ -1603,6 +1603,14 @@ def harness_overrides(connections, names, data_dir, logs, private, run_id, world
     return overrides
 
 
+def migration_settings(config, external=False):
+    if not external:
+        return {}
+    require(str(source_setting(read_config(config), 'Updates.EnableDatabases', environment={})).strip() == '0',
+            'External migrations require Updates.EnableDatabases = 0 in the source config')
+    return {'Updates.EnableDatabases': 0}
+
+
 def world_cache_info(cache):
     return cache.info if cache else {'mode': 'fresh', 'retained': False}
 
@@ -1825,6 +1833,8 @@ def execute(args, scenario):
                                       credentials_dir, run_id, cache.metadata['world_id'] if cache else run_id,
                                       {'start': start_path, 'scenario': scenario_path, 'ready': ready_path,
                                        'result': result_path})
+        overrides.update(migration_settings(source_config, getattr(args, 'external_db_migrations', False)))
+        summary['database_migrations'] = 'external' if getattr(args, 'external_db_migrations', False) else 'native'
         staged_configs = getattr(args, 'staged_module_configs', None)
         if staged_configs is None:
             module_target = args.server_modules_dir or output / 'configs' / 'modules'
@@ -1885,6 +1895,8 @@ def add_run_arguments(run):
     run.add_argument('--output', type=Path, help='New directory for logs and results')
     run.add_argument('--native-only', action='store_true',
                      help='Exploratory execution only; explicitly skip combined verification')
+    run.add_argument('--external-db-migrations', action='store_true',
+                     help='Use a packaged schema migrated externally; requires native updates disabled in source config')
     run.add_argument('--startup-timeout', type=float, default=600)
     mode = run.add_mutually_exclusive_group()
     mode.add_argument('--fresh-databases', action='store_true', help='Use disposable copies without the world cache')

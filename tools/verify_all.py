@@ -122,6 +122,7 @@ class Context:
     allow_historical_sql: bool = False
 
     gameplay_copy_workers: int | None = None
+    gameplay_external_db_migrations: bool = False
 
 
 def absolute(value, base):
@@ -800,6 +801,7 @@ def classify_harness(name, settings, environment, root):
 
 def harness_environment(context):
     environment = child_environment(context.environment)
+    environment['COA_TEST_BUILD_DIR'] = str(context.settings['build_directory'])
     if context.settings.get('dbc_directory'):
         environment['COA_DBC_DIR'] = str(context.settings['dbc_directory'])
     return environment
@@ -992,6 +994,8 @@ def gameplay_command(context):
         command += ['--copy-workers', context.gameplay_copy_workers]
     if context.gameplay_real_pace_rerun:
         command.append('--real-pace-rerun')
+    if context.gameplay_external_db_migrations:
+        command.append('--external-db-migrations')
     if context.world_databases:
         command.append(WORLD_DATABASE_FLAGS[context.world_databases])
     if context.scenarios:
@@ -1296,6 +1300,8 @@ def parser():
                        help='Gameplay: disposable database copies instead of the world-cache slots')
     world.add_argument('--refresh-world', dest='world_databases', action='store_const', const='refresh',
                        help='Gameplay: replace each world-cache slot on first use')
+    result.add_argument('--gameplay-external-db-migrations', action='store_true',
+                        help='Gameplay: use externally migrated packaged databases; require native updates disabled')
     result.add_argument('--plan', action='store_true', help='Print the resolved plan as JSON and execute nothing')
     return result
 
@@ -1381,7 +1387,7 @@ def prepare(args, root, environment):
     scenarios = resolve_scenarios(args) if 'gameplay' in stages else []
     context = Context(root, raw, settings, output, stages, jobs, gameplay_jobs, args.gameplay_clock, gameplay_lanes,
                       args.base, scenarios, harness, environment, args.world_databases,
-                      gameplay_db_workers(args, raw), args.gameplay_real_pace_rerun, args.allow_historical_sql, raw.get('gameplay_copy_workers'))
+                      gameplay_db_workers(args, raw), args.gameplay_real_pace_rerun, args.allow_historical_sql, raw.get('gameplay_copy_workers'), args.gameplay_external_db_migrations)
     check_command_length(context)
     if not args.plan:
         context.output = claim_output(requested, root)

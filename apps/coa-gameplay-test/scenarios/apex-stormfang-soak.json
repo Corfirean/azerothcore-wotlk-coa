@@ -178,7 +178,7 @@
       "label": "Pull 1",
       "actor": "tank",
       "as": "boss1",
-      "entry": 9916212,
+      "entry": 9916222,
       "distance": 3
     },
     {
@@ -235,7 +235,7 @@
       "label": "Pull 2",
       "actor": "tank",
       "as": "boss2",
-      "entry": 9916212,
+      "entry": 9916222,
       "distance": 3
     },
     {
@@ -292,7 +292,7 @@
       "label": "Pull 3",
       "actor": "tank",
       "as": "boss3",
-      "entry": 9916212,
+      "entry": 9916222,
       "distance": 3
     },
     {
@@ -349,7 +349,7 @@
       "label": "Pull 4",
       "actor": "tank",
       "as": "boss4",
-      "entry": 9916212,
+      "entry": 9916222,
       "distance": 3
     },
     {
@@ -378,7 +378,7 @@
       "label": "Pull 5",
       "actor": "tank",
       "as": "boss5",
-      "entry": 9916212,
+      "entry": 9916222,
       "distance": 3
     },
     {
