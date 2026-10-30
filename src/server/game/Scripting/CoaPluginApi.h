@@ -25,7 +25,7 @@
 #include "CoaPluginAbi.h"
 #include <cstdint>
 
-#define COA_PLUGIN_API_VERSION 1u
+#define COA_PLUGIN_API_VERSION 2u // 2: onStopping/onFinalize report a status
 #define COA_PLUGIN_FINGERPRINT_LENGTH 64
 #define COA_PLUGIN_ERROR_LENGTH 512
 
@@ -49,9 +49,9 @@ extern "C"
         CoaPluginStatus (*registerScripts)();      // inside ScriptMgr::Initialize
         CoaPluginStatus (*onStartup)();            // PluginsReady: before the world socket opens
         // Shutdown, reverse dependency order; only for plugins whose onStartup succeeded.
-        void (*onStopping)();                      // hooks still run: stop taking new work
+        CoaPluginStatus (*onStopping)();           // hooks still run: stop taking new work
         CoaPluginStatus (*onDrainBeforeDbClose)(); // join own threads, flush DB work
-        void (*onFinalize)();                      // after ScriptMgr::Unload: no hook can run
+        CoaPluginStatus (*onFinalize)();           // after ScriptMgr::Unload: no hook can run
         char const* (*lastError)();
     };
 
@@ -111,9 +111,9 @@ namespace CoaPluginDetail
     {
         static CoaPluginStatus Register() { return Guard([] { return Reg(); }); }
         static CoaPluginStatus OnStartup() { return Guard([] { return Startup(); }); }
-        static void OnStopping() { Guard([] { Stopping(); return true; }); }
+        static CoaPluginStatus OnStopping() { return Guard([] { Stopping(); return true; }); }
         static CoaPluginStatus OnDrain() { return Guard([] { return Drain(); }); }
-        static void OnFinalize() { Guard([] { Finalize(); return true; }); }
+        static CoaPluginStatus OnFinalize() { return Guard([] { Finalize(); return true; }); }
     };
 }
 

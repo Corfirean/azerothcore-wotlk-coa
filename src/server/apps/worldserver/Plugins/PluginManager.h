@@ -102,6 +102,7 @@ namespace Acore::Plugins
         void BeforeProcessExit(int exitCode);
 
         bool IsPluginAddress(void const* address, Plugin const** owner = nullptr) const;
+        Plugin* FindPlugin(std::string const& id);
         bool HasFailure() const { return _failed; }
         void WriteReport(char const* phase) const;
         void LogHostAddresses() const;
@@ -114,6 +115,7 @@ namespace Acore::Plugins
         void Unlink(Plugin& plugin, bool deleteScripts);
         bool RunPhase(Plugin& plugin, char const* phase, CoaPluginStatus (*fn)());
         bool OwesShutdown(Plugin const& plugin, char const* phase) const;
+        void ReportShutdownStatus(Plugin& plugin, char const* phase, CoaPluginStatus status);
 
         std::filesystem::path _dir;
         std::vector<Plugin> _plugins; // in load order after ResolveOrder()

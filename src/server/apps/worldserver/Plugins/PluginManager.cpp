@@ -114,6 +114,7 @@ namespace
         std::string error;
         std::string section; // contents of the .coapl section
         std::vector<std::string> imports;
+        std::vector<std::string> hostSymbols; // names imported from worldserver.exe
         uint32_t sizeOfImage = 0;
     };
 
@@ -199,6 +200,32 @@ namespace
                 std::size_t const end = std::min(file.size(), nameOffset + 260);
                 auto const* begin = reinterpret_cast<char const*>(file.data() + nameOffset);
                 info.imports.emplace_back(begin, strnlen(begin, end - nameOffset));
+                if (_stricmp(info.imports.back().c_str(), "worldserver.exe") != 0)
+                    continue;
+
+                // Names this plugin needs from the host, checked against the host's exports before loading.
+                std::size_t thunkOffset = 0;
+                uint32_t const thunks = desc->OriginalFirstThunk ? desc->OriginalFirstThunk : desc->FirstThunk;
+                if (!rvaToOffset(thunks, thunkOffset))
+                    return fail("import lookup table outside sections");
+                for (uint32_t t = 0; t < 65536; ++t)
+                {
+                    auto entry = reinterpret_cast<uint64_t const*>(read(thunkOffset + t * sizeof(uint64_t), sizeof(uint64_t)));
+                    if (!entry)
+                        return fail("truncated import lookup table");
+                    if (!*entry)
+                        break;
+                    if (*entry & IMAGE_ORDINAL_FLAG64)
+                    {
+                        info.hostSymbols.push_back("#" + std::to_string(*entry & 0xFFFF));
+                        continue;
+                    }
+                    std::size_t hintOffset = 0;
+                    if (!rvaToOffset(uint32_t(*entry), hintOffset) || hintOffset + 2 >= file.size())
+                        return fail("import name entry outside sections");
+                    auto const* symbol = reinterpret_cast<char const*>(file.data() + hintOffset + 2);
+                    info.hostSymbols.emplace_back(symbol, strnlen(symbol, std::min<std::size_t>(file.size() - hintOffset - 2, 4096)));
+                }
             }
         }
 
@@ -292,6 +319,39 @@ namespace
         sPluginMgr->WriteReport("fault");
         return true;
     }
+
+    void MarkFaulted(Plugin& plugin, std::string reason)
+    {
+        plugin.state = State::Faulted;
+        plugin.reason = std::move(reason);
+        AnyFaulted = true;
+        World::StopNow(ERROR_EXIT_CODE);
+        sPluginMgr->WriteReport("fault");
+    }
+
+    class PluginFaultInjector : public WorldScript
+    {
+    public:
+        PluginFaultInjector(std::string id, uint32 seconds)
+            : WorldScript("plugin_fault_injector", { WORLDHOOK_ON_UPDATE }), _id(std::move(id)), _leftMs(seconds * IN_MILLISECONDS) { }
+
+        void OnUpdate(uint32 diff) override
+        {
+            if (_done || (_leftMs > diff && (_leftMs -= diff)))
+                return;
+            _done = true;
+            if (Plugin* plugin = sPluginMgr->FindPlugin(_id); plugin && plugin->state == State::Started)
+            {
+                LOG_FATAL("server.plugins", "Plugin '{}': fault injected by Plugins.Test.FaultPlugin; the world is stopping.", _id);
+                MarkFaulted(*plugin, "injected fault (test)");
+            }
+        }
+
+    private:
+        std::string _id;
+        uint32 _leftMs;
+        bool _done = false;
+    };
 
     bool ShouldSuppress(void const* script)
     {
@@ -465,6 +525,20 @@ bool PluginManager::CheckBeforeLoad(Plugin& plugin) const
     {
         plugin.reason = pe.section.empty() ? "no " COA_PLUGIN_SECTION " section (not built with the plugin SDK)"
                                            : "ABI/identity mismatch: plugin '" + pe.section + "', host '" + expected + "'";
+        return false;
+    }
+
+    // The export set is not part of the fingerprint (it can grow without a header change), so
+    // every name the plugin imports from the host is looked up here: a missing one is reported by
+    // name instead of the loader's bare "procedure not found", and no plugin code runs.
+    HMODULE const host = GetModuleHandleW(nullptr);
+    std::vector<std::string> missing;
+    for (std::string const& symbol : pe.hostSymbols)
+        if (symbol.empty() || symbol[0] == '#' || !GetProcAddress(host, symbol.c_str()))
+            missing.push_back(symbol);
+    if (!missing.empty())
+    {
+        plugin.reason = "needs " + std::to_string(missing.size()) + " export(s) this worldserver does not have, first: " + missing.front();
         return false;
     }
 
@@ -646,6 +720,13 @@ void PluginManager::LoadAndRegister()
         plugin.state = State::Registered;
         LOG_INFO("server.plugins", "Plugin '{}' {} loaded at {:#x} and registered its scripts in {:.1f} ms.", plugin.id, d->version, plugin.imageBegin, plugin.loadMs);
     }
+
+    // Test fixtures only: fault a plugin after N seconds of world updates, through the same steps
+    // as an exception in one of its hooks, to check what its shutdown phases still save.
+    std::string const faultId = sConfigMgr->GetOption<std::string>("Plugins.Test.FaultPlugin", "", false);
+    if (!faultId.empty() && !sConfigMgr->GetOption<std::string>("Fixture.ExpectedServerUuid", "", false).empty())
+        new PluginFaultInjector(faultId, sConfigMgr->GetOption<uint32>("Plugins.Test.FaultAfterSeconds", 60, false));
+
     WriteReport("register");
 }
 
@@ -725,6 +806,28 @@ bool PluginManager::HealthyAfterStartup() const
     return !AnyFaulted && std::none_of(_plugins.begin(), _plugins.end(), [](Plugin const& p) { return p.state == State::Faulted; });
 }
 
+void PluginManager::ReportShutdownStatus(Plugin& plugin, char const* phase, CoaPluginStatus status)
+{
+    if (status == COA_PLUGIN_OK)
+        return;
+
+    // Shutdown goes on (the other plugins and the core still save), but the failure is recorded:
+    // whatever this plugin had not saved or released yet may be lost.
+    std::string const reason = std::string(phase) + (status == COA_PLUGIN_EXCEPTION ? " threw: " : " failed: ") + plugin.descriptor->lastError();
+    LOG_ERROR("server.plugins", "Plugin '{}': {}", plugin.id, reason);
+    // A failed shutdown phase must not end with exit code 0. main() has already taken its return
+    // value when drain and finalize run; for those the boot report carries the failure.
+    World::StopNow(ERROR_EXIT_CODE);
+    _exitCode = ERROR_EXIT_CODE;
+    if (plugin.state == State::Started)
+    {
+        plugin.state = State::Faulted;
+        plugin.reason = reason;
+    }
+    else
+        plugin.reason += "; " + reason;
+}
+
 bool PluginManager::OwesShutdown(Plugin const& plugin, char const* phase) const
 {
     if (!plugin.started || (plugin.state != State::Started && plugin.state != State::Faulted))
@@ -752,7 +855,7 @@ void PluginManager::Stopping()
             continue;
         it->stopping = true;
         PhaseWatchdog watchdog(it->id + ".onStopping", PhaseTimeout(), false);
-        it->descriptor->onStopping();
+        ReportShutdownStatus(*it, "onStopping", it->descriptor->onStopping());
     }
 }
 
@@ -765,9 +868,7 @@ void PluginManager::DrainBeforeDbClose()
             continue;
         it->drained = true;
         PhaseWatchdog watchdog(it->id + ".onDrainBeforeDbClose", PhaseTimeout(), false);
-        CoaPluginStatus const status = it->descriptor->onDrainBeforeDbClose();
-        if (status != COA_PLUGIN_OK)
-            LOG_ERROR("server.plugins", "Plugin '{}': DrainBeforeDbClose returned {}: {}", it->id, uint32(status), it->descriptor->lastError());
+        ReportShutdownStatus(*it, "onDrainBeforeDbClose", it->descriptor->onDrainBeforeDbClose());
     }
 }
 
@@ -780,7 +881,7 @@ void PluginManager::Finalize()
             continue;
         it->finalized = true;
         PhaseWatchdog watchdog(it->id + ".onFinalize", PhaseTimeout(), false);
-        it->descriptor->onFinalize();
+        ReportShutdownStatus(*it, "onFinalize", it->descriptor->onFinalize());
         if (it->state == State::Started)
             it->state = State::Stopped;
     }
@@ -818,6 +919,12 @@ void PluginManager::BeforeProcessExit(int exitCode)
         std::fflush(nullptr);
         TerminateProcess(GetCurrentProcess(), static_cast<UINT>(exitCode));
     }
+}
+
+Plugin* PluginManager::FindPlugin(std::string const& id)
+{
+    auto it = std::find_if(_plugins.begin(), _plugins.end(), [&](Plugin const& p) { return p.id == id; });
+    return it == _plugins.end() ? nullptr : &*it;
 }
 
 bool PluginManager::IsPluginAddress(void const* address, Plugin const** owner) const
