@@ -29,6 +29,7 @@
 #include "ArenaTeamMgr.h"
 #include "ArenaSeasonMgr.h"
 #include "AscensionIncarnation.h"
+#include "AscensionBazaarTokenReserve.h"
 #include "AscensionPooledVitality.h"
 #include "AscensionVanityOwnership.h"
 #include "Battlefield.h"
@@ -1802,7 +1803,9 @@ void Player::ProcessDelayedOperations()
             {
                 RemoveAurasByType(SPELL_AURA_MOD_SHAPESHIFT);
             }
-            AddAura(m_entryPointData.mountSpell, this);
+            // cast, not AddAura: the spell's own target handling decides which of its effects apply here,
+            // so a flying mount restored outside a flying area stays a ground mount
+            CastSpell(this, m_entryPointData.mountSpell, true);
             m_entryPointData.mountSpell = 0;
         }
     }
@@ -2735,7 +2738,9 @@ void Player::GiveLevel(uint8 level)
     UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_REACH_LEVEL);
 
     // Refer-A-Friend
-    if ((GetSession()->GetRecruiterId() || GetSession()->IsARecruiter()) && level > oldLevel)
+    PlayerSettingVector const* prestige = FindPlayerSettings("core.coa_prestige");
+    bool const prestigeCycle = prestige && prestige->size() > 1 && (*prestige)[1].value != 0;
+    if (!prestigeCycle && (GetSession()->GetRecruiterId() || GetSession()->IsARecruiter()) && level > oldLevel)
     {
         uint32 const cap = sWorld->getIntConfig(CONFIG_MAX_RECRUIT_A_FRIEND_BONUS_PLAYER_LEVEL);
         uint32 const earned = std::min<uint32>(level, cap) / 2 - std::min<uint32>(oldLevel, cap) / 2;
@@ -3508,8 +3513,29 @@ bool Player::_addSpell(uint32 spellId, uint8 addSpecMask, bool temporary, bool l
     uint16 maxskill = GetMaxSkillValueForLevel();
     SpellLearnSkillNode const* spellLearnSkill = sSpellMgr->GetSpellLearnSkill(spellId);
     SkillLineAbilityMapBounds skill_bounds = sSpellMgr->GetSkillLineAbilityMapBounds(spellId);
-    // xinef: set appropriate skill value
+    auto abilityMatchesPlayer = [this](SkillLineAbilityEntry const* ability)
+    {
+        return !IsAscensionClass(getClass()) ||
+            ((!ability->ClassMask || (ability->ClassMask & getClassMask())) &&
+             (!ability->RaceMask || (ability->RaceMask & getRaceMask())));
+    };
+    bool learnSkillMatchesPlayer = true;
     if (spellLearnSkill)
+    {
+        bool learnSkillHasAbility = false;
+        bool learnSkillAbilityMatches = false;
+        for (SkillLineAbilityMap::const_iterator _spell_idx = skill_bounds.first; _spell_idx != skill_bounds.second; ++_spell_idx)
+        {
+            if (_spell_idx->second->SkillLine != spellLearnSkill->skill)
+                continue;
+
+            learnSkillHasAbility = true;
+            learnSkillAbilityMatches = learnSkillAbilityMatches || abilityMatchesPlayer(_spell_idx->second);
+        }
+        learnSkillMatchesPlayer = !learnSkillHasAbility || learnSkillAbilityMatches;
+    }
+    // xinef: set appropriate skill value
+    if (spellLearnSkill && learnSkillMatchesPlayer)
     {
         uint32 skill_value = GetPureSkillValue(spellLearnSkill->skill);
         uint32 skill_max_value = GetPureMaxSkillValue(spellLearnSkill->skill);
@@ -3533,7 +3559,7 @@ bool Player::_addSpell(uint32 spellId, uint8 addSpecMask, bool temporary, bool l
 
             /// @todo confirm if rogues start wth lockpicking skill at level 1 but only recieve the spell to use it at level 16
             // Added for runeforging, it is confirmed via sniff that this happens when death knights learn the spell, not on character creation.
-            if ((_spell_idx->second->AcquireMethod == SKILL_LINE_ABILITY_LEARNED_ON_SKILL_LEARN && !HasSkill(pSkill->id)) || ((pSkill->id == SKILL_LOCKPICKING || pSkill->id == SKILL_RUNEFORGING) && _spell_idx->second->TrivialSkillLineRankHigh == 0))
+            if (abilityMatchesPlayer(_spell_idx->second) && ((_spell_idx->second->AcquireMethod == SKILL_LINE_ABILITY_LEARNED_ON_SKILL_LEARN && !HasSkill(pSkill->id)) || ((pSkill->id == SKILL_LOCKPICKING || pSkill->id == SKILL_RUNEFORGING) && _spell_idx->second->TrivialSkillLineRankHigh == 0)))
                 LearnDefaultSkill(pSkill->id, 0);
 
             if (pSkill->id == SKILL_MOUNTS && !Has310Flyer(false))
@@ -3592,7 +3618,7 @@ void Player::_learnSpell(uint32 spellId, bool temporary, bool learnFromSkill, bo
                 return;
 
     // Xinef: don't allow to learn active spell once more
-    if (HasActiveSpell(spellId))
+    if (HasStoredActiveSpell(spellId))
     {
         LOG_DEBUG("entities.player", "Player ({}) tries to learn already active spell: {}", GetGUID().ToString(), spellId);
         return;
@@ -4326,6 +4352,14 @@ bool Player::HasSpell(uint32 spell) const
     return copy && HasSpell(copy);
 }
 
+bool Player::HasSpellOrTwin(uint32 spell) const
+{
+    for (uint32 relative : sSpellMgr->GetSpellAndRelatives(spell))
+        if (HasSpell(relative))
+            return true;
+    return false;
+}
+
 bool Player::HasTalent(uint32 spell, uint8 spec) const
 {
     PlayerTalentMap::const_iterator itr = m_talents.find(spell);
@@ -4335,13 +4369,42 @@ bool Player::HasTalent(uint32 spell, uint8 spec) const
     return copy && HasTalent(copy, spec);
 }
 
+bool Player::HasStoredActiveSpell(uint32 spell) const
+{
+    auto const itr = m_spells.find(spell);
+    return itr != m_spells.end() && itr->second->State != PLAYERSPELL_REMOVED &&
+        itr->second->Active && itr->second->IsInSpec(m_activeSpec);
+}
+
 bool Player::HasActiveSpell(uint32 spell) const
 {
-    PlayerSpellMap::const_iterator itr = m_spells.find(spell);
-    if (itr != m_spells.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->Active && itr->second->IsInSpec(m_activeSpec))
+    uint32 const copy = GetAscensionSpellCopy(spell);
+    if (HasStoredActiveSpell(spell) || (copy && HasActiveSpell(copy)))
         return true;
-    uint32 copy = GetAscensionSpellCopy(spell); // Bronzebeard copy (vanilla classes)
-    return copy && HasActiveSpell(copy);
+    SpellInfo const* requested = sSpellMgr->GetSpellInfo(spell);
+    if (!requested || requested->IsPassive() || requested->SpellLevel > GetLevel())
+        return false;
+    for (AuraEffect const* effect : GetAuraEffectsByType(SPELL_AURA_ASCENSION_OVERRIDE_SPELL))
+    {
+        SpellEffectInfo const& data = effect->GetSpellInfo()->Effects[effect->GetEffIndex()];
+        if (data.MiscValue <= 0 || data.MiscValueB || data.DieSides || effect->GetAmount() <= 0)
+            continue;
+        SpellInfo const* original = sSpellMgr->GetSpellInfo(uint32(data.MiscValue));
+        SpellInfo const* replacement = sSpellMgr->GetSpellInfo(uint32(effect->GetAmount()));
+        if (!original || !replacement ||
+            replacement->GetFirstRankSpell() != requested->GetFirstRankSpell())
+            continue;
+        if (original != original->GetFirstRankSpell() || replacement != replacement->GetFirstRankSpell())
+        {
+            if (replacement->Id == spell && HasStoredActiveSpell(original->Id))
+                return true;
+            continue;
+        }
+        for (SpellInfo const* rank = original; rank; rank = rank->GetNextRankSpell())
+            if (HasStoredActiveSpell(rank->Id) && requested->GetRank() <= rank->GetRank())
+                return true;
+    }
+    return false;
 }
 
 /**
@@ -4369,6 +4432,9 @@ void Player::DeleteFromDB(ObjectGuid::LowType lowGuid, uint32 accountId, bool up
     // we set it to mode CHAR_DELETE_REMOVE
     if (deleteFinally || sCharacterCache->GetCharacterLevelByGuid(playerGuid) < charDelete_minLvl)
         charDelete_method = CHAR_DELETE_REMOVE;
+
+    // Its Bazaar Tokens leave the account: they use up the Elite Warchest reserve first.
+    AscensionBazaarTokenReserve::OnCharacterDeleted(accountId, lowGuid);
 
     if (uint32 guildId = sCharacterCache->GetCharacterGuildIdByGuid(playerGuid))
         if (Guild* guild = sGuildMgr->GetGuildById(guildId))

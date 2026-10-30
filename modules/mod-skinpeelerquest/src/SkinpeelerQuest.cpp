@@ -28,12 +28,16 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace
 {
     constexpr uint32 APEX_STORMSFANG_ENTRY = 9916222;
+    constexpr uint32 APEX_VAELTHARA_ENTRY = 9916223;
+    constexpr uint32 APEX_NYTHAROS_ENTRY = 9916224;
     constexpr uint32 APEX_SPIRIT_WOLF_ENTRY = 9916211;
     constexpr uint32 APEX_THUNDER_POUNCE = 1004112;
     constexpr uint32 APEX_POUNCE_IMPACT = 1004116;
@@ -69,7 +73,7 @@ namespace
 
     constexpr std::array<uint32, 10> APEX_CLIENT_SPELLS = {
         100331, 1004111, 1004112, 1004113, 1004114,
-        1004115, 1004116, 1004117, 1004118, 1004119};
+        1004115, 1004116, 1004117, 1004118, 1004120};
 
     // Item.dbc rows are only streamed for ids registered here. Without this the
     // client never learns the item, so the bag draws a question mark.
@@ -78,6 +82,7 @@ namespace
 
     struct ApexCreatureState : DataMap::Base
     {
+        std::recursive_mutex Mutex;
         ApexScaling::Probe Probe;
         std::unordered_map<uint32, uint32> NextPounce;
         std::unordered_map<uint32, uint32> NextStormcall;
@@ -317,6 +322,33 @@ namespace
         }
     };
 
+    // The core measures the leash from the creature's current waypoint node while
+    // the patrol generator owns the idle slot, so an opening hit from range used to
+    // be rejected and the boss never engaged. The shared pull helper opens the leash
+    // window before the first threat reference is built.
+    class ApexPullScript : public UnitScript
+    {
+    public:
+        ApexPullScript() : UnitScript("ApexPullScript", true, {UNITHOOK_ON_DAMAGE}) { }
+
+        void OnDamage(Unit* attacker, Unit* victim, uint32& /*damage*/) override
+        {
+            if (!attacker || !victim || !victim->IsCreature() ||
+                !attacker->IsAlive() || !victim->IsAlive())
+                return;
+
+            uint32 const entry = victim->GetEntry();
+            if (entry != APEX_STORMSFANG_ENTRY && entry != APEX_VAELTHARA_ENTRY &&
+                entry != APEX_NYTHAROS_ENTRY)
+                return;
+
+            if (!attacker->IsControlledByPlayer())
+                return;
+
+            ApexScaling::StartApexPull(victim->ToCreature(), attacker);
+        }
+    };
+
     class SkinpeelerStormfangCreatureScript : public AllCreatureScript
     {
     public:
@@ -327,8 +359,11 @@ namespace
 
         void OnCreatureAddWorld(Creature* creature) override
         {
-            if (creature && creature->GetEntry() == APEX_STORMSFANG_ENTRY)
-                creature->SetReactState(REACT_DEFENSIVE);
+            if (!creature || creature->GetEntry() != APEX_STORMSFANG_ENTRY)
+                return;
+
+            ApexScaling::TuneHitbox(creature);
+            creature->SetReactState(REACT_DEFENSIVE);
         }
 
         void OnAllCreatureUpdate(Creature* creature, uint32) override
@@ -340,10 +375,18 @@ namespace
                 return;
             }
 
+
+            // The patrol spans more than the 30-yard home leash, so keep home on
+            // the current patrol point until he is engaged.
+            if (!creature->IsInCombat())
+                creature->SetHomePosition(creature->GetPositionX(), creature->GetPositionY(),
+                    creature->GetPositionZ(), creature->GetOrientation());
+
             if (creature->GetReactState() == REACT_AGGRESSIVE && !creature->IsInCombat())
                 creature->SetReactState(REACT_DEFENSIVE);
 
             auto& tracking = *creature->CustomData.GetDefault<ApexCreatureState>("SkinpeelerCreature");
+            std::lock_guard<std::recursive_mutex> lock(tracking.Mutex);
             auto& nextPounce = tracking.NextPounce;
             auto& nextStormcall = tracking.NextStormcall;
             auto& nextStormHowl = tracking.NextStormHowl;
@@ -366,6 +409,12 @@ namespace
                 tracking.Probe = ApexScaling::Probe();
                 return;
             }
+
+            // A lost chase generator leaves the patrol on top and he keeps walking
+            // his route while in combat. Stormfang has no CreatureAI of his own, so
+            // the recovery has to live here.
+            ApexScaling::KeepApexChase(creature);
+            ApexScaling::TuneHitbox(creature);
 
             // Same pool blueprint as the other apex bosses: a deliberately large
             // starting pool, a fifteen second measurement, then the real size.
@@ -685,7 +734,7 @@ namespace
                 Creature* creature = player->FindNearestCreature(npc.Entry, 200.0f, true);
                 if (!creature)
                 {
-                    seen = 0;
+                    seen = false;
                     continue;
                 }
 
@@ -701,7 +750,7 @@ namespace
                     APEX_ICON_KIND, state);
 
                 sent = state;
-                seen = 1;
+                seen = true;
             }
 
         }
@@ -722,7 +771,10 @@ namespace
                 return;
 
             if (auto* tracking = victim->CustomData.Get<ApexCreatureState>("SkinpeelerCreature"))
+            {
+                std::lock_guard<std::recursive_mutex> lock(tracking->Mutex);
                 ApexScaling::ObserveProbe(tracking->Probe, damage);
+            }
         }
 
         void ModifyMeleeDamage(Unit* target, Unit* attacker, uint32& damage) override
@@ -793,6 +845,7 @@ void Addmod_skinpeelerquestScripts()
     new SkinpeelerStormfangSpellScript();
     new SkinpeelerStormfangCreatureScript();
     new SkinpeelerStormfangUnitScript();
+    new ApexPullScript();
     new SkinpeelerTrackScript();
     new SkinpeelerIconTriggerScript();
     AddVaeltharaScripts();
