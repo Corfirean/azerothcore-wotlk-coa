@@ -23,6 +23,7 @@
 #include "CryptoHash.h"
 #include "Log.h"
 #include "PluginBarrier.h"
+#include "CoaPluginAbiCheck.h"
 #include "ScriptMgr.h"
 #include "Tokenize.h"
 #include "Util.h"
@@ -709,6 +710,11 @@ bool PluginManager::StartAll()
                 Unlink(plugin, false);
             }
     }
+
+    // A test plugin may have written through the boundary (CoaPluginAbiCheck.h): report what the
+    // host's own object holds.
+    if (CoaAbiScratch.writes)
+        LOG_INFO("server.plugins", "ABICHECK host sees writes={} lastValue={:#x}", CoaAbiScratch.writes, CoaAbiScratch.lastValue);
 
     WriteReport("ready");
     return !_failed;
