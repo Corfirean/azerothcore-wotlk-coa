@@ -290,14 +290,8 @@ private:
 
 using SlotIds = std::set<uint8>;
 
-class BotMgr;
-
 class Guild
 {
-    // CoA Companions works on guild bank internals (tabs, rank rights, bank items). Kept until a
-    // public guild-bank API for bots exists; access checks are compile-time only, the plugin
-    // still imports the functions it calls through worldserver.lib.
-    friend class BotMgr;
 
 public: // pussywizard: public class Member
     // Class representing guild member
@@ -839,6 +833,15 @@ public:
     /// Creates bank tab 0 when the guild has none yet, so members can deposit even if the guild
     /// master never bought a tab (used by companion bots). Returns true if a tab was created.
     AC_GAME_API bool EnsureFirstBankTab();
+
+    /// Returns the number of purchased bank tabs.
+    AC_GAME_API uint8 GetPurchasedTabsSize() const { return uint8(m_bankTabs.size()); }
+
+    /// Returns bank item located at tab/slot, or nullptr if empty/invalid.
+    AC_GAME_API Item const* GetBankItem(uint8 tabId, uint8 slotId) const;
+
+    /// Ensures that rank has at least the specified rights, slots per day, and money per day.
+    AC_GAME_API void EnsureRankBankRights(uint8 rankId, uint8 minRights, uint32 minSlotsPerDay, uint32 minMoneyPerDay = 0);
 
 private:
     // Creates default guild ranks with names in given locale
