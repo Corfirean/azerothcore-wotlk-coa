@@ -476,6 +476,10 @@ int main(int argc, char** argv)
 
     WorldUpdateLoop();
 
+    // Switch logger to synchronous flushing before any plugin stopping/draining phases
+    // so Stopping, DrainBeforeDbClose, and Finalize logs are strictly guaranteed.
+    sLog->SetSynchronous();
+
 #ifdef COA_PLUGIN_HOST
     // Hooks keep running during the shutdown below (logouts, map unload); plugins only stop
     // taking new work here.
@@ -486,8 +490,6 @@ int main(int argc, char** argv)
     threadPool.reset();
 
     sToCloud9Sidecar->Deinit();
-
-    sLog->SetSynchronous();
 
     sScriptMgr->OnShutdown();
 
