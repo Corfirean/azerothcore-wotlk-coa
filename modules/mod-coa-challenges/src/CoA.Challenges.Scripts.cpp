@@ -1389,8 +1389,13 @@ namespace CoAChallenges
 
         bool OnPlayerGetGameModeMask(Player const* player, uint32& mask) override
         {
-            mask = CachedGameModeMask(player->GetGUID().GetCounter());
-            return true;
+            uint32 const m = CachedGameModeMask(player->GetGUID().GetCounter());
+            if (m != 0)
+            {
+                mask = m;
+                return true;
+            }
+            return false;
         }
 
         // Player::LoadFromDB, before the inventory load asks PlayerHasRule: one read of the active
