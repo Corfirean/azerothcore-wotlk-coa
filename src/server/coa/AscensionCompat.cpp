@@ -13,13 +13,16 @@
 #include "AscensionClientDbcStream.h"
 #include "AscensionFelsworn.h"
 #include "AscensionHighRiskPolicy.h"
+#include "AscensionRulesets.h"
 #include "AscensionItemScaling.h"
 #include "AscensionFelswornRifts.h"
 #include "AscensionPyromancer.h"
 #include "AscensionCultist.h"
 #include "AscensionVenomancer.h"
 #include "AscensionTinker.h"
+#include "AscensionTinkerData.h"
 #include "AscensionSunCleric.h"
+#include "AscensionStormbringer.h"
 #include "AscensionXoroth.h"
 #include "AscensionNecromancer.h"
 #include "AllCreatureScript.h"
@@ -816,6 +819,26 @@ std::vector<uint32> GetAscensionRacialSpells(Player const* player)
     return spells;
 }
 
+bool IsForeignRacialSpell(Player const* player, uint32 spellId)
+{
+    auto const bounds = sSpellMgr->GetSkillLineAbilityMapBounds(spellId);
+    if (bounds.first == bounds.second)
+        return false;
+
+    bool racial = false;
+    for (auto itr = bounds.first; itr != bounds.second; ++itr)
+    {
+        uint8 race = AscensionRacialAbilities::GetRace(itr->second->SkillLine);
+        if (!race)
+            return false;
+        racial = true;
+        if (race == player->getRace() &&
+            AscensionRacialAbilities::CanLearn(*itr->second, player->getRace(), player->getClass()))
+            return false;
+    }
+    return racial;
+}
+
 using AscensionCompatData::FelswornRiftGrant;
 using AscensionCompatData::FelswornHordeCapitalRifts;
 
@@ -957,6 +980,15 @@ public:
     if (removed)
       LOG_INFO("coa", "Reconciled {} proven class grants for {} against live level {}",
           removed, player->GetName(), uint32(player->GetLevel()));
+    std::vector<uint32> foreignRacialSpells;
+    for (auto const& knownSpell : player->GetSpellMap())
+      if (IsForeignRacialSpell(player, knownSpell.first))
+        foreignRacialSpells.push_back(knownSpell.first);
+    for (uint32 spellId : foreignRacialSpells)
+      player->removeSpell(spellId, SPEC_MASK_ALL, false);
+    if (!foreignRacialSpells.empty())
+      LOG_INFO("coa", "Removed {} racial abilities that do not belong to race {} for {}",
+          uint32(foreignRacialSpells.size()), uint32(player->getRace()), player->GetName());
     uint32 learned = 0;
     bool const botCannotBuyBooksOfAscension = player->GetSession() && player->GetSession()->IsBot();
     bool const automaticProgression =
@@ -2117,6 +2149,7 @@ public:
     uint32 const activeSpecialization = GetActiveSpecialization(player);
     uint32 const targetSpec = requestedSpec.value_or(uploaded.SpecId ? uploaded.SpecId : activeSpecialization);
     bool const switching = targetSpec != activeSpecialization;
+    bool const callerPlacesBar = requestedSpec.has_value();
     std::unordered_map<uint32, uint32> wanted;
     std::unordered_set<uint32> received;
     std::unordered_set<uint32> selectedGroups;
@@ -2301,7 +2334,7 @@ public:
       }
     }
 
-    if (std::string reason; switching && !SwitchSpecialization(player, targetSpec, &reason, false))
+    if (std::string reason; switching && !SwitchSpecialization(player, targetSpec, &reason, false, !callerPlacesBar))
     {
       refusal = SpecializationSwitchRefused(targetSpec, std::move(reason));
       return false;
@@ -2331,8 +2364,12 @@ public:
         refusal.Result = "CA_UPDATE_ENTRIES_UNKNOWN";
         refusal.Entry = entry->EntryId;
         refusal.Rank = rank;
+        if (switching && !callerPlacesBar)
+          RestoreBarButtons(player, targetSpec, activeSpecialization);
         return false;
       }
+    if (switching && !callerPlacesBar)
+      RestoreBarButtons(player, targetSpec, activeSpecialization);
 
     if (payment.Marks)
       player->DestroyItemCount(AscensionCoATalentState::MARK_OF_ASCENSION_ITEM, payment.Marks, true);
@@ -2700,7 +2737,7 @@ public:
   }
 
   bool SwitchSpecialization(Player* player, uint32 specializationId, std::string* refusal = nullptr,
-                            bool restoreStoredBuild = true)
+                            bool restoreStoredBuild = true, bool rememberBar = true)
   {
     if (!IsCharacterAdvancementClass(player) || (!specializationId && restoreStoredBuild))
       return false;
@@ -2760,7 +2797,7 @@ public:
             if (spellId && player->HasSpell(spellId))
               talentSpells.insert(spellId);
       player->SendActionButtons(2);
-      if (restoreStoredBuild)
+      if (rememberBar)
         RememberBarButtons(player, previousSpecialization, talentSpells);
     }
     for (AscensionCompatData::CoATalentEntry const &entry :
@@ -2791,7 +2828,7 @@ public:
     uint32 granted = SynchronizeProgression(player);
     if (restoreStoredBuild)
       RestoreBarButtons(player, specializationId, previousSpecialization);
-    else
+    else if (!rememberBar)
       player->SendInitialActionButtons();
     ChatHandler(player->GetSession())
         .PSendSysMessage(
@@ -4419,14 +4456,20 @@ private:
   static constexpr uint32 SPELL_CAST_TIME_INDEX_FIELD = 28;
   static constexpr uint32 SPELL_CATEGORY_RECOVERY_TIME_FIELD = 30;
   static constexpr uint32 SPELL_INTERRUPT_FLAGS_FIELD = 31;
+  static constexpr uint32 SPELL_EFFECTS_FIELD = 71;
+  static constexpr uint32 SPELL_EFFECT_TARGETS_FIELD = 86;
+  static constexpr uint32 SPELL_EFFECT_TARGETS_B_FIELD = 89;
   static constexpr uint32 SPELL_FAMILY_NAME_FIELD = 208;
-  static constexpr std::array<uint32, 18> RANGED_PREPARATION_CLIENT_SPELLS = {
+  static constexpr std::array<uint32, 19> RANGED_PREPARATION_CLIENT_SPELLS = {
       504582, 572343, 572344, 572345, 572383, 680902, 680903, 680904, 680905, 806288,
-      572614, 804136, 806876, 806877, 806878, 806879, 806880, 806881};
+      572614, 804136, 806876, 806877, 806878, 806879, 806880, 806881, 524870};
   static constexpr uint32 SPELL_LEVEL_FIELD = 39;
   static constexpr uint32 SPELL_VISUAL_FIELD = 131;
   static constexpr uint32 VAULT_CLIENT_SPELL = 500085;
   static constexpr uint32 CHARGE_SPELL_VISUAL = 867;
+  static constexpr char const* REPLENISHMENT_FIELD_DESCRIPTION =
+      "Nearby allies are restored: $/10;560751s1 Rage, Energy, Focus and Runic Power and $560819s1% base mana "
+      "every $560751T1 sec.";
   struct ClientSpellText {
     std::string Description;
     std::string ToolTip;
@@ -5419,6 +5462,11 @@ private:
     }
     if (info->Id == AscensionSunCleric::Dawn)
       row.Values[4] = info->Attributes;
+    if (info->Id == AscensionStormbringer::SPELL_ATMOSPHERIC_PRESSURE)
+    {
+      row.Values[SPELL_ATTRIBUTES_FIELD] = info->Attributes;
+      row.Values[SPELL_ATTRIBUTES_FIELD + 5] = info->AttributesEx5;
+    }
     if (info->Id == 805027 ||
         (info->Id >= 807938 && info->Id <= 807941))
     {
@@ -5429,6 +5477,16 @@ private:
       row.Values[SPELL_WIRE_SLOT(SPELL_INTERRUPT_FLAGS_FIELD)] &= ~uint32(SPELL_INTERRUPT_FLAG_MOVEMENT);
     if (info->Id == VAULT_CLIENT_SPELL)
       row.Values[SPELL_WIRE_SLOT(SPELL_VISUAL_FIELD)] = CHARGE_SPELL_VISUAL;
+    if (info->Id == TinkerReplenishmentFieldAura)
+    {
+      for (uint8 effect = 0; effect < 2; ++effect)
+      {
+        row.Values[SPELL_WIRE_SLOT(SPELL_EFFECTS_FIELD + effect)] = SPELL_EFFECT_APPLY_AURA;
+        row.Values[SPELL_WIRE_SLOT(SPELL_EFFECT_TARGETS_FIELD + effect)] = TARGET_UNIT_TARGET_ALLY;
+        row.Values[SPELL_WIRE_SLOT(SPELL_EFFECT_TARGETS_B_FIELD + effect)] = 0;
+      }
+      row.Strings[SPELL_WIRE_DESCRIPTION] = REPLENISHMENT_FIELD_DESCRIPTION;
+    }
 
     if ((info->Attributes & SPELL_ATTR0_USES_RANGED_SLOT) && !info->IsAutoRepeatRangedSpell() &&
         info->CastTimeEntry && (info->CastTimeEntry->CastTime > 0 || !info->IsChanneled()))
@@ -5502,6 +5560,7 @@ private:
     std::unordered_set<uint32> descriptionIds;
     for (uint32 const spellId : RANGED_PREPARATION_CLIENT_SPELLS)
       Ascension::ClientSpellPatches::Instance().Register(spellId);
+    Ascension::ClientSpellPatches::Instance().Register(TinkerReplenishmentFieldAura);
     for (uint32 const spellId : {801292u, 501836u, 501837u, 501838u, 501839u, 501840u, 574346u, 567543u, 567544u,
         805027u, 807938u, 807939u, 807940u, 807941u})
       Ascension::ClientSpellPatches::Instance().Register(spellId);
@@ -8028,10 +8087,10 @@ public:
         };
 
         static std::unordered_set<std::string_view> const secureAscensionAddons = {
-            "AscensionUI", "Ascension_Collections", "Ascension_CompactRaidFrames", "Ascension_EnchantCollection",
+            "AscensionUI", "Ascension_CharacterAdvancement", "Ascension_CharacterAdvancementSeason9",
+            "Ascension_Collections", "Ascension_CompactRaidFrames", "Ascension_EnchantCollection",
             "Ascension_HelpUI", "Ascension_InspectUI", "Ascension_Manastorm", "Ascension_MythicPlus",
-            "Ascension_SeasonCollection",
-            "Ascension_TicketUI", "Ascension_UIDevelopmentTools", "Ascension_WildCard",
+            "Ascension_SeasonCollection", "Ascension_TicketUI", "Ascension_UIDevelopmentTools", "Ascension_WildCard",
         };
 
         std::vector<std::string> names = session->GetClientAddonNames();
@@ -10867,8 +10926,8 @@ class spell_ascension_vanity_use_restriction : public SpellScript
                     : "Only usable as Guild Master or Officer.";
             case SPELL_SUMMON_PORTABLE_TRANSPOLYPORTER:
             case SPELL_PORTABLE_TRANSPOLYPORTER_TELEPORT:
-                return player->HasAura(HighRisk::HighRiskAura) ? "Cannot be used by High-Risk players."
-                    : std::string_view{};
+                return player->HasAura(HighRisk::HighRiskAura) || AscensionRulesets::HighRiskSuspended(player)
+                    ? "Cannot be used by High-Risk players." : std::string_view{};
             default:
                 return player->GetMap()->IsDungeon() ? "Can only be used on continents and in battlegrounds."
                     : std::string_view{};

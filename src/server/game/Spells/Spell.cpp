@@ -3127,6 +3127,9 @@ SpellMissInfo Spell::DoSpellHitOnUnit(Unit* unit, uint32 effectMask, bool scaleA
         if (m_caster->_IsValidAttackTarget(unit, m_spellInfo) && /*Intervene Trigger*/ m_spellInfo->Id != 59667)
         {
             unit->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_HITBYSPELL);
+            if (m_caster->IsPlayer() && !m_spellInfo->IsPositive())
+                if (Creature* creature = unit->ToCreature())
+                    creature->AddDirectPlayerAttacker(m_caster->GetGUID());
         }
         else if (m_caster->IsFriendlyTo(unit))
         {
@@ -5346,6 +5349,9 @@ void Spell::SendResurrectRequest(Player* target)
                                ? ""
                                : m_caster->GetNameForLocaleIdx(target->GetSession()->GetSessionDbLocaleIndex()));
 
+    if (m_caster->IsPlayer() || m_spellInfo->HasAttribute(SPELL_ATTR3_NO_RES_TIMER))
+        target->SendCorpseReclaimDelay(0);
+
     WorldPacket data(SMSG_RESURRECT_REQUEST, (8 + 4 + sentName.size() + 1 + 1 + 1 + 4));
     data << m_caster->GetGUID();
     data << uint32(sentName.size() + 1);
@@ -5354,8 +5360,8 @@ void Spell::SendResurrectRequest(Player* target)
     data << uint8(0); // null terminator
 
     data << uint8(m_caster->IsPlayer() ? 0 : 1); // "you'll be afflicted with resurrection sickness"
-    // override delay sent with SMSG_CORPSE_RECLAIM_DELAY, set instant resurrection for spells with this attribute
-    if (m_spellInfo->HasAttribute(SPELL_ATTR3_NO_RES_TIMER))
+    // override delay sent with SMSG_CORPSE_RECLAIM_DELAY, instant for player resurrections and spells with this attribute
+    if (m_caster->IsPlayer() || m_spellInfo->HasAttribute(SPELL_ATTR3_NO_RES_TIMER))
         data << uint32(0);
     target->SendDirectMessage(&data);
 }
@@ -6890,7 +6896,10 @@ SpellCastResult Spell::CheckCast(bool strict, uint32* /*param1*/, uint32* /*para
 
                     // not allow cast fly spells if not have req. skills  (all spells is self target)
                     // allow always ghost flight spells
-                    if (m_originalCaster && m_originalCaster->IsPlayer() && m_originalCaster->IsAlive())
+                    // CoA: a known mount that also has ground speed is grounded by AscensionMountSpeed instead
+                    if (m_originalCaster && m_originalCaster->IsPlayer() && m_originalCaster->IsAlive() &&
+                        !(m_spellInfo->HasAura(SPELL_AURA_MOUNTED) && m_spellInfo->HasAura(SPELL_AURA_MOD_INCREASE_MOUNTED_SPEED) &&
+                          m_originalCaster->ToPlayer()->HasSpell(m_spellInfo->Id)))
                     {
                         // No flying in battlegrounds
                         if (m_originalCaster->ToPlayer()->InBattleground())
