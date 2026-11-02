@@ -985,3 +985,14 @@ EXPORTS
     ?start_thread_noexcept@thread@boost@@AEAA_NXZ
     ?wstrToLower@@YAXAEAV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@Z
     SHA256
+    ?CloseGossipMenuFor@@YAXPEAVPlayer@@@Z
+    ?ClearGossipMenuFor@@YAXPEAVPlayer@@@Z
+    ?SendGossipMenuFor@@YAXPEAVPlayer@@IAEBVObjectGuid@@@Z
+    ?SendGossipMenuFor@@YAXPEAVPlayer@@IPEBVCreature@@@Z
+    ?AddGossipItemFor@@YAXPEAVPlayer@@IAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@II1I_N@Z
+    ?AddGossipItemFor@@YAXPEAVPlayer@@IIIII@Z
+    ?SendServerMessage@WorldSessionMgr@@QEAAXW4ServerMessageType@@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAVPlayer@@@Z
+    ??0MailReceiver@@QEAA@PEAVPlayer@@I@Z
+    ??1Player@@UEAA@XZ
+    ?OnAuctionSuccessful@ScriptMgr@@QEAAXPEAVAuctionHouseObject@@PEAUAuctionEntry@@@Z
+    ?GetAuctionHouseEntryFromHouse@AuctionHouseMgr@@SAPEBUAuctionHouseEntry@@W4AuctionHouseId@@@Z

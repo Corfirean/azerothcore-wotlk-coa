@@ -102,7 +102,7 @@ private:
     MailStationery m_stationery;
 };
 
-class MailReceiver
+class AC_GAME_API MailReceiver
 {
 public:                                                 // Constructors
     explicit MailReceiver(ObjectGuid::LowType receiver_lowguid) : m_receiver(nullptr), m_receiver_lowguid(receiver_lowguid) {}

@@ -89,7 +89,7 @@ public:
 
     void SendGlobalMessage(WorldPacket const* packet, WorldSession* self = nullptr, TeamId teamId = TEAM_NEUTRAL);
     void SendGlobalGMMessage(WorldPacket const* packet, WorldSession* self = nullptr, TeamId teamId = TEAM_NEUTRAL);
-    void SendServerMessage(ServerMessageType messageID, std::string stringParam = "", Player* player = nullptr);
+    AC_GAME_API void SendServerMessage(ServerMessageType messageID, std::string stringParam = "", Player* player = nullptr);
 
     void DoForAllOnlinePlayers(std::function<void(Player*)> exec);
 
