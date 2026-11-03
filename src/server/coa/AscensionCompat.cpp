@@ -11,8 +11,10 @@
 #include "AscensionAetherialReliquary.h"
 #include "AscensionAccountProgress.h"
 #include "AscensionClientDbcStream.h"
+#include "AscensionDisplayPatch.h"
 #include "AscensionFelsworn.h"
 #include "AscensionHighRiskPolicy.h"
+#include "AscensionRemovedSpellActionBars.h"
 #include "AscensionRulesets.h"
 #include "AscensionItemScaling.h"
 #include "AscensionFelswornRifts.h"
@@ -423,7 +425,7 @@ constexpr uint32 APPEARANCE_CATEGORY_SHADOWHOUND = 68;
 constexpr uint32 APPEARANCE_CATEGORY_NECROMANCER_LICH_FORM = 67;
 constexpr uint32 APPEARANCE_CATEGORY_TAMED_BEAST = 33;
 constexpr uint32 APPEARANCE_CATEGORY_SUMMONED_DEMON = 34;
-constexpr uint32 TAME_BEAST_SPELL = 1515;
+constexpr uint32 TAME_CREATURE_SPELL = 13481;
 constexpr std::array<uint32, 3> CALL_PET_SPELLS = { 883, 574302, 1100883 };
 
 AscensionCollectionModels::Entry const* FindCollectionModel(uint32 creatureId);
@@ -2789,6 +2791,7 @@ public:
 
     std::unordered_set<uint32> visitedSpellIds;
     uint32 removed = 0;
+    std::set<uint32> barSpellsBefore;
     {
       std::unordered_set<uint32> talentSpells;
       for (AscensionCompatData::CoATalentEntry const& entry : AscensionCompatData::CoATalentEntries)
@@ -2799,6 +2802,7 @@ public:
       player->SendActionButtons(2);
       if (rememberBar)
         RememberBarButtons(player, previousSpecialization, talentSpells);
+      barSpellsBefore = AscensionRemovedSpellActionBars::Capture(player);
     }
     for (AscensionCompatData::CoATalentEntry const &entry :
          AscensionCompatData::CoATalentEntries) {
@@ -2826,6 +2830,7 @@ public:
 
     uint32 const restored = restoreStoredBuild ? RestoreBuilds(player, specializationId) : 0;
     uint32 granted = SynchronizeProgression(player);
+    AscensionRemovedSpellActionBars::Reconcile(player, barSpellsBefore);
     if (restoreStoredBuild)
       RestoreBarButtons(player, specializationId, previousSpecialization);
     else if (!rememberBar)
@@ -4148,6 +4153,16 @@ public:
 
         std::lock_guard lock(_mutex);
         _onDemandItemRows[player->GetGUID().GetCounter()].Add(sent);
+    }
+
+    void ResendSkillLineAbilityRows(Player* player, uint32 spellId)
+    {
+        if (!ReceivesPatchRows(player))
+            return;
+
+        for (SkillLineAbilityPatchRow const& row : GetPreparedPatchRows().SkillLineAbilities)
+            if (!spellId || row[2] == spellId)
+                SendSkillLineAbilityRow(player, row);
     }
 
     void SendLearnedRecipeItemRows(Player* player, uint32 spellId)
@@ -6608,7 +6623,10 @@ public:
     void OnMailItemObtained(Player* player, uint32 itemId)
     {
         if (auto state = GetState(player))
-            CollectItem(player, *state, itemId, true, false);
+        {
+            Item const* stored = player->GetItemByEntry(itemId);
+            CollectItem(player, *state, itemId, true, stored && stored->IsSoulBound());
+        }
     }
 
   void OnItemObtained(Player *player, Item *item) {
@@ -7790,7 +7808,7 @@ private:
       }
     }
 
-    Pet* pet = player->CreateTamedPetFrom(entry, TAME_BEAST_SPELL);
+    Pet* pet = player->CreateTamedPetFrom(entry, TAME_CREATURE_SPELL);
     if (!pet)
       return "APPLY_APPEARANCES_BAD_CREATURE_ENTRY";
     uint8 const level = player->GetLevel();
@@ -8551,7 +8569,10 @@ bool HandlePersonalBankActivate(Player* player, WorldPacket const& packet)
 
     auto itr = personalBankVaults.find(banker.GetCounter());
     if (itr == personalBankVaults.end())
+    {
+        AscensionPersonalBank::Closed(player);
         return false;
+    }
 
     if (!OwnsPlacedBank(player, itr->second.Kind))
     {
@@ -8607,7 +8628,7 @@ class spell_ascension_personal_bank : public SpellScript
         float x, y, z;
         player->GetClosePoint(x, y, z, player->GetCombatReach(), 2.0f);
 
-        z = GroundHeightBeneath(player->GetMap(), x, y, player->GetPositionZ());
+        z = GroundHeightBeneath(player->GetMap(), x, y, z);
 
         GameObject* vault = player->GetMap()->SummonGameObject(
             entry, x, y, z, player->GetOrientation(), 0.0f, 0.0f, 0.0f,
@@ -8626,6 +8647,11 @@ class spell_ascension_personal_bank : public SpellScript
         personalBankVaults[vault->GetGUID().GetCounter()] = {player->GetGUID(), kind};
 
         player->AddSpellCooldown(GetSpellInfo()->Id, 0, BANK_VAULT_DURATION * IN_MILLISECONDS, true);
+
+        WorldPacket cooldownPacket;
+        player->BuildCooldownPacket(cooldownPacket, SPELL_COOLDOWN_FLAG_NONE, GetSpellInfo()->Id,
+                                     BANK_VAULT_DURATION * IN_MILLISECONDS);
+        player->SendDirectMessage(&cooldownPacket);
 
         LOG_INFO("coa",
                  "Summoned bank object {} (kind {}, entry {}, spell {}) for {} at "
@@ -10027,6 +10053,7 @@ void ApplyAscensionExperienceContracts(SpellInfo* info)
             break;
         case 818059:
         {
+            int32 const professions = 4;
             SpellEffectInfo& kills = info->Effects[EFFECT_1];
             SpellEffectInfo& quests = info->Effects[EFFECT_2];
             if (kills.Effect != SPELL_EFFECT_APPLY_AREA_AURA_PARTY ||
@@ -10034,6 +10061,7 @@ void ApplyAscensionExperienceContracts(SpellInfo* info)
                 break;
             kills.BasePoints = 49;
             kills.DieSides = 1;
+            kills.MiscValue &= ~professions;
             quests.Effect = kills.Effect;
             quests.ApplyAuraName = SPELL_AURA_MOD_XP_QUEST_PCT;
             quests.BasePoints = kills.BasePoints;
@@ -10087,6 +10115,10 @@ public:
                 case 9930889:
                     spellInfo->AttributesEx6 |= SPELL_ATTR6_NOT_IN_RAID_INSTANCES;
                     break;
+                case 804702:
+                case 804704:
+                    spellInfo->AttributesEx6 &= ~SPELL_ATTR6_DO_NOT_CHAIN_TO_CROWD_CONTROLLED_TARGETS;
+                    break;
                 default:
                     break;
             }
@@ -10107,6 +10139,27 @@ public:
             ApplyAscensionReaperScytheRushContracts(spellInfo);
             ApplyAscensionBloodmageHemoglobeContract(spellInfo);
         }
+    }
+};
+
+class AscensionCompatMirrorImageScript : public GlobalScript
+{
+public:
+    AscensionCompatMirrorImageScript()
+        : GlobalScript("AscensionCompatMirrorImageScript", {GLOBALHOOK_ON_MIRRORIMAGE_DISPLAY_ITEM}) { }
+
+    void OnMirrorImageDisplayItem(Item const* item, uint32& display) override
+    {
+        Player const* owner = item->GetOwner();
+        if (!owner || !item->IsEquipped())
+            return;
+
+        uint32 const visibleEntry = owner->GetUInt32Value(PLAYER_VISIBLE_ITEM_1_ENTRYID + item->GetSlot() * 2);
+        if (visibleEntry == item->GetEntry())
+            return;
+
+        if (ItemTemplate const* appearance = sObjectMgr->GetItemTemplate(visibleEntry))
+            display = appearance->DisplayInfoID;
     }
 };
 
@@ -10970,6 +11023,14 @@ class spell_ascension_stick_on_a_carrot : public AuraScript
     }
 };
 
+}
+
+namespace AscensionDisplayPatch
+{
+void ResendSkillLineAbilityRows(Player* player, uint32 spellId)
+{
+    AscensionDisplayPatchService::Instance().ResendSkillLineAbilityRows(player, spellId);
+}
 }
 
 AscensionVanityOwnership::TestOverride::TestOverride(bool unlockAll, std::string const& starterItems)
@@ -11849,6 +11910,7 @@ void AddAscensionCompatScripts() {
   new AscensionCompatAllSpellScript();
   new AscensionCompatUnitScript();
   new AscensionCompatChangelogScript();
+  new AscensionCompatMirrorImageScript();
   new AscensionCompatWorldScript();
   new AscensionCompatAllCreatureScript();
   new AscensionIncarnationPetScript();

@@ -1495,7 +1495,7 @@ thread_local bool TriggerLoopLogged = false;
 
 SpellCastResult Unit::CastSpell(SpellCastTargets const& targets, SpellInfo const* spellInfo, CustomSpellValues const* value, TriggerCastFlags triggerFlags, Item* castItem, AuraEffect const* triggeredByAura, ObjectGuid originalCaster)
 {
-    sScriptMgr->ResolveSpellCast(this, spellInfo);
+    sScriptMgr->ResolveSpellCast(this, spellInfo, triggeredByAura);
 
     if (!spellInfo)
     {
@@ -4494,6 +4494,7 @@ float Unit::GetUnitCriticalChance(WeaponAttackType attackType, Unit const* victi
         crit = 5.0f;
         crit += GetTotalAuraModifier(SPELL_AURA_MOD_WEAPON_CRIT_PERCENT);
         crit += GetTotalAuraModifier(SPELL_AURA_MOD_CRIT_PCT);
+        crit += GetTotalAuraModifierByMiscMask(SPELL_AURA_ASCENSION_MOD_CRIT_CHANCE, SPELL_SCHOOL_MASK_NORMAL);
     }
 
     // flat aura mods
@@ -4501,9 +4502,6 @@ float Unit::GetUnitCriticalChance(WeaponAttackType attackType, Unit const* victi
         crit += victim->GetTotalAuraModifier(SPELL_AURA_MOD_ATTACKER_RANGED_CRIT_CHANCE);
     else
         crit += victim->GetTotalAuraModifier(SPELL_AURA_MOD_ATTACKER_MELEE_CRIT_CHANCE);
-
-    crit += GetTotalAuraModifierByMiscMask(
-        SPELL_AURA_ASCENSION_MOD_CRIT_CHANCE, SPELL_SCHOOL_MASK_NORMAL);
 
     crit += victim->GetTotalAuraModifier(SPELL_AURA_MOD_CRIT_CHANCE_FOR_CASTER, [this](AuraEffect const* aurEff)
     {
@@ -5897,6 +5895,8 @@ void Unit::RemoveAurasDueToSpell(uint32 spellId, ObjectGuid casterGUID, uint8 re
         else
             ++iter;
     }
+    if (uint32 const twin = SpellMgr::GetScriptTwinOf(spellId))
+        RemoveAurasDueToSpell(twin, casterGUID, reqEffMask, removeMode);
 }
 
 void Unit::RemoveAuraFromStack(uint32 spellId, ObjectGuid casterGUID, AuraRemoveMode removeMode)
@@ -5914,6 +5914,8 @@ void Unit::RemoveAuraFromStack(uint32 spellId, ObjectGuid casterGUID, AuraRemove
         else
             ++iter;
     }
+    if (uint32 const twin = SpellMgr::GetScriptTwinOf(spellId))
+        RemoveAuraFromStack(twin, casterGUID, removeMode);
 }
 
 void Unit::RemoveAurasDueToSpellByDispel(uint32 spellId, uint32 dispellerSpellId, ObjectGuid casterGUID, Unit* dispeller, uint8 chargesRemoved/*= 1*/)
@@ -6529,6 +6531,9 @@ AuraEffect* Unit::GetAuraEffect(uint32 spellId, uint8 effIndex, ObjectGuid caste
             return itr->second->GetBase()->GetEffect(effIndex);
         }
     }
+    if (uint32 const twin = SpellMgr::GetScriptTwinOf(spellId))
+        if (auto result = GetAuraEffect(twin, effIndex, caster))
+            return result;
     if (uint32 copy = GetAscensionSpellCopy(spellId)) // Bronzebeard copy (vanilla classes)
         return GetAuraEffect(copy, effIndex, caster);
     return nullptr;
@@ -6606,6 +6611,8 @@ AuraApplication* Unit::GetAuraApplication(uint32 spellId, ObjectGuid casterGUID,
             return app;
         }
     }
+    if (uint32 const twin = SpellMgr::GetScriptTwinOf(spellId))
+        return GetAuraApplication(twin, casterGUID, itemCasterGUID, reqEffMask, except);
     return nullptr;
 }
 
@@ -6713,6 +6720,9 @@ bool Unit::HasAuraEffect(uint32 spellId, uint8 effIndex, ObjectGuid caster) cons
             return true;
         }
     }
+    if (uint32 const twin = SpellMgr::GetScriptTwinOf(spellId))
+        if (auto result = HasAuraEffect(twin, effIndex, caster))
+            return result;
     if (uint32 copy = GetAscensionSpellCopy(spellId)) // Bronzebeard copy (vanilla classes)
         return HasAuraEffect(copy, effIndex, caster);
     return false;
@@ -6731,6 +6741,8 @@ uint32 Unit::GetAuraCount(uint32 spellId) const
             count += (uint32)itr->second->GetBase()->GetStackAmount();
     }
 
+    if (uint32 const twin = SpellMgr::GetScriptTwinOf(spellId))
+        count += GetAuraCount(twin);
     if (!count)
         if (uint32 copy = GetAscensionSpellCopy(spellId)) // Bronzebeard copy (vanilla classes)
             return GetAuraCount(copy);
@@ -7361,6 +7373,8 @@ GameObject* Unit::GetGameObject(uint32 spellId) const
             if (go->GetSpellId() == spellId)
                 return go;
 
+    if (uint32 const twin = SpellMgr::GetScriptTwinOf(spellId))
+        return GetGameObject(twin);
     return nullptr;
 }
 
@@ -10262,8 +10276,15 @@ float Unit::SpellDoneCritChance(Unit const* /*victim*/, SpellInfo const* spellPr
             return 0.0f;
     }
 
-    crit_chance += GetTotalAuraModifierByMiscMask(
-        SPELL_AURA_ASCENSION_MOD_CRIT_CHANCE, schoolMask);
+    bool const critFieldIncludesAscensionAura = IsPlayer() && attackType < MAX_ATTACK &&
+        (spellProto->DmgClass == SPELL_DAMAGE_CLASS_MELEE || spellProto->DmgClass == SPELL_DAMAGE_CLASS_RANGED);
+    crit_chance += GetTotalAuraModifier(SPELL_AURA_ASCENSION_MOD_CRIT_CHANCE,
+        [schoolMask, critFieldIncludesAscensionAura](AuraEffect const* aurEff)
+    {
+        uint32 const auraSchoolMask = uint32(aurEff->GetMiscValue());
+        return (auraSchoolMask & schoolMask) &&
+            !(critFieldIncludesAscensionAura && (auraSchoolMask & SPELL_SCHOOL_MASK_NORMAL));
+    });
 
     // percent done
     // only players use intelligence for critical chance computations
@@ -10331,7 +10352,7 @@ float Unit::SpellTakenCritChance(Unit const* caster, SpellInfo const* spellProto
                                 break;
                             case 7997: // Renewed Hope
                             case 7998:
-                                if (HasAura(6788))
+                                if (HasAura(6788) || HasAura(sSpellMgr->GetSpellTwinFor(6788, (*i)->GetId())))
                                     crit_chance += (*i)->GetAmount();
                                 break;
                             case 7798: // Glyph of Regrowth: Ascension's glyph also adds crit chance (effect 1)
@@ -10673,10 +10694,10 @@ float Unit::SpellPctHealingModsDone(Unit* victim, SpellInfo const* spellProto, D
     {
         case SPELLFAMILY_GENERIC:
             // Talents and glyphs for healing stream totem
-            if (spellProto->Id == 52042)
+            if (sSpellMgr->GetSpellTwinSource(spellProto->Id) == 52042)
             {
                 // Glyph of Healing Stream Totem
-                if (AuraEffect* dummy = owner->GetAuraEffect(55456, EFFECT_0))
+                if (AuraEffect* dummy = owner->GetAuraEffectOfRankedSpellOrTwin(55456, EFFECT_0))
                     AddPct(DoneTotalMod, dummy->GetAmount());
 
                 // Healing Stream totem - Restorative Totems
@@ -10686,7 +10707,7 @@ float Unit::SpellPctHealingModsDone(Unit* victim, SpellInfo const* spellProto, D
             break;
         case SPELLFAMILY_PRIEST:
             // T9 HEALING 4P, empowered renew instant heal
-            if (spellProto->Id == 63544)
+            if (sSpellMgr->GetSpellTwinSource(spellProto->Id) == 63544)
                 if (AuraEffect* aurEff = GetAuraEffect(67202, EFFECT_0))
                     AddPct(DoneTotalMod, aurEff->GetAmount());
             break;
@@ -10994,8 +11015,11 @@ int32 Unit::SpellBaseHealingBonusDone(SpellSchoolMask schoolMask)
         for (AuraEffectList::const_iterator i = mHealingDoneOfStatPercent.begin(); i != mHealingDoneOfStatPercent.end(); ++i)
         {
             // stat used dependent from misc value (stat index)
-            Stats usedStat = Stats((*i)->GetSpellInfo()->Effects[(*i)->GetEffIndex()].MiscValue);
-            AdvertisedBenefit += int32(CalculatePct(GetStat(usedStat), (*i)->GetAmount()));
+            SpellEffectInfo const& effect = (*i)->GetSpellInfo()->Effects[(*i)->GetEffIndex()];
+            int32 const stat = effect.MiscValue >= STAT_STRENGTH && effect.MiscValue < MAX_STATS ? effect.MiscValue : effect.MiscValueB;
+            if (stat < STAT_STRENGTH || stat >= MAX_STATS)
+                continue;
+            AdvertisedBenefit += int32(CalculatePct(GetStat(Stats(stat)), (*i)->GetAmount()));
         }
 
         // ... and attack power
@@ -15110,7 +15134,7 @@ void Unit::CastPetAura(PetAura const* aura)
     if (!auraId)
         return;
 
-    if (auraId == 35696)                                      // Demonic Knowledge
+    if (sSpellMgr->GetSpellTwinSource(auraId) == 35696)       // Demonic Knowledge
     {
         int32 basePoints = aura->GetDamage();
         CastCustomSpell(this, auraId, &basePoints, nullptr, nullptr, true);
@@ -17774,6 +17798,9 @@ private:
 
 void Unit::CastDelayedSpellWithPeriodicAmount(Unit* caster, uint32 spellId, AuraType auraType, int32 addAmount, uint8 effectIndex)
 {
+    // the delayed cast runs outside the script that asked for it: the Reborn spell is chosen now
+    if (uint32 const twin = SpellMgr::GetRunningScriptTwin())
+        spellId = sSpellMgr->GetSpellTwinFor(spellId, twin);
     AuraEffect* aurEff = nullptr;
     for (AuraEffectList::iterator i = m_modAuras[auraType].begin(); i != m_modAuras[auraType].end(); ++i)
     {

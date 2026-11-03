@@ -50,7 +50,8 @@ public:
         if (!player || spell->IsTriggered() || result != SPELL_CAST_OK)
             return;
         auto* info = spell->GetSpellInfo();
-        if (IsInsanitySpender(info) && !player->HasAura(Madness) && Count(player, Insanity) < 40)
+        if (IsInsanitySpender(info) && !player->HasAura(Madness) &&
+            Count(player, Insanity) < (Named(info, 804152) ? 60 : 40))
             result = SPELL_FAILED_NO_POWER;
         if (info->Id == 520345 && spell->m_targets.GetUnitTarget() == player)
             result = SPELL_FAILED_BAD_TARGETS;
@@ -261,6 +262,8 @@ public:
                 bool linkedB = b->GetGUID() == State(player).covenant;
                 if (linkedA != linkedB)
                     return linkedA;
+                if (a->IsPlayer() != b->IsPlayer())
+                    return a->IsPlayer();
                 uint32 stacksA = a->GetAura(BlackBlood, player->GetGUID()) ? a->GetAura(BlackBlood, player->GetGUID())->GetStackAmount() : 0;
                 uint32 stacksB = b->GetAura(BlackBlood, player->GetGUID()) ? b->GetAura(BlackBlood, player->GetGUID())->GetStackAmount() : 0;
                 return stacksA != stacksB ? stacksA < stacksB : a->GetHealthPct() < b->GetHealthPct();
