@@ -2,6 +2,7 @@
 EXPORTS
     ??$AddObject@VPlayer@@@ObjectAccessor@@YAXPEAVPlayer@@@Z
     ??$AddToMap@VCreature@@@Map@@QEAA_NPEAVCreature@@_N@Z
+    ??$AddToMap@VGameObject@@@Map@@QEAA_NPEAVGameObject@@_N@Z
     ??$GetData@E@Field@@AEBAEXZ
     ??$GetData@G@Field@@AEBAGXZ
     ??$GetData@H@Field@@AEBAHXZ
@@ -33,13 +34,16 @@ EXPORTS
     ??0ChaseRange@@QEAA@MM@Z
     ??0CommandScript@@IEAA@PEBD@Z
     ??0CreatureScript@@IEAA@PEBD@Z
+    ??0DamageInfo@@QEAA@PEAVUnit@@0IPEBVSpellInfo@@W4SpellSchoolMask@@W4DamageEffectType@@I@Z
     ??0DatabaseScript@@IEAA@PEBDV?$vector@GV?$allocator@G@std@@@std@@@Z
     ??0DynamicObjectScript@@IEAA@PEBD@Z
+    ??0GameObject@@QEAA@XZ
     ??0GlobalScript@@IEAA@PEBDV?$vector@GV?$allocator@G@std@@@std@@@Z
     ??0Group@@QEAA@XZ
     ??0GroupScript@@IEAA@PEBDV?$vector@GV?$allocator@G@std@@@std@@@Z
     ??0Guild@@QEAA@XZ
     ??0MailReceiver@@QEAA@PEAVPlayer@@@Z
+    ??0MailReceiver@@QEAA@PEAVPlayer@@I@Z
     ??0MailScript@@IEAA@PEBDV?$vector@GV?$allocator@G@std@@@std@@@Z
     ??0MailSender@@QEAA@PEAVPlayer@@@Z
     ??0MiscScript@@IEAA@PEBDV?$vector@GV?$allocator@G@std@@@std@@@Z
@@ -56,6 +60,7 @@ EXPORTS
     ??1Group@@QEAA@XZ
     ??1Guild@@QEAA@XZ
     ??1PathGenerator@@QEAA@XZ
+    ??1Player@@UEAA@XZ
     ??1Spell@@QEAA@XZ
     ??1SpellCastTargets@@QEAA@XZ
     ??1thread_data_base@detail@boost@@UEAA@XZ
@@ -76,7 +81,9 @@ EXPORTS
     ?AddAura@Unit@@QEAAPEAVAura@@PEBVSpellInfo@@EPEAV1@@Z
     ?AddBattlegroundQueueId@Player@@QEAAIW4BattlegroundQueueTypeId@@@Z
     ?AddEvent@EventProcessor@@QEAAXPEAVBasicEvent@@_K_NE@Z
+    ?AddGossipItemFor@@YAXPEAVPlayer@@IAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@II1I_N@Z
     ?AddGossipItemFor@@YAXPEAVPlayer@@IAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@II@Z
+    ?AddGossipItemFor@@YAXPEAVPlayer@@IIIII@Z
     ?AddGroup@BattlegroundQueue@@QEAAPEAUGroupQueueInfo@@PEAVPlayer@@PEAVGroup@@W4BattlegroundTypeId@@PEBUPvPDifficultyEntry@@E_N4IIII@Z
     ?AddGroup@GroupMgr@@QEAAXPEAVGroup@@@Z
     ?AddGuild@GuildMgr@@QEAAXPEAVGuild@@@Z
@@ -110,11 +117,15 @@ EXPORTS
     ?BroadcastPacket@Group@@QEAAXPEBVWorldPacket@@_NHVObjectGuid@@@Z
     ?BroadcastToGuild@Guild@@QEBAXPEAVWorldSession@@_NV?$basic_string_view@DU?$char_traits@D@std@@@std@@I@Z
     ?BuyItemFromVendorSlot@Player@@QEAA_NVObjectGuid@@IIEEE@Z
+    ?CalcAbsorbResist@Unit@@SAXAEAVDamageInfo@@_N@Z
     ?CalcRadius@SpellEffectInfo@@QEBAMPEAVUnit@@PEAVSpell@@@Z
     ?CalcValue@SpellEffectInfo@@QEBAHPEBVUnit@@PEBH0@Z
     ?CalculatePath@PathGenerator@@QEAA_NMMM_N@Z
+    ?CalculateSpellDamage@Unit@@QEBAHPEBV1@PEBVSpellInfo@@EPEBH@Z
+    ?CalculateSpellDamageTaken@Unit@@QEAAXPEAUSpellNonMeleeDamage@@HPEBVSpellInfo@@W4WeaponAttackType@@_N@Z
     ?CalculateTalentsPoints@Player@@QEBAIXZ
     ?CalculateTime@EventProcessor@@QEBA_K_K@Z
+    ?CanAccountCreateCharacter@ScriptMgr@@QEAA_NIEE@Z
     ?CanAddQuest@Player@@QEAA_NPEBVQuest@@_N@Z
     ?CanBankItem@Player@@QEBA?AW4InventoryResult@@EEAEAV?$vector@UItemPosCount@@V?$allocator@UItemPosCount@@@std@@@std@@PEAVItem@@_N2@Z
     ?CanBeGameMaster@Player@@QEBA_NXZ
@@ -143,6 +154,8 @@ EXPORTS
     ?CanUseItem@Player@@QEBA?AW4InventoryResult@@PEAVItem@@_N@Z
     ?CanUseItem@Player@@QEBA?AW4InventoryResult@@PEBUItemTemplate@@@Z
     ?CancelGlobalCooldown@GlobalCooldownMgr@@QEAAXPEBVSpellInfo@@I@Z
+    ?CastCustomSpell@Unit@@QEAA?AW4SpellCastResult@@IW4SpellValueMod@@HPEAV1@_NPEAVItem@@PEBVAuraEffect@@VObjectGuid@@@Z
+    ?CastItemUseSpell@Player@@QEAAXPEAVItem@@AEBVSpellCastTargets@@EI@Z
     ?CastSpell@Unit@@QEAA?AW4SpellCastResult@@MMMI_NPEAVItem@@PEBVAuraEffect@@VObjectGuid@@@Z
     ?CastSpell@Unit@@QEAA?AW4SpellCastResult@@PEAV1@IW4TriggerCastFlags@@PEAVItem@@PEBVAuraEffect@@VObjectGuid@@@Z
     ?CastSpell@Unit@@QEAA?AW4SpellCastResult@@PEAV1@I_NPEAVItem@@PEBVAuraEffect@@VObjectGuid@@@Z
@@ -161,9 +174,11 @@ EXPORTS
     ?CleanupAfterTaxiFlight@Player@@QEAAXXZ
     ?ClearCastWhenWillAvailable@Pet@@QEAAXXZ
     ?ClearEnchantment@Item@@QEAAXW4EnchantmentSlot@@@Z
+    ?ClearGossipMenuFor@@YAXPEAVPlayer@@@Z
     ?ClearInPetCombat@Unit@@QEAAXXZ
     ?ClearMenus@PlayerMenu@@QEAAXXZ
     ?CloneItem@Item@@QEBAPEAV1@IPEBVPlayer@@@Z
+    ?CloseGossipMenuFor@@YAXPEAVPlayer@@@Z
     ?CombatStop@Unit@@QEAAX_N0@Z
     ?CombatStopWithPets@Unit@@QEAAX_N@Z
     ?CompleteQuest@Player@@QEAAXI@Z
@@ -179,7 +194,9 @@ EXPORTS
     ?CreateTamedPetFrom@Unit@@QEAAPEAVPet@@II@Z
     ?DamageTaken@ScriptedAI@@UEAAXPEAVUnit@@AEAIW4DamageEffectType@@W4SpellSchoolMask@@@Z
     ?DealDamage@Unit@@SAIPEAV1@0IPEBUCleanDamage@@W4DamageEffectType@@W4SpellSchoolMask@@PEBVSpellInfo@@_N5PEBVSpell@@PEAV?$optional@I@std@@@Z
+    ?DealDamageMods@Unit@@SAXPEBV1@AEAIPEAI@Z
     ?DealHeal@Unit@@SAHPEAV1@0I@Z
+    ?DealSpellDamage@Unit@@QEAAXPEAUSpellNonMeleeDamage@@_NPEBVSpell@@PEAIPEAV?$optional@I@std@@@Z
     ?DelMember@ArenaTeam@@QEAAXVObjectGuid@@_N@Z
     ?DelayedClean@MotionMaster@@AEAAXXZ
     ?DelayedExpire@MotionMaster@@AEAAXXZ
@@ -201,6 +218,7 @@ EXPORTS
     ?DoForAllPlayers@Map@@QEAAXV?$function@$$A6AXPEAVPlayer@@@Z@std@@@Z
     ?DoRandomRoll@Player@@QEAAIII@Z
     ?DraftBuild@AscensionWildcard@@YAXPEAVPlayer@@AEBV?$function@$$A6A_KAEBV?$vector@V?$vector@USlot@AscensionWildcard@@V?$allocator@USlot@AscensionWildcard@@@std@@@std@@V?$allocator@V?$vector@USlot@AscensionWildcard@@V?$allocator@USlot@AscensionWildcard@@@std@@@std@@@2@@std@@@Z@std@@I@Z
+    ?DuelComplete@Player@@QEAAXW4DuelCompleteType@@@Z
     ?DurabilityRepair@Player@@QEAAIG_NM0@Z
     ?DurabilityRepairAll@Player@@QEAAI_NM0@Z
     ?EnchantmentFitsRequirements@Player@@QEAA_NIC@Z
@@ -247,6 +265,7 @@ EXPORTS
     ?GetAttackDistance@Creature@@QEBAMPEBVUnit@@@Z
     ?GetAuctionDeposit@AuctionHouseMgr@@SAIPEBUAuctionHouseEntry@@IPEAVItem@@I@Z
     ?GetAuctionHouseEntryFromFactionTemplate@AuctionHouseMgr@@SAPEBUAuctionHouseEntry@@I@Z
+    ?GetAuctionHouseEntryFromHouse@AuctionHouseMgr@@SAPEBUAuctionHouseEntry@@W4AuctionHouseId@@@Z
     ?GetAuctionOutBid@AuctionEntry@@QEBAIXZ
     ?GetAuctionsMap@AuctionHouseMgr@@QEAAPEAVAuctionHouseObject@@I@Z
     ?GetAuctionsMapByHouseId@AuctionHouseMgr@@QEAAPEAVAuctionHouseObject@@W4AuctionHouseId@@@Z
@@ -284,6 +303,7 @@ EXPORTS
     ?GetCoATalentBudget@AscensionCompatData@@YA_NEEAEAI0@Z
     ?GetCorpse@Map@@QEAAPEAVCorpse@@AEBVObjectGuid@@@Z
     ?GetCorpse@Player@@QEBAPEAVCorpse@@XZ
+    ?GetCorpseReclaimDelay@Player@@QEBAI_N@Z
     ?GetCorpseTargetGUID@SpellCastTargets@@QEBA?AVObjectGuid@@XZ
     ?GetCreature@Map@@QEAAPEAVCreature@@AEBVObjectGuid@@@Z
     ?GetCreature@ObjectAccessor@@YAPEAVCreature@@AEBVWorldObject@@AEBVObjectGuid@@@Z
@@ -305,6 +325,7 @@ EXPORTS
     ?GetDistance@WorldObject@@QEBAMPEBV1@@Z
     ?GetDst@SpellCastTargets@@QEBAPEBUSpellDestination@@XZ
     ?GetDstPos@SpellCastTargets@@QEBAPEBVWorldLocation@@XZ
+    ?GetDungeon@LFGMgr@lfg@@QEAAIVObjectGuid@@_N@Z
     ?GetDungeonMapId@LFGMgr@lfg@@QEAAIVObjectGuid@@@Z
     ?GetDuration@DynamicObject@@QEBAHXZ
     ?GetDynObject@Unit@@QEAAPEAVDynamicObject@@I@Z
@@ -358,6 +379,7 @@ EXPORTS
     ?GetLiquidData@WorldObject@@QEBAAEBULiquidData@@XZ
     ?GetLoadedGridsCount@Map@@QEAAIXZ
     ?GetLock@?$HashMapHolder@VPlayer@@@@SAPEAVshared_mutex@std@@XZ
+    ?GetLockedDungeons@LFGMgr@lfg@@QEAAAEBV?$map@IIU?$less@I@std@@V?$allocator@U?$pair@$$CBII@std@@@2@@std@@VObjectGuid@@@Z
     ?GetLootFor@LootStore@@QEBAPEBVLootTemplate@@I@Z
     ?GetLootMethod@Group@@QEBA?AW4LootMethod@@XZ
     ?GetLootRecipient@Creature@@QEBAPEAVPlayer@@XZ
@@ -375,6 +397,7 @@ EXPORTS
     ?GetMeleeRange@Unit@@QEBAMPEBV1@@Z
     ?GetMemberGroup@Group@@QEBAEVObjectGuid@@@Z
     ?GetMinPlayersPerTeam@@YAIPEAVBattleground@@PEBUPvPDifficultyEntry@@@Z
+    ?GetMiscValue@AuraEffect@@QEBAHXZ
     ?GetMotionSlotType@MotionMaster@@QEBA?AW4MovementGeneratorType@@H@Z
     ?GetNPCIfCanInteractWith@Player@@QEAAPEAVCreature@@AEBVObjectGuid@@I@Z
     ?GetNavMeshQuery@MMapData@@QEAAPEBVdtNavMeshQuery@@XZ
@@ -384,6 +407,7 @@ EXPORTS
     ?GetObjectByTypeMask@ObjectAccessor@@YAPEAVObject@@AEBVWorldObject@@AEBVObjectGuid@@I@Z
     ?GetObjectSize@WorldObject@@QEBAMXZ
     ?GetObjectType@SpellImplicitTargetInfo@@QEBA?AW4SpellTargetObjectTypes@@XZ
+    ?GetOptions@LFGMgr@lfg@@QEAAIXZ
     ?GetOtherTeamId@Battleground@@SA?AW4TeamId@@W42@@Z
     ?GetOutdoorPvPToZoneId@OutdoorPvPMgr@@QEAAPEAVOutdoorPvP@@I@Z
     ?GetOwner@GameObject@@QEBAPEAVUnit@@XZ
@@ -577,6 +601,7 @@ EXPORTS
     ?HasMechanicTemplateImmunity@Creature@@QEBA_N_K@Z
     ?HasPermission@WorldSession@@QEAA_NI@Z
     ?HasQuest@Player@@QEBA_NI@Z
+    ?HasQuestForItem@Player@@QEBA_NII_NPEA_N@Z
     ?HasRadius@SpellEffectInfo@@QEBA_NXZ
     ?HasRankRight@Guild@@QEBA_NPEAVPlayer@@I@Z
     ?HasSkill@Player@@QEBA_NI@Z
@@ -631,6 +656,7 @@ EXPORTS
     ?IsGridCreated@Map@@QEBA_NAEBU?$CoordPair@$0EA@@@@Z
     ?IsGridLoaded@Map@@QEBA_NAEBU?$CoordPair@$0EA@@@@Z
     ?IsHostileTo@Unit@@QEBA_NPEBV1@@Z
+    ?IsImmunedToDamage@Unit@@QEBA_NPEBV1@PEBVSpellInfo@@@Z
     ?IsImmunedToDamage@Unit@@QEBA_NW4SpellSchoolMask@@@Z
     ?IsImmunedToSpell@Unit@@QEAA_NPEBVSpellInfo@@PEBV1@@Z
     ?IsInAreaTriggerRadius@Player@@QEBA_NPEBUAreaTrigger@@M@Z
@@ -713,6 +739,7 @@ EXPORTS
     ?MovePoint@MotionMaster@@QEAAXIMMMW4ForcedMovement@@MM_N1W4MovementSlot@@V?$optional@W4AnimTier@@@std@@@Z
     ?MovePointBackwards@MotionMaster@@QEAAXIMMM_N0W4MovementSlot@@M@Z
     ?NearTeleportTo@Unit@@QEAAXMMMM_N000@Z
+    ?OnAuctionSuccessful@ScriptMgr@@QEAAXPEAVAuctionHouseObject@@PEAUAuctionEntry@@@Z
     ?OnCharmed@CreatureAI@@UEAAX_N@Z
     ?OnGossipSelect@ScriptMgr@@QEAA_NPEAVPlayer@@PEAVCreature@@II@Z
     ?OnOwnerCombatInteraction@CreatureAI@@QEAAXPEAVUnit@@@Z
@@ -757,6 +784,7 @@ EXPORTS
     ?RemoveAllControlled@Unit@@QEAAX_N@Z
     ?RemoveAllSpellCooldown@Player@@QEAAXXZ
     ?RemoveAuction@AuctionHouseObject@@QEAA_NPEAUAuctionEntry@@@Z
+    ?RemoveAura@Unit@@QEAAXAEAV?$vec_iterator@PEAU?$pair@IPEAVAuraApplication@@@std@@$0A@@container@boost@@W4AuraRemoveMode@@@Z
     ?RemoveAura@Unit@@QEAAXIVObjectGuid@@EW4AuraRemoveMode@@@Z
     ?RemoveAura@Unit@@QEAAXPEAVAura@@W4AuraRemoveMode@@@Z
     ?RemoveAura@Unit@@QEAAXPEAVAuraApplication@@W4AuraRemoveMode@@@Z
@@ -811,6 +839,8 @@ EXPORTS
     ?SendDirectMessage@Player@@QEBAXPEBVWorldPacket@@@Z
     ?SendEquipError@Player@@QEAAXW4InventoryResult@@PEAVItem@@1I@Z
     ?SendGossipMenu@PlayerMenu@@QEAAXIVObjectGuid@@@Z
+    ?SendGossipMenuFor@@YAXPEAVPlayer@@IAEBVObjectGuid@@@Z
+    ?SendGossipMenuFor@@YAXPEAVPlayer@@IPEBVCreature@@@Z
     ?SendLearnNewTaxiNode@WorldSession@@QEAA_NPEAVCreature@@@Z
     ?SendMailResult@Player@@QEAAXIW4MailResponseType@@W4MailResponseResult@@III@Z
     ?SendMailTo@MailDraft@@QEAAXV?$shared_ptr@V?$Transaction@VCharacterDatabaseConnection@@@@@std@@AEBVMailReceiver@@AEBVMailSender@@W4MailCheckMask@@II_N4@Z
@@ -819,9 +849,12 @@ EXPORTS
     ?SendNewItem@Player@@QEAAXPEAVItem@@I_N111@Z
     ?SendPacketToAll@Battleground@@QEAAXPEBVWorldPacket@@@Z
     ?SendPetNameQuery@WorldSession@@QEAAXVObjectGuid@@I@Z
+    ?SendPlaySpellVisual@Unit@@QEAAXI@Z
     ?SendPlaySpellVisual@Unit@@QEAAXVObjectGuid@@I@Z
     ?SendPushToPartyResponse@Player@@QEBAXPEBV1@W4QuestShareMessages@@@Z
+    ?SendServerMessage@WorldSessionMgr@@QEAAXW4ServerMessageType@@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAVPlayer@@@Z
     ?SendSpellCooldown@Spell@@QEAAXXZ
+    ?SendSpellNonMeleeDamageLog@Unit@@QEAAXPEAUSpellNonMeleeDamage@@@Z
     ?SendTalentsInfoData@Player@@QEAAX_N@Z
     ?SendToBattleground@BattlegroundMgr@@QEAA_NPEAVPlayer@@IW4BattlegroundTypeId@@@Z
     ?SendUpdate@Group@@QEAAXXZ
@@ -893,6 +926,8 @@ EXPORTS
     ?ShortenPathUntilDist@PathGenerator@@QEAAXAEBVVector3@G3D@@M@Z
     ?Slots@AscensionWildcard@@YA?AV?$vector@USlot@AscensionWildcard@@V?$allocator@USlot@AscensionWildcard@@@std@@@std@@PEBVPlayer@@@Z
     ?SpawnCorpseBones@Player@@QEAAX_N@Z
+    ?SpellDamageBonusDone@Unit@@QEAAIPEAV1@PEBVSpellInfo@@IW4DamageEffectType@@EMI@Z
+    ?SpellDamageBonusTaken@Unit@@QEAAIPEAV1@PEBVSpellInfo@@IW4DamageEffectType@@I@Z
     ?SpellHealingBonusDone@Unit@@QEAAIPEAV1@PEBVSpellInfo@@IW4DamageEffectType@@EMI@Z
     ?SpellHealingBonusTaken@Unit@@QEAAIPEAV1@PEBVSpellInfo@@IW4DamageEffectType@@I@Z
     ?Spent@AscensionCoATalentState@@YA?AUSpentPoints@1@AEBV?$vector@UKnownEntry@AscensionCoATalentState@@V?$allocator@UKnownEntry@AscensionCoATalentState@@@std@@@std@@@Z
@@ -904,6 +939,7 @@ EXPORTS
     ?StoreNewItemInBestSlots@Player@@QEAA_NII@Z
     ?SummonCreature@WorldObject@@QEAAPEAVTempSummon@@IMMMMW4TempSummonType@@IPEBUSummonPropertiesEntry@@_N@Z
     ?SummonGameObject@Map@@QEAAPEAVGameObject@@IMMMMMMMMI_N@Z
+    ?SummonGameObject@WorldObject@@QEAAPEAVGameObject@@IMMMMMMMMI_NW4GOSummonType@@@Z
     ?SwapItem@Player@@QEAAXGG@Z
     ?SwapItemsWithInventory@Guild@@QEAAXPEAVPlayer@@_NEEEEI@Z
     ?SwitchAscensionSpecialization@@YA_NPEAVPlayer@@I@Z
@@ -944,6 +980,7 @@ EXPORTS
     ?findPath@dtNavMeshQuery@@QEBAI_K0PEBM1PEBVdtQueryFilter@@PEA_KPEAHH@Z
     ?findStraightPath@dtNavMeshQuery@@QEBAIPEBM0PEB_KHPEAMPEAEPEA_KPEAHHH@Z
     ?forTeam@ChannelMgr@@SAPEAV1@W4TeamId@@@Z
+    ?fromAxisAngleRotation@Quat@G3D@@SA?AV12@AEBVVector3@2@M@Z
     ?getAttackerForHelper@Unit@@QEBAPEAV1@XZ
     ?getCost@dtQueryFilter@@UEBAMPEBM0_KPEBUdtMeshTile@@PEBUdtPoly@@123123@Z
     ?getRace@Unit@@QEBAE_N@Z
@@ -983,16 +1020,6 @@ EXPORTS
     ?removeSpell@Player@@QEAAXIE_N@Z
     ?resetTalents@Player@@QEAA_N_N@Z
     ?start_thread_noexcept@thread@boost@@AEAA_NXZ
+    ?unitZ@Vector3@G3D@@SAAEBV12@XZ
     ?wstrToLower@@YAXAEAV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@Z
     SHA256
-    ?CloseGossipMenuFor@@YAXPEAVPlayer@@@Z
-    ?ClearGossipMenuFor@@YAXPEAVPlayer@@@Z
-    ?SendGossipMenuFor@@YAXPEAVPlayer@@IAEBVObjectGuid@@@Z
-    ?SendGossipMenuFor@@YAXPEAVPlayer@@IPEBVCreature@@@Z
-    ?AddGossipItemFor@@YAXPEAVPlayer@@IAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@II1I_N@Z
-    ?AddGossipItemFor@@YAXPEAVPlayer@@IIIII@Z
-    ?SendServerMessage@WorldSessionMgr@@QEAAXW4ServerMessageType@@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAVPlayer@@@Z
-    ??0MailReceiver@@QEAA@PEAVPlayer@@I@Z
-    ??1Player@@UEAA@XZ
-    ?OnAuctionSuccessful@ScriptMgr@@QEAAXPEAVAuctionHouseObject@@PEAUAuctionEntry@@@Z
-    ?GetAuctionHouseEntryFromHouse@AuctionHouseMgr@@SAPEBUAuctionHouseEntry@@W4AuctionHouseId@@@Z
