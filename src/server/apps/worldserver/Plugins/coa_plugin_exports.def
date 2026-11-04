@@ -136,6 +136,7 @@ EXPORTS
     ?CanEquipItem@Player@@QEBA?AW4InventoryResult@@EAEAGPEAVItem@@_N2@Z
     ?CanEquipNewItem@Player@@QEBA?AW4InventoryResult@@EAEAGI_N@Z
     ?CanEquipUniqueItem@Player@@QEBA?AW4InventoryResult@@PEAVItem@@EI@Z
+    ?CanHaveThreatList@Unit@@QEBA_N_N@Z
     ?CanInteractWithQuestGiver@Player@@QEAA_NPEAVObject@@@Z
     ?CanJoinToBattleground@Player@@QEBA_NPEBVBattleground@@@Z
     ?CanNotReachTarget@Creature@@QEBA_NXZ
@@ -216,6 +217,7 @@ EXPORTS
     ?Disband@Guild@@QEAAXXZ
     ?Dismount@Unit@@QEAAXXZ
     ?DoForAllPlayers@Map@@QEAAXV?$function@$$A6AXPEAVPlayer@@@Z@std@@@Z
+    ?DoLootRelease@WorldSession@@QEAAXVObjectGuid@@@Z
     ?DoRandomRoll@Player@@QEAAIII@Z
     ?DraftBuild@AscensionWildcard@@YAXPEAVPlayer@@AEBV?$function@$$A6A_KAEBV?$vector@V?$vector@USlot@AscensionWildcard@@V?$allocator@USlot@AscensionWildcard@@@std@@@std@@V?$allocator@V?$vector@USlot@AscensionWildcard@@V?$allocator@USlot@AscensionWildcard@@@std@@@std@@@2@@std@@@Z@std@@I@Z
     ?DuelComplete@Player@@QEAAXW4DuelCompleteType@@@Z
@@ -305,6 +307,7 @@ EXPORTS
     ?GetCorpse@Player@@QEBAPEAVCorpse@@XZ
     ?GetCorpseReclaimDelay@Player@@QEBAI_N@Z
     ?GetCorpseTargetGUID@SpellCastTargets@@QEBA?AVObjectGuid@@XZ
+    ?GetCreature@InstanceScript@@QEAAPEAVCreature@@I@Z
     ?GetCreature@Map@@QEAAPEAVCreature@@AEBVObjectGuid@@@Z
     ?GetCreature@ObjectAccessor@@YAPEAVCreature@@AEBVWorldObject@@AEBVObjectGuid@@@Z
     ?GetCreatureBaseStats@ObjectMgr@@QEAAPEBUCreatureBaseStats@@EE@Z
@@ -341,6 +344,7 @@ EXPORTS
     ?GetGUID@Group@@QEBA?AVObjectGuid@@XZ
     ?GetGameObject@Map@@QEAAPEAVGameObject@@AEBVObjectGuid@@@Z
     ?GetGameObject@ObjectAccessor@@YAPEAVGameObject@@AEBVWorldObject@@AEBVObjectGuid@@@Z
+    ?GetGameObject@Unit@@QEBAPEAVGameObject@@I@Z
     ?GetGameObjectIfCanInteractWith@Player@@QEBAPEAVGameObject@@AEBVObjectGuid@@W4GameobjectTypes@@@Z
     ?GetGameObjectTemplate@ObjectMgr@@QEAAPEBUGameObjectTemplate@@I@Z
     ?GetGossipText@ObjectMgr@@QEBAPEBUGossipText@@I@Z
@@ -430,6 +434,7 @@ EXPORTS
     ?GetPlayersCountInGroupsQueue@BattlegroundQueue@@QEAAIW4BattlegroundBracketId@@W4BattlegroundQueueGroupTypes@@@Z
     ?GetPrevSpellInChain@SpellMgr@@QEBAII@Z
     ?GetProposalIdForPlayer@LFGMgr@lfg@@QEBAIVObjectGuid@@@Z
+    ?GetPureMaxSkillValue@Player@@QEBAGI@Z
     ?GetPureSkillValue@Player@@QEBAGI@Z
     ?GetQuestLevel@Player@@QEBAHPEBVQuest@@@Z
     ?GetQuestRewardStatus@Player@@QEBA_NI@Z
@@ -459,6 +464,7 @@ EXPORTS
     ?GetSkillLineAbilitiesBySkillLine@@YAAEBV?$vector@PEBUSkillLineAbilityEntry@@V?$allocator@PEBUSkillLineAbilityEntry@@@std@@@std@@I@Z
     ?GetSkillLineAbilityMapBounds@SpellMgr@@QEBA?AU?$pair@V?$_Tree_const_iterator@V?$_Tree_val@U?$_Tree_simple_types@U?$pair@$$CBIPEBUSkillLineAbilityEntry@@@std@@@std@@@std@@@std@@V12@@std@@I@Z
     ?GetSkillRaceClassInfo@@YAPEBUSkillRaceClassInfoEntry@@IEE@Z
+    ?GetSkillRankSpells@SpellMgr@@QEBA?AV?$vector@IV?$allocator@I@std@@@std@@I@Z
     ?GetSkillStep@Player@@QEBAGG@Z
     ?GetSkillValue@Player@@QEBAGI@Z
     ?GetSlotByType@ArenaTeam@@SAEI@Z
@@ -467,6 +473,7 @@ EXPORTS
     ?GetSpeed@Unit@@QEBAMW4UnitMoveType@@@Z
     ?GetSpellCone@SpellMgr@@QEBAPEBUSpellCone@@I@Z
     ?GetSpellCooldownDelay@Player@@QEBAII@Z
+    ?GetSpellIdForDifficulty@SpellMgr@@QEBAIIPEBVUnit@@@Z
     ?GetSpellLearnSkill@SpellMgr@@QEBAPEBUSpellLearnSkillNode@@I@Z
     ?GetSpellMaxRangeForTarget@Unit@@QEBAMPEBV1@PEBVSpellInfo@@@Z
     ?GetSpellMinRangeForTarget@Unit@@QEBAMPEBV1@PEBVSpellInfo@@@Z
@@ -642,6 +649,7 @@ EXPORTS
     ?IsCommandAttack@CharmInfo@@QEAA_NXZ
     ?IsCommandFollow@CharmInfo@@QEAA_NXZ
     ?IsDeathPersistent@Aura@@QEBA_NXZ
+    ?IsDisabledFor@DisableMgr@@SA_NW4DisableType@@IPEBVUnit@@E@Z
     ?IsDungeonBoss@Creature@@QEBA_NXZ
     ?IsEffect@SpellEffectInfo@@QEBA_NW4SpellEffects@@@Z
     ?IsEffect@SpellEffectInfo@@QEBA_NXZ
@@ -649,6 +657,7 @@ EXPORTS
     ?IsExistPet@Player@@QEAA_NXZ
     ?IsFFAPvP@Player@@QEAA_NXZ
     ?IsFalling@Player@@QEBA_NXZ
+    ?IsFalling@Unit@@QEBA_NXZ
     ?IsFitToSpellRequirements@Item@@QEBA_NPEBVSpellInfo@@@Z
     ?IsFollowing@CharmInfo@@QEAA_NXZ
     ?IsFriendlyTo@Unit@@QEBA_NPEBV1@@Z
@@ -678,9 +687,11 @@ EXPORTS
     ?IsPlayerInvitedToRatedArena@BattlegroundQueue@@QEAA_NVObjectGuid@@@Z
     ?IsPolymorphed@Unit@@QEBA_NXZ
     ?IsPositionValid@Position@@QEBA_NXZ
+    ?IsPrimaryProfessionSkill@@YA_NI@Z
     ?IsPvP@Player@@QEAA_NXZ
     ?IsReservedName@ObjectMgr@@QEBA_NV?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
     ?IsReturning@CharmInfo@@QEAA_NXZ
+    ?IsScriptedPrivateInstance@Map@@QEBA_NXZ
     ?IsSitState@Unit@@QEBA_NXZ
     ?IsStandState@Unit@@QEBA_NXZ
     ?IsTrialAccount@WorldSession@@QEBA_NXZ
@@ -747,6 +758,7 @@ EXPORTS
     ?OnPlayerCanGroupAccept@ScriptMgr@@QEAA_NPEAVPlayer@@PEAVGroup@@@Z
     ?OnPlayerCanGroupInvite@ScriptMgr@@QEAA_NPEAVPlayer@@AEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
     ?OnPlayerCanSellItem@ScriptMgr@@QEAA_NPEAVPlayer@@PEAVItem@@PEAVCreature@@@Z
+    ?OnPlayerCanTakeQuest@ScriptMgr@@QEAA_NPEBVPlayer@@PEBVQuest@@@Z
     ?OnPlayerGetGameModeMask@ScriptMgr@@QEAA?AV?$optional@I@std@@PEBVPlayer@@@Z
     ?OnPlayerJoinBG@ScriptMgr@@QEAAXPEAVPlayer@@@Z
     ?OnResolveLfgQueuePolicy@ScriptMgr@@QEAAXAEBVObjectGuid@@AEAULfgQueuePolicy@lfg@@@Z
@@ -812,12 +824,24 @@ EXPORTS
     ?ResurrectPlayer@Player@@QEAAXM_N@Z
     ?RewardQuest@Player@@QEAAXPEBVQuest@@IPEAVObject@@_N2@Z
     ?SameSubGroup@Group@@QEBA_NPEBVPlayer@@0@Z
+    ?SatisfyQuestBreadcrumb@Player@@QEBA_NPEBVQuest@@_N@Z
     ?SatisfyQuestClass@Player@@QEBA_NPEBVQuest@@_N@Z
+    ?SatisfyQuestConditions@Player@@QEAA_NPEBVQuest@@_N@Z
+    ?SatisfyQuestDay@Player@@QEBA_NPEBVQuest@@_N@Z
+    ?SatisfyQuestExclusiveGroup@Player@@QEBA_NPEBVQuest@@_N@Z
     ?SatisfyQuestLevel@Player@@QEBA_NPEBVQuest@@_N@Z
     ?SatisfyQuestLog@Player@@QEAA_N_N@Z
+    ?SatisfyQuestMonth@Player@@QEBA_NPEBVQuest@@_N@Z
+    ?SatisfyQuestNextChain@Player@@QEBA_NPEBVQuest@@_N@Z
+    ?SatisfyQuestPrevChain@Player@@QEBA_NPEBVQuest@@_N@Z
+    ?SatisfyQuestPreviousQuest@Player@@QEBA_NPEBVQuest@@_N@Z
     ?SatisfyQuestRace@Player@@QEBA_NPEBVQuest@@_N@Z
+    ?SatisfyQuestReputation@Player@@QEBA_NPEBVQuest@@_N@Z
+    ?SatisfyQuestSeasonal@Player@@QEBA_NPEBVQuest@@_N@Z
     ?SatisfyQuestSkill@Player@@QEBA_NPEBVQuest@@_N@Z
     ?SatisfyQuestStatus@Player@@QEBA_NPEBVQuest@@_N@Z
+    ?SatisfyQuestTimed@Player@@QEBA_NPEBVQuest@@_N@Z
+    ?SatisfyQuestWeek@Player@@QEBA_NPEBVQuest@@_N@Z
     ?SaveInventoryAndGoldToDB@Player@@QEAAXV?$shared_ptr@V?$Transaction@VCharacterDatabaseConnection@@@@@std@@@Z
     ?SavePetToDB@Pet@@QEAAXW4PetSaveMode@@@Z
     ?SaveStayPosition@CharmInfo@@QEAAX_N@Z
@@ -873,6 +897,7 @@ EXPORTS
     ?SetDst@SpellCastTargets@@QEAAXAEBUPosition@@@Z
     ?SetDst@SpellCastTargets@@QEAAXAEBVWorldObject@@@Z
     ?SetDst@SpellCastTargets@@QEAAXMMMMI@Z
+    ?SetDuration@Aura@@QEAAXH_N@Z
     ?SetEmblem@ArenaTeam@@QEAAXIEIEI@Z
     ?SetEnchantment@Item@@QEAAXW4EnchantmentSlot@@IIIVObjectGuid@@@Z
     ?SetEntryPoint@Player@@QEAAXXZ
@@ -908,6 +933,7 @@ EXPORTS
     ?SetRatingForAll@ArenaTeam@@QEAAXI@Z
     ?SetReputation@ReputationMgr@@AEAA_NPEBUFactionEntry@@M_N1V?$optional@W4ReputationRank@@@std@@@Z
     ?SetRespawnTime@GameObject@@QEAAXH@Z
+    ?SetRewardedQuest@Player@@QEAAXI@Z
     ?SetSelection@Player@@QEAAXVObjectGuid@@@Z
     ?SetShapeshiftForm@Unit@@QEAAXW4ShapeshiftForm@@@Z
     ?SetSkill@Player@@QEAAXGGGG@Z
@@ -990,6 +1016,7 @@ EXPORTS
     ?instance@ArenaTeamMgr@@SAPEAV1@XZ
     ?instance@AuctionHouseMgr@@SAPEAV1@XZ
     ?instance@BattlegroundMgr@@SAPEAV1@XZ
+    ?instance@DisableMgr@@SAPEAV1@XZ
     ?instance@Graveyard@@SAPEAV1@XZ
     ?instance@GroupMgr@@SAPEAV1@XZ
     ?instance@GuildMgr@@SAPEAV1@XZ
