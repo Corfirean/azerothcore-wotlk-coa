@@ -168,7 +168,7 @@ struct CreatureMovementData
 
 struct CreatureModel
 {
-    static CreatureModel const DefaultInvisibleModel;
+    AC_GAME_API static CreatureModel const DefaultInvisibleModel;
     static CreatureModel const DefaultVisibleModel;
 
     CreatureModel() :

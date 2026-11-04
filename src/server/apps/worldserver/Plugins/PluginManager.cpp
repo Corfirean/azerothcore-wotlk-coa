@@ -50,6 +50,14 @@
 namespace fs = std::filesystem;
 using namespace Acore::Plugins;
 
+#if defined(_MSC_VER)
+// The host's own fingerprint, in the same form as a plugin's .coapl section: the manager reads which
+// plugin ABI a worldserver.exe accepts from the file, without running it.
+#pragma section(".coapl", read)
+#pragma comment(linker, "/INCLUDE:CoaHostAbiSection")
+extern "C" __declspec(allocate(".coapl")) char const CoaHostAbiSection[] = "COAPLUGIN1|worldserver|" COA_PLUGIN_ABI_FINGERPRINT;
+#endif
+
 namespace
 {
     // Process exit code used when a plugin phase hangs (see watchdog below).
