@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "comment": "The one toolchain plugin hosts (worldserver.exe + SDK) are built with. The manager installs the same MSVC toolset on users' PCs so plugins are compiled by the compiler that built the host. clVersion empty = not enforced yet.",
+  "runner": "windows-2025",
+  "msvcToolset": "14.44",
+  "clVersion": ""
+}

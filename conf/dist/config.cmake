@@ -148,7 +148,11 @@ if(COA_PLUGIN_HOST)
   list(SORT COA_PLUGIN_ABI_HEADERS)
   set(COA_PLUGIN_ABI_HEADER_DIGESTS "")
   foreach(header ${COA_PLUGIN_ABI_HEADERS})
-    file(SHA256 "${header}" header_digest)
+    # Hash with LF line endings: the same commit must give the same fingerprint whatever the
+    # checkout's core.autocrlf (Windows runners convert to CRLF, Linux and most local trees do not).
+    file(READ "${header}" header_text)
+    string(REPLACE "\r\n" "\n" header_text "${header_text}")
+    string(SHA256 header_digest "${header_text}")
     file(RELATIVE_PATH header_rel "${CMAKE_SOURCE_DIR}" "${header}")
     string(APPEND COA_PLUGIN_ABI_HEADER_DIGESTS "${header_rel}=${header_digest}\n")
   endforeach()
