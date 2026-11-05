@@ -65,6 +65,24 @@ def split_args(s):
     return out
 
 
+def boost_link_libraries(build_dir):
+    """Absolute paths of the Boost .lib files on worldserver.exe's link line."""
+    text = open(os.path.join(build_dir, 'build.ninja'), encoding='utf-8', errors='replace').read()
+    for block in text.split('\nbuild '):
+        head = block.split('\n', 1)[0]
+        if not re.match(r'\S*worldserver\.exe[ :]', head):
+            continue
+        m = re.search(r'\n\s+LINK_LIBRARIES = (.*)', block)
+        if not m:
+            continue
+        out = []
+        for a in split_args(ninja_unescape(m.group(1))):
+            if a.lower().endswith('.lib') and 'boost' in os.path.basename(a).lower() and os.path.isfile(a) and a not in out:
+                out.append(a)
+        return out
+    raise SystemExit('no worldserver.exe link statement found in build.ninja')
+
+
 def copy_headers(src, dst, recursive):
     count = 0
     if recursive:
@@ -170,6 +188,12 @@ def main():
             raise SystemExit('missing ' + name)
         shutil.copy2(found, os.path.join(sdk, 'lib', name))
         libs.append('lib/' + name)
+    # The static Boost libraries worldserver links: a plugin that uses a compiled Boost library (SQUID
+    # uses boost::thread) links the same build of it. Boost's auto-link pragmas look them up by name in
+    # lib/, which the CMake package puts on the library path.
+    for lib in boost_link_libraries(build):
+        shutil.copy2(lib, os.path.join(sdk, 'lib', os.path.basename(lib)))
+        libs.append('lib/' + os.path.basename(lib))
 
     abi_dir = os.path.join(build, 'coa_plugin')
     abi_inputs = open(os.path.join(abi_dir, 'coa-plugin-abi-inputs.txt'), encoding='utf-8').read()
@@ -194,7 +218,8 @@ def main():
         f.write('    INTERFACE_INCLUDE_DIRECTORIES "${_coa_inc}"\n')
         f.write('    INTERFACE_COMPILE_DEFINITIONS "%s"\n' % cm(defines))
         f.write('    INTERFACE_COMPILE_OPTIONS "%s"\n' % cm(flags))
-        f.write('    INTERFACE_LINK_LIBRARIES "${_coa_libs}")\n')
+        f.write('    INTERFACE_LINK_LIBRARIES "${_coa_libs}"\n')
+        f.write('    INTERFACE_LINK_DIRECTORIES "${COA_SDK_ROOT}/lib")\n')
         f.write('endif()\n')
         f.write('function(coa_add_plugin name)\n')
         f.write('  add_library(${name} SHARED ${ARGN})\n')
