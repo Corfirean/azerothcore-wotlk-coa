@@ -290,8 +290,13 @@ private:
 
 using SlotIds = std::set<uint8>;
 
+class BotMgr;
+
 class Guild
 {
+    // mod-coa-playerbots up to the stable releases still reaches the bank internals directly; newer
+    // versions use the public bank API below. Access is checked at compile time only (no ABI effect).
+    friend class BotMgr;
 
 public: // pussywizard: public class Member
     // Class representing guild member
