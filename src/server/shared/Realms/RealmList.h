@@ -65,7 +65,7 @@ public:
 
 private:
     RealmList();
-    ~RealmList() = default;
+    ~RealmList();
 
     void LoadBuildInfo();
     void UpdateRealms(boost::system::error_code const& error);

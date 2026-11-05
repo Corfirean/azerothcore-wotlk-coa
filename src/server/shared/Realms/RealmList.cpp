@@ -27,6 +27,10 @@
 
 RealmList::RealmList() : _updateInterval(0) { }
 
+// Out of line: the destructor of std::unique_ptr<Acore::Asio::Resolver> needs the complete type, and the
+// plugin host exports RealmList, which makes an inline destructor compile in every including file.
+RealmList::~RealmList() = default;
+
 RealmList* RealmList::Instance()
 {
     static RealmList instance;
