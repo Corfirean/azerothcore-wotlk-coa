@@ -109,11 +109,15 @@ namespace CoaPluginDetail
     template<bool (*Reg)(), bool (*Startup)(), void (*Stopping)(), bool (*Drain)(), void (*Finalize)()>
     struct Entry
     {
-        static CoaPluginStatus Register() { return Guard([] { return Reg(); }); }
-        static CoaPluginStatus OnStartup() { return Guard([] { return Startup(); }); }
-        static CoaPluginStatus OnStopping() { return Guard([] { Stopping(); return true; }); }
-        static CoaPluginStatus OnDrain() { return Guard([] { return Drain(); }); }
-        static CoaPluginStatus OnFinalize() { return Guard([] { Finalize(); return true; }); }
+        // Plain functions, not lambdas: MSVC 19.44 (the pinned compiler) fails with C2102 on a lambda
+        // that calls a function-pointer template argument here.
+        static bool CallStopping() { Stopping(); return true; }
+        static bool CallFinalize() { Finalize(); return true; }
+        static CoaPluginStatus Register() { return Guard(Reg); }
+        static CoaPluginStatus OnStartup() { return Guard(Startup); }
+        static CoaPluginStatus OnStopping() { return Guard(CallStopping); }
+        static CoaPluginStatus OnDrain() { return Guard(Drain); }
+        static CoaPluginStatus OnFinalize() { return Guard(CallFinalize); }
     };
 }
 
