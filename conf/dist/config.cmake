@@ -157,10 +157,17 @@ if(COA_PLUGIN_HOST)
     string(APPEND COA_PLUGIN_ABI_HEADER_DIGESTS "${header_rel}=${header_digest}\n")
   endforeach()
   string(SHA256 COA_PLUGIN_ABI_HEADERS_HASH "${COA_PLUGIN_ABI_HEADER_DIGESTS}")
+  # The exported API is part of the contract too: a plugin built against an SDK whose import library
+  # has a symbol this host does not export would pass the check and fail inside LoadLibrary.
+  set(COA_PLUGIN_ABI_EXPORTS_FILE "${CMAKE_SOURCE_DIR}/src/server/apps/worldserver/Plugins/coa_plugin_exports.def")
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${COA_PLUGIN_ABI_EXPORTS_FILE}")
+  file(READ "${COA_PLUGIN_ABI_EXPORTS_FILE}" exports_text)
+  string(REPLACE "\r\n" "\n" exports_text "${exports_text}")
+  string(SHA256 COA_PLUGIN_ABI_EXPORTS_HASH "${exports_text}")
   get_directory_property(COA_PLUGIN_ABI_DEFINES COMPILE_DEFINITIONS)
   string(TOUPPER "${CMAKE_BUILD_TYPE}" COA_PLUGIN_ABI_CONFIG)
   set(COA_PLUGIN_ABI_INPUTS
-    "pluginApi=1\nplatform=${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}\ncompiler=${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}\nflags=${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${COA_PLUGIN_ABI_CONFIG}}\ndefines=${COA_PLUGIN_ABI_DEFINES}\nfeatures=MOD_PLAYERBOTS\nheaders=${COA_PLUGIN_ABI_HEADERS_HASH}\n")
+    "pluginApi=1\nplatform=${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}\ncompiler=${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}\nflags=${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${COA_PLUGIN_ABI_CONFIG}}\ndefines=${COA_PLUGIN_ABI_DEFINES}\nfeatures=MOD_PLAYERBOTS\nheaders=${COA_PLUGIN_ABI_HEADERS_HASH}\nexports=${COA_PLUGIN_ABI_EXPORTS_HASH}\n")
   string(SHA256 COA_PLUGIN_ABI_FINGERPRINT "${COA_PLUGIN_ABI_INPUTS}")
   set(COA_PLUGIN_ABI_DIR "${CMAKE_BINARY_DIR}/coa_plugin")
   file(WRITE "${COA_PLUGIN_ABI_DIR}/coa-plugin-abi-inputs.txt" "${COA_PLUGIN_ABI_INPUTS}fingerprint=${COA_PLUGIN_ABI_FINGERPRINT}\n")
