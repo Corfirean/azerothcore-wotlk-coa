@@ -65,24 +65,6 @@ def split_args(s):
     return out
 
 
-def boost_link_libraries(build_dir):
-    """Absolute paths of the Boost .lib files on worldserver.exe's link line."""
-    text = open(os.path.join(build_dir, 'build.ninja'), encoding='utf-8', errors='replace').read()
-    for block in text.split('\nbuild '):
-        head = block.split('\n', 1)[0]
-        if not re.match(r'\S*worldserver\.exe[ :]', head):
-            continue
-        m = re.search(r'\n\s+LINK_LIBRARIES = (.*)', block)
-        if not m:
-            continue
-        out = []
-        for a in split_args(ninja_unescape(m.group(1))):
-            if a.lower().endswith('.lib') and 'boost' in os.path.basename(a).lower() and os.path.isfile(a) and a not in out:
-                out.append(a)
-        return out
-    raise SystemExit('no worldserver.exe link statement found in build.ninja')
-
-
 def copy_headers(src, dst, recursive):
     count = 0
     if recursive:
@@ -154,7 +136,9 @@ def main():
             sdk_includes.append(os.path.relpath(dst, sdk).replace('\\', '/'))
 
     defines = [d[2:] for d in split_args(v.get('DEFINES', '')) if d.startswith(('-D', '/D'))]
-    defines = [d for d in defines if not d.startswith(('ACORE_API_EXPORT_', '_CONF_DIR'))] + ['COA_PLUGIN_SDK']
+    # BOOST_ALL_NO_LIB: compiled Boost code a plugin needs (SQUID's boost::thread) is the host's own copy,
+    # exported by worldserver.exe; Boost's auto-link pragmas would pull in a second, conflicting one.
+    defines = [d for d in defines if not d.startswith(('ACORE_API_EXPORT_', '_CONF_DIR'))] + ['COA_PLUGIN_SDK', 'BOOST_ALL_NO_LIB']
     # Output paths and the core's precompiled header (/Yu /Fp /FI of cmake_pch) belong to the host build,
     # not to the plugin ABI; a plugin given them would look for a PCH that does not exist.
     raw_flags = split_args(v.get('FLAGS', ''))
@@ -188,12 +172,6 @@ def main():
             raise SystemExit('missing ' + name)
         shutil.copy2(found, os.path.join(sdk, 'lib', name))
         libs.append('lib/' + name)
-    # The static Boost libraries worldserver links: a plugin that uses a compiled Boost library (SQUID
-    # uses boost::thread) links the same build of it. Boost's auto-link pragmas look them up by name in
-    # lib/, which the CMake package puts on the library path.
-    for lib in boost_link_libraries(build):
-        shutil.copy2(lib, os.path.join(sdk, 'lib', os.path.basename(lib)))
-        libs.append('lib/' + os.path.basename(lib))
 
     abi_dir = os.path.join(build, 'coa_plugin')
     abi_inputs = open(os.path.join(abi_dir, 'coa-plugin-abi-inputs.txt'), encoding='utf-8').read()
@@ -218,8 +196,7 @@ def main():
         f.write('    INTERFACE_INCLUDE_DIRECTORIES "${_coa_inc}"\n')
         f.write('    INTERFACE_COMPILE_DEFINITIONS "%s"\n' % cm(defines))
         f.write('    INTERFACE_COMPILE_OPTIONS "%s"\n' % cm(flags))
-        f.write('    INTERFACE_LINK_LIBRARIES "${_coa_libs}"\n')
-        f.write('    INTERFACE_LINK_DIRECTORIES "${COA_SDK_ROOT}/lib")\n')
+        f.write('    INTERFACE_LINK_LIBRARIES "${_coa_libs}")\n')
         f.write('endif()\n')
         f.write('function(coa_add_plugin name)\n')
         f.write('  add_library(${name} SHARED ${ARGN})\n')

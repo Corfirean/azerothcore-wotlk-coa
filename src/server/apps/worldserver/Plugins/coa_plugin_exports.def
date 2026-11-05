@@ -98,6 +98,7 @@ EXPORTS
     ?AddToBGFreeSlotQueue@Battleground@@QEAAXXZ
     ?AddToUpdateQueueOf@Item@@QEAAXPEAVPlayer@@@Z
     ?AllowedForPlayer@LootItem@@QEBA_NPEBVPlayer@@VObjectGuid@@@Z
+    ?Apply@AscensionRulesets@@YAXPEAVPlayer@@W4Ruleset@1@@Z
     ?ApplyBuildUpload@AscensionWildcard@@YA?AUBuildChoice@1@PEAVPlayer@@AEBV?$vector@UKnownEntry@AscensionCoATalentState@@V?$allocator@UKnownEntry@AscensionCoATalentState@@@std@@@std@@@Z
     ?ApplyEnchantment@Player@@QEAAXPEAVItem@@W4EnchantmentSlot@@_N22@Z
     ?ApplyGuide@AscensionFreepick@@YA?AUUploadResult@1@PEAVPlayer@@AEBV?$vector@UGuideSpell@AscensionFreepick@@V?$allocator@UGuideSpell@AscensionFreepick@@@std@@@std@@I@Z
@@ -143,6 +144,7 @@ EXPORTS
     ?CanInteractWithQuestGiver@Player@@QEAA_NPEAVObject@@@Z
     ?CanJoinToBattleground@Player@@QEBA_NPEBVBattleground@@@Z
     ?CanNotReachTarget@Creature@@QEBA_NXZ
+    ?CanPacketReceive@ScriptMgr@@QEAA_NPEAVWorldSession@@AEBVWorldPacket@@@Z
     ?CanPacketReceiveEarly@ScriptMgr@@QEAA_NPEAVWorldSession@@AEBVWorldPacket@@@Z
     ?CanReachPositionAndGetValidCoords@Map@@QEBA_NPEBVWorldObject@@AEAM11_N2@Z
     ?CanRewardQuest@Player@@QEAA_NPEBVQuest@@I_N@Z
@@ -313,6 +315,7 @@ EXPORTS
     ?GetClosestGraveyard@Graveyard@@QEAAPEBUGraveyardStruct@@PEAVPlayer@@W4TeamId@@_N@Z
     ?GetClusterGuid@ObjectGuidGeneratorBase@@KA_NW4HighGuid@@GAEAI@Z
     ?GetCoATalentBudget@AscensionCompatData@@YA_NEEAEAI0@Z
+    ?GetContactPoint@WorldObject@@QEBAXPEBV1@AEAM11M@Z
     ?GetCorpse@Map@@QEAAPEAVCorpse@@AEBVObjectGuid@@@Z
     ?GetCorpse@Player@@QEBAPEAVCorpse@@XZ
     ?GetCorpseReclaimDelay@Player@@QEBAI_N@Z
@@ -639,6 +642,7 @@ EXPORTS
     ?HasTankSpec@Player@@QEAA_NXZ
     ?HaveQuestLootForPlayer@LootStore@@QEBA_NIPEBVPlayer@@@Z
     ?HealthMultiplier@CreatureScaling@@YAMPEBVCreature@@@Z
+    ?HighRiskSuspended@AscensionRulesets@@YA_NPEBVPlayer@@@Z
     ?IgnoresSpellMinRange@Unit@@QEBA_NPEBVSpellInfo@@@Z
     ?InArena@Player@@QEBA_NXZ
     ?InBattlegroundQueue@Player@@QEBA_N_N@Z
