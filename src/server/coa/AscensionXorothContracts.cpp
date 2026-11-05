@@ -16,7 +16,9 @@ namespace
 enum FleshHook : uint32
 {
     SPELL_FLESH_HOOK_PULL = 800605,
-    SPELL_RANGE_THIRTY_YARDS = 4
+    SPELL_RANGE_THIRTY_YARDS = 4,
+    SPELL_DRAG_THROUGH_HELL = 804773,
+    SPELL_RANGE_ANYWHERE = 13
 };
 }
 
@@ -32,6 +34,8 @@ void ApplyContracts(SpellInfo* info)
         info->DmgClass = SPELL_DAMAGE_CLASS_NONE;
         info->RangeEntry = sSpellRangeStore.LookupEntry(SPELL_RANGE_THIRTY_YARDS);
     }
+    if (id == SPELL_DRAG_THROUGH_HELL)
+        info->RangeEntry = sSpellRangeStore.LookupEntry(SPELL_RANGE_ANYWHERE);
     if (id == 520440 || id == 520441)
         for (auto& effect : info->Effects)
             effect.Effect = 0;
@@ -460,7 +464,7 @@ void ApplyContracts(SpellInfo* info)
         info->Effects[EFFECT_1].Effect = 0;
     }
     if (id == 704956)
-        info->Effects[EFFECT_0].SpellClassMask = flag96(0, 16, 0);
+        info->Effects[EFFECT_0].SpellClassMask = flag96(0, 0, 16);
     if (id == 520290)
         info->Effects[EFFECT_0].ApplyAuraName = SPELL_AURA_DUMMY;
     if (id == 680900)

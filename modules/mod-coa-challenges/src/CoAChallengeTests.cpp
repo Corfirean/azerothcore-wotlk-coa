@@ -800,6 +800,21 @@ namespace CoAChallenges
                     Unit::Kill(killer, c);   // CreditKill shares it with the group
             }
             for (Player* p : players)
+            {
+                if (p->GetLevel() >= maxLevel)
+                    continue;
+                uint32 guid = p->GetGUID().GetCounter();
+                bool completedEarly = (bool)CharacterDatabase.Query(
+                    "SELECT 1 FROM coa_challenge_completion WHERE guid = {} AND challengeId = {}",
+                    guid, challengeId);
+                if (completedEarly)
+                {
+                    BroadcastTestLine(players, "  [{}] completed before level cap at level {} (unexpected)",
+                        p->GetName(), p->GetLevel());
+                    pass = false;
+                }
+            }
+            for (Player* p : players)
                 if (p->GetLevel() < level)
                     p->GiveLevel(static_cast<uint8>(level));
         }
@@ -1480,10 +1495,15 @@ namespace CoAChallenges
             return item == 0 && !sScriptMgr->OnPlayerCanSellItem(p, nullptr, nullptr); });
         RUN("CHALLENGE_RULES_TYPE_NO_VENDOR_BUY_FOOD_OR_DRINK", [&](Player* p) {
             ItemTemplate const* food = RuleTestFirstItem(ITEM_CLASS_CONSUMABLE, ITEM_SUBCLASS_FOOD);
-            if (!food) return true;
-            uint32 item = food->ItemId;
-            sScriptMgr->OnPlayerBeforeBuyItemFromVendor(p, ObjectGuid::Empty, 0, item, 1, 0, 0);
-            return item == 0; });
+            uint32 item = 0;
+            if (food)
+            {
+                item = food->ItemId;
+                sScriptMgr->OnPlayerBeforeBuyItemFromVendor(p, ObjectGuid::Empty, 0, item, 1, 0, 0);
+            }
+            uint32 spices = 2678;
+            sScriptMgr->OnPlayerBeforeBuyItemFromVendor(p, ObjectGuid::Empty, 0, spices, 1, 0, 0);
+            return item == 0 && spices == 0; });
         RUN("CHALLENGE_RULES_TYPE_NO_VENDOR_BUYBACK", [&](Player* p) {
             return packetBlocked(p, CMSG_BUYBACK_ITEM, 0); });
         RUN("CHALLENGE_RULES_TYPE_NO_BANK", [&](Player* p) {

@@ -25,6 +25,7 @@
 #include "CreatureGroups.h"
 #include "MoveSpline.h"
 #include "DatabaseEnv.h"
+#include "FleeingMovementGenerator.h"
 #include "Formulas.h"
 #include "GameEventMgr.h"
 #include "GameTime.h"
@@ -41,6 +42,7 @@
 #include "PoolMgr.h"
 #include "ScriptMgr.h"
 #include "ScriptedGossip.h"
+#include "SmartAI.h"
 #include "SpellAuraDefines.h"
 #include "SpellAuraEffects.h"
 #include "SpellMgr.h"
@@ -1135,12 +1137,19 @@ void Creature::DoFleeToGetAssistance()
         SetNoSearchAssistance(true);
         UpdateSpeed(MOVE_RUN, false);
 
+        bool const walk = sWorld->getBoolConfig(CONFIG_CREATURE_FAMILY_FLEE_WALK);
         if (!creature)
+        {
             //SetFeared(true, GetVictim()->GetGUID(), 0, sWorld->getIntConfig(CONFIG_CREATURE_FAMILY_FLEE_DELAY));
             //TODO: use 31365
             SetControlled(true, UNIT_STATE_FLEEING, GetVictim());
+            MovementGenerator* controlled = GetMotionMaster()->GetMotionSlot(MOTION_SLOT_CONTROLLED);
+            if (auto* flee = dynamic_cast<FleeingMovementGenerator<Creature>*>(controlled); flee && walk)
+                flee->SetWalk(true);
+        }
         else
-            GetMotionMaster()->MoveSeekAssistance(creature->GetPositionX(), creature->GetPositionY(), creature->GetPositionZ());
+            GetMotionMaster()->MoveSeekAssistance(creature->GetPositionX(), creature->GetPositionY(), creature->GetPositionZ(),
+                walk ? FORCED_MOVEMENT_WALK : FORCED_MOVEMENT_NONE);
     }
 }
 
@@ -2118,6 +2127,8 @@ bool Creature::CanStartAttack(Unit const* who, bool force) const
  */
 void Creature::setDeathState(DeathState state, bool despawn)
 {
+    bool const wasParabolic = state == DeathState::JustDied && movespline->Initialized() && !movespline->Finalized() &&
+        movespline->isParabolic();
     Unit::setDeathState(state, despawn);
 
     if (state == DeathState::JustDied)
@@ -2149,7 +2160,7 @@ void Creature::setDeathState(DeathState state, bool despawn)
         if (m_formation && m_formation->GetLeader() == this)
             m_formation->FormationReset(true, false);
 
-        bool needsFalling = !despawn && (IsFlying() || IsHovering()) && !IsUnderWater();
+        bool needsFalling = !despawn && (IsFlying() || IsHovering() || wasParabolic) && !IsUnderWater();
         SetHover(false);
         SetDisableGravity(false);
 
@@ -3365,6 +3376,19 @@ void Creature::PauseMovementForInteraction()
 {
     if (uint32 pause = GetMovementTemplate().GetInteractionPauseTimer())
     {
+        if (SmartAI* smartAI = dynamic_cast<SmartAI*>(AI()); smartAI && smartAI->IsEscorted())
+        {
+            // Only ambient paths: CMSG_QUESTGIVER_HELLO needs no npcflag, so any player could otherwise
+            // hold another player's escort.
+            ObjectVector const* escorters = smartAI->GetScript()->GetStoredTargetVector(SMART_ESCORT_TARGETS, *this);
+            if (!escorters || escorters->empty())
+            {
+                if (!smartAI->HasEscortState(SMART_ESCORT_PAUSED | SMART_ESCORT_RETURNING) && !IsInCombat())
+                    smartAI->PausePath(pause, true);
+                return;
+            }
+        }
+
         uint8 pauseSlot = MOTION_SLOT_IDLE;
 
         if (GetMotionMaster()->GetMotionSlotType(MOTION_SLOT_ACTIVE) == POINT_MOTION_TYPE)
@@ -4156,6 +4180,7 @@ void Creature::ResetPlayerDamageReq()
     _playerDamageReq = GetHealth() / 2;
     _damagedByPlayer = false;
     _highestPlayerAttackerLevel = 0;
+    _directPlayerAttackers.clear();
 }
 
 uint32 Creature::GetPlayerDamageReq() const

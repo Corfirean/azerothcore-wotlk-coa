@@ -58,6 +58,21 @@ class CopyServer:
 
 
 class RunnerTests(unittest.TestCase):
+    def test_external_migrations_require_explicitly_disabled_native_updater(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / 'worldserver.conf'
+            for value in ('7', '1', ''):
+                config.write_text(f'Updates.EnableDatabases = {value}\n')
+                self.assertEqual(run.migration_settings(config), {})
+                with self.assertRaises(ValueError):
+                    run.migration_settings(config, True)
+            config.write_text('Updates.EnableDatabases = 7\n')
+            with patch.dict(os.environ, {'AC_UPDATES_ENABLE_DATABASES': '0'}):
+                with self.assertRaises(ValueError):
+                    run.migration_settings(config, True)
+            config.write_text('Updates.EnableDatabases = 0\n')
+            self.assertEqual(run.migration_settings(config, True), {'Updates.EnableDatabases': 0})
+
     def test_affixed_grants_validate_property_and_single_item_count(self):
         step = {'action': 'add_item', 'actor': 'caster', 'item': 13858, 'property': 13202}
         self.scenario['steps'].append(step)
@@ -201,16 +216,28 @@ class RunnerTests(unittest.TestCase):
             run.validate(scenario)
 
     def test_spawn_placement_metrics_need_a_player_guid_and_spawn_type(self):
-        for metric in ('spawn_placement', 'spawn_ground_gap', 'spawn_submerged', 'spawn_display_state'):
+        for metric in ('spawn_placement', 'spawn_ground_gap', 'spawn_submerged', 'spawn_display_state',
+                       'spawn_stand_state', 'spawn_clearance', 'spawn_headroom', 'spawn_distance'):
             step = {'action': 'assert', 'actor': 'caster', 'metric': metric, 'guid': 6942106,
                     'spawn_type': 'gameobject', 'equals': 0}
             if metric == 'spawn_placement':
                 step['tolerance'] = 1
+            if metric == 'spawn_distance':
+                step.update(x=-7531, y=-3599, z=12.459)
             self.assert_step_validates(step)
             for change in ({'actor': 'target'}, {'guid': 0}, {'guid': '1'}, {'guid': True}, {'spawn_type': 'unit'}):
                 self.assert_step_rejected({**step, **change})
             for missing in ('guid', 'spawn_type'):
                 self.assert_step_rejected({key: value for key, value in step.items() if key != missing})
+
+    def test_spawn_distance_needs_a_point_without_a_map(self):
+        step = {'action': 'assert', 'actor': 'caster', 'metric': 'spawn_distance', 'guid': 6941616,
+                'spawn_type': 'gameobject', 'x': -7531, 'y': -3599, 'z': 12.459, 'max': 0.05}
+        self.assert_step_validates(step)
+        for missing in ('x', 'y', 'z'):
+            self.assert_step_rejected({key: value for key, value in step.items() if key != missing})
+        for change in ({'map': 1}, {'z': 17001}, {'actor': 'target'}):
+            self.assert_step_rejected({**step, **change})
 
     def test_point_placement_metrics_need_map_and_coordinates(self):
         step = {'action': 'assert', 'actor': 'caster', 'metric': 'point_placement', 'map': 1, 'x': 10269.8,
@@ -377,6 +404,18 @@ class RunnerTests(unittest.TestCase):
                                  'creator_only': True, 'min': 1}
         with self.assertRaises(ValueError):
             run.validate(scenario)
+
+    def test_owned_creature_count_victim_filter(self):
+        for target, valid in (('target', True), ('nobody', False)):
+            scenario = copy.deepcopy(self.scenario)
+            scenario['steps'].append({'action': 'assert', 'actor': 'caster', 'metric': 'owned_creature_count',
+                                      'entry': 50301, 'target': target, 'equals': 0})
+            with self.subTest(target=target):
+                if valid:
+                    self.assertIs(run.validate(scenario), scenario)
+                else:
+                    with self.assertRaises(ValueError):
+                        run.validate(scenario)
 
     def test_profession_fixture_validation(self):
         scenario = run.read_json(Path(__file__).parent / 'scenarios' / 'profession-xp.json')
@@ -569,7 +608,9 @@ class RunnerTests(unittest.TestCase):
                                      ('spell_go_count', 'caster', {'pet': True}),
                                      ('spell_go_count', 'caster', {'caster': 'caster'}),
                                      ('spell_go_count', 'caster', {'caster': 'target'}),
-                                     ('spell_go_count', 'caster', {'entry': 50587})]:
+                                     ('spell_go_count', 'caster', {'entry': 50587}),
+                                     ('spell_damage_count', 'caster', {'caster': 'target'}),
+                                     ('spell_damage_total', 'caster', {'caster': 'target', 'critical': False})]:
             with self.subTest(metric=metric, actor=actor, extra=extra):
                 scenario = copy.deepcopy(self.scenario)
                 scenario['steps'].append({'action': 'assert', 'actor': actor, 'metric': metric,
@@ -586,7 +627,10 @@ class RunnerTests(unittest.TestCase):
                                      ('spell_go_count', 'caster', {'caster': 'target', 'pet': True}),
                                      ('spell_go_count', 'caster', {'caster': 'target', 'pet': False}),
                                      ('spell_go_count', 'caster', {'caster': 'target', 'entry': 50587}),
-                                     ('spell_go_count', 'caster', {'entry': 50587, 'pet': True})]:
+                                     ('spell_go_count', 'caster', {'entry': 50587, 'pet': True}),
+                                     ('spell_damage_count', 'caster', {'caster': 'missing'}),
+                                     ('spell_damage_count', 'caster', {'caster': 'target', 'pet': False}),
+                                     ('spell_damage_total', 'caster', {'caster': 'target', 'entry': 50587})]:
             scenario = copy.deepcopy(self.scenario)
             scenario['steps'].append({'action': 'assert', 'actor': actor, 'metric': metric,
                                       'spell': 116, 'equals': 0, **extra})
@@ -1076,6 +1120,8 @@ class RunnerTests(unittest.TestCase):
             lambda s: s['steps'].append({'action': 'assert', 'actor': 'caster',
                                          'metric': 'melee_damage_done', 'target': 'missing', 'equals': 1000}),
             lambda s: s['players'][0].update(race=0),
+            lambda s: s['players'][0].update(gender=2),
+            lambda s: s['players'][0].update(gender=True),
             lambda s: s['players'][0].update(ranged_hit_rating=-1),
             lambda s: s['players'][0].update(melee_hit_rating=-1),
             lambda s: s['players'][0].update(melee_crit_rating=-1),

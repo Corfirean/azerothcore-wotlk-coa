@@ -493,7 +493,7 @@ class xoroth_casts : public AllSpellScript
             spell->SetScriptValue(802615, 1);
             Cast(player, player, 802617);
         }
-        if (id == 804353 && spell->GetScriptValue(680729))
+        if (Named(info, 804353) && spell->GetScriptValue(680729))
         {
             bool old = State(player).curseShield;
             State(player).curseShield = true;
@@ -587,6 +587,8 @@ class xoroth_casts : public AllSpellScript
                 if (Chance(player, 520296, 30000))
                     Reduce(player, SPELL_UNLEASH_PESTILENCE, INT32_MAX);
             }
+            if (Named(info, 520005))
+                Unleash(player, player);
             if (Pestilence(id) && player->HasAura(300398) && !State(player).timers.HasTimeUntilEvent(300398))
                 if (Pet* pet = player->GetPet(); pet && pet->GetEntry() == 510100)
                 {

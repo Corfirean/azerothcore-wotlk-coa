@@ -832,6 +832,7 @@ void Player::UpdateCritPercentage(WeaponAttackType attType)
     float value = GetBaseModValue(modGroup, FLAT_MOD) + GetBaseModValue(modGroup, PCT_MOD) + GetRatingBonusValue(cr);
     // Modify crit from weapon skill and maximized defense skill of same level victim difference
     value += (int32(GetWeaponSkillValue(attType)) - int32(GetMaxSkillValueForLevel())) * 0.04f;
+    value += GetTotalAuraModifierByMiscMask(SPELL_AURA_ASCENSION_MOD_CRIT_CHANCE, SPELL_SCHOOL_MASK_NORMAL);
 
     if (sConfigMgr->GetOption<bool>("Stats.Limits.Enable", false))
     {
@@ -1502,6 +1503,12 @@ void Guardian::UpdateAttackPowerAndDamage(bool ranged)
     float base_attPower  = GetFlatModifierValue(unitMod, BASE_VALUE) * GetPctModifierValue(unitMod, BASE_PCT);
     float attPowerMod = GetFlatModifierValue(unitMod, TOTAL_VALUE);
     float attPowerMultiplier = GetPctModifierValue(unitMod, TOTAL_PCT) - 1.0f;
+
+    // Glyph of Felguard: the Felguard's total attack power +20%
+    if (GetStockPetEntry(GetEntry()) == NPC_FELGUARD)
+        if (Unit* owner = GetOwner())
+            if (AuraEffect const* glyph = owner->GetAuraEffectOfRankedSpellOrTwin(SPELL_GLYPH_OF_FELGUARD, EFFECT_0))
+                attPowerMultiplier += glyph->GetAmount() / 100.0f;
 
     //UNIT_FIELD_(RANGED)_ATTACK_POWER field
     SetInt32Value(UNIT_FIELD_ATTACK_POWER, (int32)base_attPower);

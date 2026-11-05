@@ -490,6 +490,7 @@ public: /* PlayerScript */
     void OnPlayerGetMaxSkillValueForLevel(Player* player, uint16& result);
     bool OnPlayerNotSetArenaTeamInfoField(Player* player, uint8 slot, ArenaTeamInfoType type, uint32 value);
     bool OnPlayerCanJoinLfg(Player* player, uint8 roles, lfg::LfgDungeonSet& dungeons, std::string const& comment);
+    bool OnPlayerCanLfgTeleport(Player* player);
     bool OnPlayerCanEnterMap(Player* player, MapEntry const* entry, InstanceTemplate const* instance, MapDifficulty const* mapDiff, bool loginCheck);
     void OnResolveDungeonAccessLevels(Player const* player, uint32 mapId, Difficulty difficulty, uint8& minLevel, uint8& maxLevel);
     void OnResolveLfgRewardLevel(Player const* player, uint32 dungeonId, uint8& level);
@@ -633,7 +634,7 @@ public: /* UnitScript */
     void ModifySpellDamageTaken(Unit* target, Unit* attacker, int32& damage, SpellInfo const* spellInfo);
     void ModifySpellEffectBaseValue(Unit const* caster, SpellInfo const* spellInfo,
         uint8 effectIndex, float& value);
-    void ResolveSpellCast(Unit* caster, SpellInfo const*& spellInfo);
+    void ResolveSpellCast(Unit* caster, SpellInfo const*& spellInfo, AuraEffect const* triggeredByAura);
     void ModifyHealReceived(Unit* target, Unit* healer, uint32& addHealth, SpellInfo const* spellInfo);
     void OnBeforeHealAbsorb(HealInfo& healInfo);
     void OnAfterAuraEffectCalculateAmount(AuraEffect const* effect, Unit* caster, int32& amount);
@@ -722,6 +723,7 @@ public: /* SpellSC */
     void OnSpellCheckCast(Spell* spell, bool strict, SpellCastResult& res);
     bool OnSpellFocusAnswered(Spell* spell);
     bool CanPrepare(Spell* spell, SpellCastTargets const* targets, AuraEffect const* triggeredByAura);
+    bool CanIgnoreShapeshift(Spell const* spell);
     bool CanScalingEverything(Spell* spell);
     bool CanSelectSpecTalent(Spell* spell);
     void OnScaleAuraUnitAdd(Spell* spell, Unit* target, uint32 effectMask, bool checkIfValid, bool implicit, uint8 auraScaleMask, TargetInfo& targetInfo);
@@ -743,6 +745,7 @@ public: /* SpellSC */
     void OnSpellSuccessfulDispel(Spell* spell, Unit* target, SpellEffIndex effect, uint32 count);
     void OnSpellCritChance(Spell* spell, Unit* target, float& chance);
     void OnGuardianSummoned(Spell* spell, TempSummon* summon);
+    void OnSpellGlobalCooldown(Spell* spell, int32& duration);
 
 public: /* GameEventScript */
     void OnGameEventStart(uint16 EventID);

@@ -35,9 +35,13 @@
 
 #include <algorithm>
 #include <memory>
+#include <unordered_set>
 
 namespace
 {
+constexpr uint32 REBORN_TWIN_OFFSET = 1100000;
+constexpr uint32 CROSSOVER_TWIN_OFFSET = 1300000;
+
 bool IsValidSpellProcFamily(uint32 family)
 {
     // CoA class spell families follow the class ID with an offset of six.
@@ -1529,11 +1533,57 @@ void SpellMgr::LoadSpellTwins(bool ranked)
 
 uint32 SpellMgr::GetSpellTwinSource(uint32 spellId) const
 {
-    if (auto const itr = _spellTwinSources.find(spellId); itr != _spellTwinSources.end())
-        return itr->second;
-    if (auto const itr = _spellNamesakeSources.find(spellId); itr != _spellNamesakeSources.end())
-        return itr->second;
-    return spellId;
+    // two hops at most: a Warcraft Reborn crossover Mystic Enchant twins the Reborn row, itself a twin or namesake of
+    // the stock spell the callers compare against (Improved Fear, Improved Healthstone)
+    uint32 source = spellId;
+    for (uint8 hop = 0; hop < 2; ++hop)
+    {
+        if (auto const itr = _spellTwinSources.find(source); itr != _spellTwinSources.end())
+            source = itr->second;
+        else if (auto const itr = _spellNamesakeSources.find(source); itr != _spellNamesakeSources.end())
+            source = itr->second;
+        else
+            break;
+    }
+    return source;
+}
+
+namespace
+{
+    thread_local std::vector<uint32> RunningScriptTwins;
+}
+
+void SpellMgr::PushScriptTwin(uint32 spellId, uint32 triggeringSpellId)
+{
+    uint32 twin = sSpellMgr->GetSpellTwinSource(spellId) != spellId ? spellId : 0;
+    if (!twin && triggeringSpellId && sSpellMgr->GetSpellTwinSource(triggeringSpellId) != triggeringSpellId)
+        twin = triggeringSpellId;
+    RunningScriptTwins.push_back(twin);
+}
+
+void SpellMgr::PopScriptTwin(uint32 /*spellId*/)
+{
+    if (!RunningScriptTwins.empty())
+        RunningScriptTwins.pop_back();
+}
+
+uint32 SpellMgr::GetRunningScriptTwin()
+{
+    for (auto itr = RunningScriptTwins.rbegin(); itr != RunningScriptTwins.rend(); ++itr)
+        if (*itr)
+            return *itr;
+    return 0;
+}
+
+uint32 SpellMgr::GetScriptTwinOf(uint32 spellId)
+{
+    if (RunningScriptTwins.empty())
+        return 0;
+    uint32 const running = GetRunningScriptTwin();
+    if (!running)
+        return 0;
+    uint32 const twin = sSpellMgr->GetSpellTwinFor(spellId, running);
+    return twin != spellId ? twin : 0;
 }
 
 uint32 SpellMgr::GetSpellTwinFor(uint32 stockSpellId, uint32 relatedSpellId) const
@@ -1542,7 +1592,13 @@ uint32 SpellMgr::GetSpellTwinFor(uint32 stockSpellId, uint32 relatedSpellId) con
     if (relatedSource == relatedSpellId || relatedSpellId < relatedSource)
         return stockSpellId;
     uint32 const candidate = stockSpellId + (relatedSpellId - relatedSource);
-    return GetSpellInfo(candidate) && GetSpellTwinSource(candidate) == stockSpellId ? candidate : stockSpellId;
+    if (GetSpellInfo(candidate) && GetSpellTwinSource(candidate) == stockSpellId)
+        return candidate;
+    if (relatedSpellId - relatedSource == CROSSOVER_TWIN_OFFSET)
+        if (uint32 const reborn = stockSpellId + REBORN_TWIN_OFFSET; GetSpellInfo(reborn) && GetSpellTwinSource(reborn) == stockSpellId)
+            return reborn;
+    uint32 const firstRank = GetFirstSpellInChain(relatedSpellId);
+    return firstRank != relatedSpellId ? GetSpellTwinFor(stockSpellId, firstRank) : stockSpellId;
 }
 
 std::vector<uint32> SpellMgr::GetSpellAndRelatives(uint32 spellId) const
@@ -2396,15 +2452,16 @@ void SpellMgr::LoadSpellProcs()
         auto const row = procRows.find(source);
         auto const entry = mSpellProcMap.find(twin);
         SpellInfo const* twinInfo = GetSpellInfo(twin);
-        if (row == procRows.end() || entry == mSpellProcMap.end() || !twinInfo || procRows.contains(twin))
+        SpellInfo const* sourceInfo = GetSpellInfo(source);
+        if (row == procRows.end() || entry == mSpellProcMap.end() || !twinInfo || !sourceInfo || procRows.contains(twin))
             continue;
         SpellProcEntry procEntry = row->second;
         if (!procEntry.ProcFlags)
-            procEntry.ProcFlags = twinInfo->ProcFlags;
+            procEntry.ProcFlags = twinInfo->ProcFlags ? twinInfo->ProcFlags : sourceInfo->ProcFlags;
         if (!procEntry.Charges)
             procEntry.Charges = twinInfo->ProcCharges;
         if (!procEntry.Chance && !procEntry.ProcsPerMinute)
-            procEntry.Chance = float(twinInfo->ProcChance);
+            procEntry.Chance = float(twinInfo->ProcChance ? twinInfo->ProcChance : sourceInfo->ProcChance);
         entry->second = procEntry;
     }
 
@@ -2420,6 +2477,11 @@ void SpellMgr::LoadSpellProcs()
         // Skip if already has explicit entry
         if (mSpellProcMap.find(spellInfo->Id) != mSpellProcMap.end())
             continue;
+
+        auto const twinSource = _spellTwinSources.find(spellInfo->Id);
+        SpellInfo const* const twinSourceInfo = twinSource != _spellTwinSources.end() ? GetSpellInfo(twinSource->second) : nullptr;
+        uint32 const procFlags = spellInfo->ProcFlags || !twinSourceInfo ? spellInfo->ProcFlags : twinSourceInfo->ProcFlags;
+        uint32 const procChance = spellInfo->ProcChance || !twinSourceInfo ? spellInfo->ProcChance : twinSourceInfo->ProcChance;
 
         // Check if spell has any trigger aura effects
         bool found = false, addTriggerFlag = false;
@@ -2447,7 +2509,7 @@ void SpellMgr::LoadSpellProcs()
             // proc nevertheless (e.g. mage armor spells with
             // judgement)
             if (!addTriggerFlag
-                && (spellInfo->ProcFlags & TAKEN_HIT_PROC_FLAG_MASK))
+                && (procFlags & TAKEN_HIT_PROC_FLAG_MASK))
             {
                 switch (auraName)
                 {
@@ -2465,7 +2527,7 @@ void SpellMgr::LoadSpellProcs()
             continue;
 
         // Skip if no proc flags in DBC
-        if (!spellInfo->ProcFlags)
+        if (!procFlags)
             continue;
 
         // Generate default proc entry from DBC data
@@ -2483,7 +2545,7 @@ void SpellMgr::LoadSpellProcs()
         else
             procEntry.SpellFamilyName = 0;
 
-        procEntry.ProcFlags = spellInfo->ProcFlags;
+        procEntry.ProcFlags = procFlags;
         procEntry.SpellTypeMask   = procSpellTypeMask;
         procEntry.SpellPhaseMask  = PROC_SPELL_PHASE_HIT;
         procEntry.HitMask         = PROC_HIT_NONE; // uses default proc @see SpellMgr::CanSpellTriggerProcOnEvent
@@ -2499,7 +2561,7 @@ void SpellMgr::LoadSpellProcs()
         }
 
         procEntry.AttributesMask  = 0;
-        if (spellInfo->ProcFlags & PROC_FLAG_KILL)
+        if (procFlags & PROC_FLAG_KILL)
             procEntry.AttributesMask |= PROC_ATTR_REQ_EXP_OR_HONOR;
         if (addTriggerFlag)
             procEntry.AttributesMask |= PROC_ATTR_TRIGGERED_CAN_PROC;
@@ -2530,7 +2592,7 @@ void SpellMgr::LoadSpellProcs()
         procEntry.DisableEffectsMask = nonProcMask;
 
         procEntry.ProcsPerMinute  = 0;
-        procEntry.Chance          = static_cast<float>(spellInfo->ProcChance);
+        procEntry.Chance          = static_cast<float>(procChance);
         procEntry.Cooldown        = Milliseconds::zero();
         procEntry.Charges         = spellInfo->ProcCharges;
 
@@ -2579,7 +2641,18 @@ void SpellMgr::LoadSpellBonuses()
         ++count;
     } while (result->NextRow());
 
+    std::unordered_set<uint32> listed;
+    for (auto const& [entry, bonus] : mSpellBonusMap)
+        listed.insert(entry);
     CopyToSpellTwins(mSpellBonusMap);
+    for (auto itr = mSpellBonusMap.begin(); itr != mSpellBonusMap.end();)
+    {
+        uint32 const firstRank = GetFirstSpellInChain(itr->first);
+        if (!listed.contains(itr->first) && firstRank != itr->first && listed.contains(firstRank))
+            itr = mSpellBonusMap.erase(itr);
+        else
+            ++itr;
+    }
 
     LOG_INFO("server.loading", ">> Loaded {} Extra Spell Bonus Data in {} ms", count, GetMSTimeDiffToNow(oldMSTime));
     LOG_INFO("server.loading", " ");
@@ -2752,7 +2825,10 @@ void SpellMgr::LoadSpellPetAuras()
         {
             auto const itr = mSpellPetAuraMap.find((source << 8) + i);
             if (itr != mSpellPetAuraMap.end() && !mSpellPetAuraMap.contains((twin << 8) + i))
-                mSpellPetAuraMap.emplace((twin << 8) + i, itr->second);
+                mSpellPetAuraMap.emplace((twin << 8) + i, itr->second.ForTwin([this, twin](uint32 aura)
+                {
+                    return GetSpellTwinFor(aura, twin);
+                }));
         }
     }
 
@@ -2904,8 +2980,15 @@ void SpellMgr::LoadSpellLinked()
         for (auto twin = begin; twin != end; ++twin)
         {
             int32 const twinTrigger = trigger + (trigger < 0 ? -1 : 1) * (int32(twin->second) - spellId);
-            if (!mSpellLinkedMap.contains(twinTrigger))
-                twinLinks.emplace(twinTrigger, effects);
+            if (mSpellLinkedMap.contains(twinTrigger))
+                continue;
+            std::vector<int32> twinEffects;
+            for (int32 effect : effects)
+            {
+                int32 const twinEffect = int32(GetSpellTwinFor(uint32(std::abs(effect)), twin->second));
+                twinEffects.push_back(effect < 0 ? -twinEffect : twinEffect);
+            }
+            twinLinks.emplace(twinTrigger, std::move(twinEffects));
         }
     }
     mSpellLinkedMap.merge(twinLinks);
