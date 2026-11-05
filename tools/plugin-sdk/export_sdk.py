@@ -125,7 +125,9 @@ def main():
             dst = os.path.join(sdk, 'include', 'generated', rel)
             header_count += copy_headers(inc, dst, recursive=False)
         else:
-            rel = 'ext%02d_%s' % (n, os.path.basename(inc.rstrip('\\/')))
+            # Short on purpose: the SDK is unpacked inside the server folder, Boost alone nests 155
+            # characters deep, and Ninja on Windows stops at 250.
+            rel = 'x%d' % n
             if key.startswith(norm(source)):
                 rel = os.path.join('deps', os.path.relpath(inc, source))
             dst = os.path.join(sdk, 'include', rel)
