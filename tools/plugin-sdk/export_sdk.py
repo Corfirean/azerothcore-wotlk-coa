@@ -68,10 +68,16 @@ def split_args(s):
 def copy_headers(src, dst, recursive):
     count = 0
     if recursive:
-        for root, _, files in os.walk(src):
+        # A Boost distribution root (the binary installer's, used in CI) also holds libs/, doc/, tools/
+        # with tests, fuzz corpora and deep paths; plugins include only <boost/...>.
+        walk_from = src
+        if os.path.isfile(os.path.join(src, 'boost', 'version.hpp')) and os.path.isdir(os.path.join(src, 'libs')):
+            walk_from = os.path.join(src, 'boost')
+        for root, _, files in os.walk(walk_from):
             for f in files:
-                if f.lower().endswith(HEADER_EXT) or ('boost' in root and '.' not in f):
-                    rel = os.path.relpath(os.path.join(root, f), src)
+                rel = os.path.relpath(os.path.join(root, f), src)
+                in_boost = rel.replace('\\', '/').startswith('boost/')
+                if f.lower().endswith(HEADER_EXT) or (in_boost and '.' not in f):
                     os.makedirs(os.path.dirname(os.path.join(dst, rel)), exist_ok=True)
                     shutil.copy2(os.path.join(root, f), os.path.join(dst, rel))
                     count += 1
