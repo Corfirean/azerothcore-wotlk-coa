@@ -1097,3 +1097,5 @@ extern template class AC_SCRIPT_REGISTRY_API ScriptRegistry<WorldScript>;
 #endif
 
 #endif
+
+// Test build for the Modules Preview: changes the SDK headers (and so the plugin ABI fingerprint) and nothing else.
