@@ -6548,6 +6548,8 @@ void Player::_LoadQuestStatus(PreparedQueryResult result)
     // clear quest log tail
     for (uint16 i = slot; i < MAX_QUEST_LOG_SIZE; ++i)
         SetQuestSlot(i, 0);
+
+    PinTimedQuestsToNativeLog();
 }
 
 void Player::_LoadQuestStatusRewarded(PreparedQueryResult result)
