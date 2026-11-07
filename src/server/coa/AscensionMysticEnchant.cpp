@@ -1219,6 +1219,67 @@ bool ApplyGuide(Player* player, std::vector<GuideEnchant> const& guide, bool lea
     return true;
 }
 
+std::vector<GuideEnchant> RecommendEnchants(Player const* player, uint32 maxCount)
+{
+    std::vector<GuideEnchant> result;
+    if (!player || !Ready)
+        return result;
+
+    ClientConfig const config = CurrentClientConfig();
+    Character character = Describe(player, config);
+    if (character.Wildcard())
+        return result;
+
+    Slots slots{};
+    std::vector<uint32> candidateSpells;
+
+    for (Enchant const& enchant : Loaded.Rows)
+    {
+        if (!enchant.Spell || enchant.Quality < QUALITY_UNCOMMON)
+            continue;
+        if (!ClassAllowed(enchant, character.Class))
+            continue;
+        if (!RealmAllows(enchant, character.RealmGates))
+            continue;
+        if (enchant.RequiredLevel > character.Level)
+            continue;
+        if (enchant.Worldforged)
+            continue;
+        candidateSpells.push_back(enchant.Spell);
+    }
+
+    if (candidateSpells.empty())
+        return result;
+
+    uint32 const seed = player->GetGUID().GetCounter();
+    std::size_t const total = candidateSpells.size();
+
+    for (std::size_t i = 0; i < total && result.size() < maxCount; ++i)
+    {
+        std::size_t const idx = (seed + i * 7) % total;
+        uint32 const spell = candidateSpells[idx];
+
+        Character charCopy = character;
+        std::vector<uint32> knownSpells = { spell };
+        charCopy.Known = &knownSpells;
+
+        if (GuideFits(Loaded, charCopy, slots, spell))
+        {
+            for (uint32 slot = 0; slot < SLOT_COUNT; ++slot)
+            {
+                if (slots[slot] == 0)
+                {
+                    slots[slot] = spell;
+                    result.push_back(GuideEnchant{ spell, 1, 0 });
+                    break;
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
 uint32 ClearActivePreset(Player* player)
 {
     State* state = Ready ? Find(player) : nullptr;

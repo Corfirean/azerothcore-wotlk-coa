@@ -405,6 +405,7 @@ struct GuideEnchant
     std::uint32_t Level = 0;
 };
 
+bool GuideFits(Catalog const& catalog, Character const& character, Slots const& slots, std::uint32_t spell);
 Slots GuideSlots(Catalog const& catalog, Character const& character, Slots const& current,
     std::vector<GuideEnchant> const& guide);
 std::vector<std::uint32_t> GuideLessons(Catalog const& catalog, Character const& character,

@@ -870,11 +870,16 @@ std::string SpecSource(Player const* player, char const* source)
     return SpecSettingSource(source, ActiveSpec(player));
 }
 
-void Save(Player* player, std::vector<Slot> const& slots)
+void Save(Player* player, std::uint32_t spec, std::vector<Slot> const& slots)
 {
-    std::string const source = SpecSource(player, SLOTS_SETTING);
+    std::string const source = SpecSettingSource(SLOTS_SETTING, spec);
     for (std::size_t index = 0; index < slots.size(); ++index)
         player->UpdatePlayerSetting(source, uint32(index), Encode(slots[index]));
+}
+
+void Save(Player* player, std::vector<Slot> const& slots)
+{
+    Save(player, ActiveSpec(player), slots);
 }
 
 void SendKnownEntries(Player* player, std::vector<Slot> const& slots)
@@ -3542,6 +3547,158 @@ BuildChoice ApplyBuildUpload(Player* player, std::vector<AscensionCoATalentState
     player->UpdatePlayerSetting(SpecSource(player, PRIMARY_STAT_SETTING), 0, choice.PrimaryStat);
     LOG_INFO("coa", "Wildcard stat path of {}: entry {}", player->GetName(), choice.PrimaryStat);
     return choice;
+}
+
+WildcardArchetypeResult ApplyArchetypeBuild(Player* player, std::uint32_t spec, std::uint32_t primaryStatEntry,
+    std::vector<std::pair<std::uint32_t, std::uint8_t>> const& spells, std::string const& buildId)
+{
+    if (!player || (!IsWildcardHero(player) && player->getClass() != CLASS_HERO))
+        return { false, "NOT_WILDCARD_HERO", 0, 0 };
+
+    if (spec >= SPECIALIZATION_COUNT)
+        spec = ActiveSpec(player);
+
+    if (primaryStatEntry < 5)
+    {
+        switch (primaryStatEntry)
+        {
+            case 0: primaryStatEntry = 1149; break; // Strength
+            case 1: primaryStatEntry = 1150; break; // Agility
+            case 2: primaryStatEntry = 1149; break; // Stamina -> Strength
+            case 3: primaryStatEntry = 1151; break; // Intellect
+            case 4: primaryStatEntry = 1152; break; // Spirit
+            default: primaryStatEntry = 1149; break;
+        }
+    }
+    else if (!PrimaryStatSpell(primaryStatEntry))
+    {
+        primaryStatEntry = 1149;
+    }
+
+    uint32 const currentStat = PrimaryStat(player, spec);
+    if (currentStat != primaryStatEntry)
+    {
+        if (uint32 const prevSpell = PrimaryStatSpell(currentStat))
+            player->removeSpell(prevSpell, SPEC_MASK_ALL, false);
+        if (uint32 const newSpell = PrimaryStatSpell(primaryStatEntry))
+            player->learnSpell(newSpell);
+        player->UpdatePlayerSetting(SpecSettingSource(PRIMARY_STAT_SETTING, spec), 0, primaryStatEntry);
+    }
+
+    std::unordered_map<uint32, uint32> const before = RankSpells(Slots(player, spec), currentStat);
+
+    std::vector<Slot> newSlots;
+    std::unordered_map<uint32, std::size_t> entryToSlotIndex;
+
+    uint8 const playerLevel = player->GetLevel();
+
+    for (auto const& [spellId, reqLevel] : spells)
+    {
+        if (!spellId || reqLevel > playerLevel)
+            continue;
+
+        uint32 rootSpell = spellId;
+        if (auto const rootItr = Loaded.RankRoots.find(spellId); rootItr != Loaded.RankRoots.end())
+            rootSpell = rootItr->second;
+
+        Entry const* matchedEntry = nullptr;
+        uint32 matchedRank = 1;
+
+        for (Entry const& entry : Loaded.Entries)
+        {
+            if (entry.EntryId == spellId)
+            {
+                matchedEntry = &entry;
+                matchedRank = 1;
+                break;
+            }
+            for (std::size_t r = 0; r < entry.RankSpells.size(); ++r)
+            {
+                if (entry.RankSpells[r] == spellId || entry.RankSpells[r] == rootSpell)
+                {
+                    matchedEntry = &entry;
+                    matchedRank = uint32(r + 1);
+                    break;
+                }
+            }
+            if (matchedEntry)
+                break;
+        }
+
+        if (!matchedEntry)
+            continue;
+
+        if (matchedEntry->MinLevel > playerLevel)
+            continue;
+
+        if (!matchedEntry->Talent && !matchedEntry->RankSpells.empty())
+        {
+            for (std::size_t r = 0; r < matchedEntry->RankSpells.size(); ++r)
+            {
+                if (SpellInfo const* sInfo = sSpellMgr->GetSpellInfo(matchedEntry->RankSpells[r]))
+                {
+                    if (sInfo->SpellLevel <= playerLevel || sInfo->BaseLevel <= playerLevel)
+                        matchedRank = uint32(r + 1);
+                }
+            }
+        }
+
+        auto const existing = entryToSlotIndex.find(matchedEntry->EntryId);
+        if (existing == entryToSlotIndex.end())
+        {
+            entryToSlotIndex[matchedEntry->EntryId] = newSlots.size();
+            newSlots.push_back(Slot{ matchedEntry->EntryId, true, matchedRank, matchedEntry->Talent });
+        }
+        else
+        {
+            if (matchedRank > newSlots[existing->second].Rank)
+                newSlots[existing->second].Rank = matchedRank;
+        }
+    }
+
+    ClearSetting(player, SpecSettingSource(SLOTS_SETTING, spec));
+    Save(player, spec, newSlots);
+
+    std::unordered_map<uint32, uint32> const after = RankSpells(newSlots, primaryStatEntry);
+
+    std::unordered_set<uint32> released;
+    for (auto const& [entryId, spellId] : before)
+    {
+        auto const kept = after.find(entryId);
+        if (kept != after.end() && kept->second == spellId)
+            continue;
+        std::vector<uint32> const ranks = RankSpellsOf(entryId);
+        released.insert(ranks.begin(), ranks.end());
+        released.insert(spellId);
+    }
+    for (uint32 spellId : released)
+        player->removeSpell(spellId, SPEC_MASK_ALL, false);
+
+    uint32 appliedCount = 0;
+    for (auto const& [entryId, spellId] : after)
+    {
+        if (!player->HasSpell(spellId))
+            player->learnSpell(spellId);
+        ++appliedCount;
+    }
+
+    SendKnownEntries(player, newSlots);
+
+    if (!buildId.empty())
+    {
+        CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_REP_COA_BUILD_CREATOR_ACTIVE);
+        stmt->SetData(0, player->GetGUID().GetCounter());
+        stmt->SetData(1, uint8(spec));
+        stmt->SetData(2, buildId);
+        stmt->SetData(3, 1);
+        stmt->SetData(4, 0);
+        CharacterDatabase.Execute(stmt);
+    }
+
+    LOG_INFO("coa", "Wildcard: applied archetype build '{}' (spec {}, primaryStat {}) to {} - {} slots, {} spells",
+        buildId, spec, primaryStatEntry, player->GetName(), newSlots.size(), appliedCount);
+
+    return { true, "APPLY_ARCHETYPE_OK", appliedCount, primaryStatEntry };
 }
 
 void DraftBuild(Player* player, StarterPick const& pickStarters, std::uint32_t starterDraws)

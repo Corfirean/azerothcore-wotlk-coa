@@ -724,6 +724,7 @@ std::string QualityTier(std::uint32_t quality)
         "ARTIFACT", "" };
     return TIERS[quality];
 }
+}
 
 bool GuideFits(Catalog const& catalog, Character const& character, Slots const& slots, std::uint32_t spell)
 {
@@ -748,7 +749,6 @@ bool GuideFits(Catalog const& catalog, Character const& character, Slots const& 
     std::uint32_t const stackLimit = character.StackLimit ? character.StackLimit(spell) : 0;
     return sameSpell <= stackLimit && sameQuality <= QualityCap(character, quality) &&
         !(quality == QUALITY_RARE && enchant->Worldforged && rareWorldforged > RARE_WORLDFORGED_LIMIT);
-}
 }
 
 Slots GuideSlots(Catalog const& catalog, Character const& character, Slots const& current,

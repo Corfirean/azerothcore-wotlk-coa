@@ -460,17 +460,24 @@ std::unordered_set<uint32> ForgetClassSpellsAbove(Player* player, uint8 level)
     std::vector<uint32> forget;
     for (auto const& [spellId, spell] : player->GetSpellMap())
     {
-        SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
-        if (spell->State != PLAYERSPELL_REMOVED && info && info->SpellLevel > level && !GetTalentSpellPos(spellId) &&
-            player->HasSpell(spellId) && onClassSkill(spellId))
+        uint32 baseId = (spellId >= 1100000) ? (spellId - 1100000) : spellId;
+        SpellInfo const* info = sSpellMgr->GetSpellInfo(baseId);
+        uint32 const reqLvl = info ? std::max(info->SpellLevel, info->BaseLevel) : 0;
+        if (spell->State != PLAYERSPELL_REMOVED && info && reqLvl > level && !GetTalentSpellPos(baseId) &&
+            player->HasSpell(spellId) && onClassSkill(baseId))
             forget.push_back(spellId);
     }
     for (uint32 spellId : forget)
     {
-        uint32 const firstRank = sSpellMgr->GetFirstSpellInChain(spellId);
-        if (firstRank != spellId)
+        uint32 baseId = (spellId >= 1100000) ? (spellId - 1100000) : spellId;
+        uint32 const firstRank = sSpellMgr->GetFirstSpellInChain(baseId);
+        if (firstRank != baseId)
             chains.insert(firstRank);
         player->removeSpell(spellId, SPEC_MASK_ALL, false);
+        if (spellId < 1100000)
+            player->removeSpell(spellId + 1100000, SPEC_MASK_ALL, false);
+        else
+            player->removeSpell(baseId, SPEC_MASK_ALL, false);
     }
 
     LearnMissing(player, StartingSpells(Loaded, CurrentRealm, player->getClass(), StartLevel(player)));
