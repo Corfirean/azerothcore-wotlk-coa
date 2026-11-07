@@ -2459,6 +2459,63 @@ void Guild::SetBankTabText(uint8 tabId, std::string_view text)
 }
 
 // Private methods
+bool Guild::EnsureFirstBankTab()
+{
+    if (_GetPurchasedTabsSize() != 0)
+        return false;
+
+    _CreateNewBankTab();
+    return true;
+}
+
+Item const* Guild::GetBankItem(uint8 tabId, uint8 slotId) const
+{
+    if (tabId >= m_bankTabs.size() || slotId >= GUILD_BANK_MAX_SLOTS)
+        return nullptr;
+    return m_bankTabs[tabId].GetItem(slotId);
+}
+
+void Guild::EnsureRankBankRights(uint8 rankId, uint8 minRights, uint32 minSlotsPerDay, uint32 minMoneyPerDay)
+{
+    if (rankId >= _GetRanksSize())
+        return;
+
+    RankInfo* rankInfo = GetRankInfo(rankId);
+    if (!rankInfo)
+        return;
+
+    for (uint8 tabId = 0; tabId < _GetPurchasedTabsSize(); ++tabId)
+    {
+        int8 currentRights = rankInfo->GetBankTabRights(tabId);
+        int32 currentSlots = rankInfo->GetBankTabSlotsPerDay(tabId);
+
+        bool needsUpdate = false;
+        uint8 newRights = currentRights;
+        uint32 newSlots = currentSlots > 0 ? uint32(currentSlots) : minSlotsPerDay;
+
+        if ((currentRights & minRights) != minRights)
+        {
+            newRights |= minRights;
+            needsUpdate = true;
+        }
+
+        if (currentSlots == 0)
+        {
+            newSlots = minSlotsPerDay;
+            needsUpdate = true;
+        }
+
+        if (needsUpdate)
+        {
+            GuildBankRightsAndSlots rightsAndSlots(tabId, newRights, newSlots);
+            rankInfo->SetBankTabSlotsAndRights(rightsAndSlots, true);
+        }
+    }
+
+    if (minMoneyPerDay > 0 && rankInfo->GetBankMoneyPerDay() == 0)
+        rankInfo->SetBankMoneyPerDay(minMoneyPerDay);
+}
+
 void Guild::_CreateNewBankTab()
 {
     uint8 tabId = _GetPurchasedTabsSize();                      // Next free id
