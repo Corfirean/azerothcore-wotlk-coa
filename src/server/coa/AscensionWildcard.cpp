@@ -3633,14 +3633,19 @@ WildcardArchetypeResult ApplyArchetypeBuild(Player* player, std::uint32_t spec, 
 
         if (!matchedEntry->Talent && !matchedEntry->RankSpells.empty())
         {
+            uint32 highestValidRank = 0;
             for (std::size_t r = 0; r < matchedEntry->RankSpells.size(); ++r)
             {
                 if (SpellInfo const* sInfo = sSpellMgr->GetSpellInfo(matchedEntry->RankSpells[r]))
                 {
-                    if (sInfo->SpellLevel <= playerLevel || sInfo->BaseLevel <= playerLevel)
-                        matchedRank = uint32(r + 1);
+                    uint32 const reqLevel = std::max(sInfo->SpellLevel, sInfo->BaseLevel);
+                    if (reqLevel <= playerLevel)
+                        highestValidRank = uint32(r + 1);
                 }
             }
+            if (highestValidRank == 0)
+                continue;
+            matchedRank = highestValidRank;
         }
 
         auto const existing = entryToSlotIndex.find(matchedEntry->EntryId);
@@ -3655,6 +3660,9 @@ WildcardArchetypeResult ApplyArchetypeBuild(Player* player, std::uint32_t spec, 
                 newSlots[existing->second].Rank = matchedRank;
         }
     }
+
+    if (newSlots.empty())
+        return { false, "NO_VALID_SPELLS", 0, primaryStatEntry };
 
     ClearSetting(player, SpecSettingSource(SLOTS_SETTING, spec));
     Save(player, spec, newSlots);
