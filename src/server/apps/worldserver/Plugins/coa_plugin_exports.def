@@ -970,6 +970,7 @@ EXPORTS
     ?IsBot@Player@@QEBA_NXZ
     ?IsCommandAttack@CharmInfo@@QEAA_NXZ
     ?IsCommandFollow@CharmInfo@@QEAA_NXZ
+    ?IsDailyQuestDone@Player@@QEAA_NI@Z
     ?IsDamageEnoughForLootingAndReward@Creature@@QEBA_NXZ
     ?IsDeathPersistent@Aura@@QEBA_NXZ
     ?IsDisabledFor@DisableMgr@@SA_NW4DisableType@@IPEBVUnit@@E@Z
@@ -1011,6 +1012,7 @@ EXPORTS
     ?IsInvitedForBattlegroundQueueType@Player@@QEBA_NW4BattlegroundQueueTypeId@@@Z
     ?IsLeader@Group@@QEBA_NVObjectGuid@@@Z
     ?IsLootAllowedFor@GameObject@@QEBA_NPEBVPlayer@@@Z
+    ?IsMember@ArenaTeam@@QEBA_NVObjectGuid@@@Z
     ?IsMember@Group@@QEBA_NVObjectGuid@@@Z
     ?IsNextMeleeSwingSpell@Spell@@QEBA_NXZ
     ?IsNonMeleeSpellCast@Unit@@QEBA_N_N00000@Z
@@ -1446,6 +1448,7 @@ EXPORTS
     ?SetOwnerGUID@Unit@@QEAAXVObjectGuid@@@Z
     ?SetPointedTo@SafeUnitPointer@@QEAAXPEAVUnit@@@Z
     ?SetPower@Unit@@QEAAXW4Powers@@I_N1@Z
+    ?SetQuestSlot@Player@@QEAAXGII@Z
     ?SetQuestStatus@Player@@QEAAXIW4QuestStatus@@_N@Z
     ?SetRaidDifficulty@Group@@QEAAXW4Difficulty@@@Z
     ?SetRatingForAll@ArenaTeam@@QEAAXI@Z
