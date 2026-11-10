@@ -62,6 +62,19 @@ public:
         if (!player || caster != player || info->SpellFamilyName != 31 || spell->IsTriggered())
             return;
         spell->SetScriptValue(Insanity, Count(player, Insanity));
+        if (Named(info, 500110) || info->Id == 680576)
+            for (Unit* ally : Allies(player, player, 100))
+                if (Aura* marks = ally->GetAura(301982, player->GetGUID()))
+                {
+                    uint32 stacks = marks->GetStackAmount();
+                    float amount = Amount(301983, 0, player) +
+                        .35f * player->SpellBaseHealingBonusDone(SPELL_SCHOOL_MASK_SHADOW);
+                    Copy(player, ally, 301983, uint32(std::max(0.0f, amount)));
+                    if (Aura* remaining = ally->GetAura(301982, player->GetGUID());
+                        remaining && remaining->GetStackAmount() == stacks)
+                        remaining->Remove();
+                    MarkVoidTouched(player, ally);
+                }
         for (uint32 id : selected)
             if (Select(id, info))
                 if (Aura* aura = player->GetAura(id))
@@ -119,15 +132,6 @@ public:
                 Reduce(player, 573028, std::abs(Amount(300297)));
                 Reduce(player, 800432, std::abs(Amount(300297, 1)));
             }
-            for (Unit* ally : Allies(player, player, 100))
-                if (Aura* marks = ally->GetAura(301982, player->GetGUID()))
-                {
-                    uint32 stacks = marks->GetStackAmount();
-                    float amount = Amount(301983, 0, player) + .35f * player->SpellBaseHealingBonusDone(SPELL_SCHOOL_MASK_SHADOW);
-                    Copy(player, ally, 301983, uint32(std::max(0.0f, amount)));
-                    if (Aura* remaining = ally->GetAura(301982, player->GetGUID()); remaining && remaining->GetStackAmount() == stacks)
-                        remaining->Remove();
-                }
             if (target && player->IsValidAttackTarget(target))
             {
                 Command(player, target);
@@ -190,6 +194,8 @@ public:
             if (player->HasAura(680570))
                 Cast(player, player, 680571);
         }
+        if (id == 500723)
+            Cast(player, player, 500717);
         if (id == 806175)
             StartDash(player);
         if (id == 805114 && player->HasAura(707429) && spell->GetScriptValue(Insanity) >= 80)
@@ -217,7 +223,7 @@ public:
                 Copy(player, player, 707185, CalculatePct(healing, Amount(704884)));
             State(player).event = old;
         }
-        if (Named(info, 520333) && healing && player->HasAura(706188))
+        if (Named(info, 520333) && (healing || target == player) && player->HasAura(706188))
             Cast(player, target, 807344);
         if (Any(info, {808043, 808044, 808045, 808050, 808051, 808052}) && player->HasAura(704880) && (damage || healing))
         {
@@ -287,8 +293,6 @@ public:
                 existing = std::max(0, shield->GetAmount());
             Copy(player, player, 850002, existing + CalculatePct(damage, Amount(704889)));
         }
-        if (id == 500717)
-            Cast(player, player, 500723);
         if (id == 560109 && player->HasAura(525049))
             for (Unit* enemy : Nearby(target, Radius(560943)))
                 if (player->IsValidAttackTarget(enemy))

@@ -53,8 +53,8 @@ class Workspace:
         self.build = self.root / 'build'
         self.client = self.base / 'mysql-client'
         self.tools = self.base / 'bin'
-        self.conf = (self.build / 'src/server/apps/configs' if verify_all.WINDOWS
-                     else self.base / 'dist' / 'etc')
+        self.prefix = self.base / 'dist'
+        self.conf = self.build / 'src/server/apps/configs' if verify_all.WINDOWS else self.prefix / 'etc'
         self.dbc = self.base / 'data' / 'dbc'
         self.worldserver = program(self.build / 'src/server/apps', 'worldserver')
         for name in ('mysql', 'mysqldump', 'mysql_config'):
@@ -70,7 +70,7 @@ class Workspace:
         self.environment = {'PATH': str(self.tools)}
 
     def configure(self, testing='ON'):
-        write(self.build / 'CMakeCache.txt', f'CMAKE_INSTALL_PREFIX:PATH={self.conf.parent.as_posix()}\n'
+        write(self.build / 'CMakeCache.txt', f'CMAKE_INSTALL_PREFIX:PATH={self.prefix.as_posix()}\n'
               f'CONF_DIR:PATH={self.conf.as_posix()}\n'
               f'BUILD_TESTING:BOOL={testing}\nMYSQL_CONFIG:FILEPATH={(self.client / "mysql_config").as_posix()}\n'
               'CMAKE_GENERATOR:INTERNAL=Ninja\n')
@@ -857,11 +857,10 @@ class GameplayTests(WorkspaceTest):
     def test_module_configs_already_in_the_server_modules_directory_make_gameplay_unavailable(self):
         with patch.object(verify_all, 'WINDOWS', False):
             workspace = self.workspace()
-        write(workspace.conf / 'modules' / 'mod_ascension_compat.conf', 'Enabled = 1\n')
-        write(workspace.conf / 'modules' / 'spellbook.conf.dist')
-        separate = workspace.base / 'module-configs'
-        separate.mkdir()
-        with patch.object(verify_all, 'WINDOWS', False):
+            write(workspace.conf / 'modules' / 'mod_ascension_compat.conf', 'Enabled = 1\n')
+            write(workspace.conf / 'modules' / 'spellbook.conf.dist')
+            separate = workspace.base / 'module-configs'
+            separate.mkdir()
             shared = workspace.context()
             _, problems = verify_all.gameplay_prerequisites(shared.settings, shared.environment)
             self.assertEqual(problems, [
