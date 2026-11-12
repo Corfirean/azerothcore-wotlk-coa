@@ -1863,7 +1863,7 @@ void Player::UpdateVisibilityOf(WorldObject* target)
             // target aura duration for caster show only if target exist at
             // caster client send data at target visibility change (adding to
             // client)
-            if (target->IsUnit())
+            if (target->IsUnit() && !IsBot())
                 GetInitialVisiblePackets((Unit*) target);
         }
     }
