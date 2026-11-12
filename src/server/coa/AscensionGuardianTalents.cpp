@@ -5,6 +5,7 @@
 #include "Player.h"
 #include "ScriptMgr.h"
 #include "SpellAuras.h"
+#include "SpellBookRevision.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
 #include <algorithm>
@@ -32,7 +33,9 @@ struct SynchronizeState : public DataMap::Base
 {
     uint32 level = 0;
     uint8 auras = 0;
+    uint64 spellRevision = 0;
     uint32 nextPassMs = 0;
+    bool hadAdvanceAura = false;
 };
 
 void Synchronize(Player* player)
@@ -43,11 +46,29 @@ void Synchronize(Player* player)
     static std::string const stateKey = "ascension_guardian_talents_sync";
     SynchronizeState* last = player->CustomData.GetDefault<SynchronizeState>(stateKey);
     uint8 const auras = uint8((player->HasAura(505344) ? 1 : 0) | (player->HasAura(706514) ? 2 : 0) | (player->HasAura(707138) ? 4 : 0));
+    uint64 const rev = SpellBookRevision::Get(player->CustomData);
+    bool hasAdvanceAura = false;
+    for (uint32 advId = 503344; advId <= 503351; ++advId)
+    {
+        if (player->HasAura(advId))
+        {
+            hasAdvanceAura = true;
+            break;
+        }
+    }
+    if (!hasAdvanceAura && player->HasAura(500170))
+        hasAdvanceAura = true;
+
     uint32 const now = GameTime::GetGameTimeMS().count();
-    if (last->level == player->GetLevel() && last->auras == auras && int32(now - last->nextPassMs) < 0)
+    if (last->level == player->GetLevel() && last->auras == auras && last->spellRevision == rev && !hasAdvanceAura && !last->hadAdvanceAura)
         return;
+    if (last->level == player->GetLevel() && last->auras == auras && last->spellRevision == rev && int32(now - last->nextPassMs) < 0)
+        return;
+
     last->level = player->GetLevel();
     last->auras = auras;
+    last->spellRevision = rev;
+    last->hadAdvanceAura = hasAdvanceAura;
     last->nextPassMs = now + 100;
 
     static thread_local std::set<ObjectGuid> updating;

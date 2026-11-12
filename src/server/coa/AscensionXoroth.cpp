@@ -73,7 +73,8 @@ void Replace(Player* player, uint32 root, uint32 replacement)
     for (auto const& pair : player->GetSpellMap())
         if (SpellCandidateFilter::Known(player, pair.first,
                 [&] { return Named(sSpellMgr->GetSpellInfo(pair.first), root); }))
-            player->SetTemporarySpellReplacement(pair.first, replacement);
+            if (player->GetTemporarySpellReplacement(pair.first) != replacement)
+                player->SetTemporarySpellReplacement(pair.first, replacement);
 }
 
 bool Spender(SpellInfo const* info)

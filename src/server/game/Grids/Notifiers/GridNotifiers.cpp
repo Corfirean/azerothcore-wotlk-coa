@@ -18,6 +18,7 @@
 #include "GridNotifiers.h"
 #include "Map.h"
 #include "ObjectAccessor.h"
+#include "Player.h"
 #include "Transport.h"
 #include "UpdateData.h"
 #include "WorldPacket.h"
@@ -78,12 +79,12 @@ void VisibleNotifier::SendToSelf()
         itr = i_player.GetObjectVisibilityContainer().UnlinkVisibilityFromPlayer(obj, itr);
     }
 
-    if (!i_data.HasData())
-        return;
-
-    WorldPacket packet;
-    i_data.BuildPacket(packet);
-    i_player.SendDirectMessage(&packet);
+    if (!i_player.IsBot() && i_data.HasData())
+    {
+        WorldPacket packet;
+        i_data.BuildPacket(packet);
+        i_player.SendDirectMessage(&packet);
+    }
 
     for (std::vector<Unit*>::const_iterator it = i_visibleNow.begin(); it != i_visibleNow.end(); ++it)
         i_player.GetInitialVisiblePackets(*it);

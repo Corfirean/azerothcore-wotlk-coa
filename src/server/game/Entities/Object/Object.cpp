@@ -238,6 +238,9 @@ void Object::BuildCreateUpdateBlockForPlayer(UpdateData* data, Player* target)
 
 void Object::SendUpdateToPlayer(Player* player)
 {
+    if (player->IsBot())
+        return;
+
     // send create update to player
     UpdateData upd;
     WorldPacket packet;
@@ -267,6 +270,9 @@ void Object::BuildOutOfRangeUpdateBlock(UpdateData* data) const
 void Object::DestroyForPlayer(Player* target, bool onDeath) const
 {
     ASSERT(target);
+
+    if (target->IsBot())
+        return;
 
     if (IsUnit() || isType(TYPEMASK_PLAYER))
     {

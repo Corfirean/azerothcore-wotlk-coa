@@ -1808,7 +1808,8 @@ void Player::UpdateVisibilityOf(T* target, UpdateData& data,
         {
             BeforeVisibilityDestroy<T>(target, this);
 
-            target->BuildOutOfRangeUpdateBlock(&data);
+            if (!IsBot())
+                target->BuildOutOfRangeUpdateBlock(&data);
             GetObjectVisibilityContainer().UnlinkWorldObjectVisibility(target);
         }
     }
@@ -1816,7 +1817,8 @@ void Player::UpdateVisibilityOf(T* target, UpdateData& data,
     {
         if (CanSeeOrDetect(target, false, true))
         {
-            target->BuildCreateUpdateBlockForPlayer(&data, this);
+            if (!IsBot())
+                target->BuildCreateUpdateBlockForPlayer(&data, this);
             UpdateVisibilityOf_helper(this, target, visibleNow);
         }
     }

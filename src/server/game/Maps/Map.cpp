@@ -773,12 +773,18 @@ ZoneWideVisibleWorldObjectsSet const* Map::GetZoneWideVisibleWorldObjectsForZone
 void Map::HandleDelayedVisibility()
 {
     auto processingPhase = sWorldUpdateTime.MeasurePhase("Map visibility");
+    uint32 const start = GameTime::GetGameTimeMS().count();
+    uint32 processed = 0;
     while (!i_objectsForDelayedVisibility.empty())
     {
         Unit* unit = *i_objectsForDelayedVisibility.begin();
         i_objectsForDelayedVisibility.erase(i_objectsForDelayedVisibility.begin());
         unit->ExecuteDelayedUnitRelocationEvent();
+        ++processed;
     }
+    uint32 const elapsedMs = GameTime::GetGameTimeMS().count() - start;
+    if (elapsedMs > 250)
+        LOG_WARN("server.map", "Map {} delayed visibility stall: {} ms for {} units", GetId(), elapsedMs, processed);
 }
 
 struct ResetNotifier

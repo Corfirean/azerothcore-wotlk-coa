@@ -399,6 +399,8 @@ public:
     tinker_player() : PlayerScript("tinker_player", {PLAYERHOOK_ON_UPDATE,PLAYERHOOK_ON_LOGOUT}) { }
     void OnPlayerUpdate(Player* player, uint32 diff) override
     {
+        if (!player || player->getClass() != CLASS_TINKER)
+            return;
         using namespace AscensionTinker;
         if (Owner(player) == player)
             ObserveAttack(player);

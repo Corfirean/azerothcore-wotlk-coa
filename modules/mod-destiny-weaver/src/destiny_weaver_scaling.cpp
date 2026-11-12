@@ -1127,7 +1127,8 @@ public:
             return;
 
         if (!creature->IsAlive() || creature->IsEvadingAttacks())
-            creature->CustomData.Erase(DAMAGE_REMAINDER_KEY);
+            if (creature->CustomData.Get<DamageRemainder>(DAMAGE_REMAINDER_KEY))
+                creature->CustomData.Erase(DAMAGE_REMAINDER_KEY);
 
         if (creature->IsAlive() && !creature->HasDynamicFlag(UNIT_DYNFLAG_LEVEL_SCALING))
         {

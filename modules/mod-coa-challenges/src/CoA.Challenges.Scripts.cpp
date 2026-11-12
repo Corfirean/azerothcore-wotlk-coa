@@ -2383,6 +2383,8 @@ namespace CoAChallenges
 
         void OnPlayerUpdate(Player* player, uint32 diff) override
         {
+            if (!player || !ChallengesEnabled() || player->IsBot())
+                return;
             SpellbindProcessPending(player);
             HungerUpdate(player, diff);
             FatigueUpdate(player, diff);

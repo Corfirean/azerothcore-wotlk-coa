@@ -694,7 +694,7 @@ namespace
 
         void OnPlayerUpdate(Player* player, uint32 p_time) override
         {
-            if (!player || !player->IsInWorld())
+            if (!player || !player->IsInWorld() || player->IsBot())
                 return;
 
             uint32 const guid = player->GetGUID().GetCounter();
