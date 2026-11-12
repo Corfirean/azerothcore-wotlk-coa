@@ -36,25 +36,27 @@ void VisibleNotifier::Visit(GameObjectMapType& m)
 
 void VisibleNotifier::SendToSelf()
 {
-    // Update far visible objects
-    ZoneWideVisibleWorldObjectsSet const* zoneWideVisibleObjects = i_player.GetMap()->GetZoneWideVisibleWorldObjectsForZone(i_player.GetZoneId());
-    if (zoneWideVisibleObjects)
+    if (!i_player.IsBot())
     {
-        for (WorldObject* obj : *zoneWideVisibleObjects)
+        ZoneWideVisibleWorldObjectsSet const* zoneWideVisibleObjects = i_player.GetMap()->GetZoneWideVisibleWorldObjectsForZone(i_player.GetZoneId());
+        if (zoneWideVisibleObjects)
         {
-            switch (obj->GetTypeId())
+            for (WorldObject* obj : *zoneWideVisibleObjects)
             {
-                case TYPEID_GAMEOBJECT:
-                    i_player.UpdateVisibilityOf(obj->ToGameObject(), i_data, i_visibleNow);
-                    break;
-                case TYPEID_UNIT:
-                    i_player.UpdateVisibilityOf(obj->ToCreature(), i_data, i_visibleNow);
-                    break;
-                case TYPEID_DYNAMICOBJECT:
-                    i_player.UpdateVisibilityOf(obj->ToDynObject(), i_data, i_visibleNow);
-                    break;
-                default:
-                    break;
+                switch (obj->GetTypeId())
+                {
+                    case TYPEID_GAMEOBJECT:
+                        i_player.UpdateVisibilityOf(obj->ToGameObject(), i_data, i_visibleNow);
+                        break;
+                    case TYPEID_UNIT:
+                        i_player.UpdateVisibilityOf(obj->ToCreature(), i_data, i_visibleNow);
+                        break;
+                    case TYPEID_DYNAMICOBJECT:
+                        i_player.UpdateVisibilityOf(obj->ToDynObject(), i_data, i_visibleNow);
+                        break;
+                    default:
+                        break;
+                }
             }
         }
     }
@@ -75,7 +77,6 @@ void VisibleNotifier::SendToSelf()
         if (Player* objPlayer = obj->ToPlayer())
             objPlayer->UpdateVisibilityOf(&i_player);
 
-        // Clean up references
         itr = i_player.GetObjectVisibilityContainer().UnlinkVisibilityFromPlayer(obj, itr);
     }
 
@@ -86,8 +87,11 @@ void VisibleNotifier::SendToSelf()
         i_player.SendDirectMessage(&packet);
     }
 
-    for (std::vector<Unit*>::const_iterator it = i_visibleNow.begin(); it != i_visibleNow.end(); ++it)
-        i_player.GetInitialVisiblePackets(*it);
+    if (!i_player.IsBot())
+    {
+        for (std::vector<Unit*>::const_iterator it = i_visibleNow.begin(); it != i_visibleNow.end(); ++it)
+            i_player.GetInitialVisiblePackets(*it);
+    }
 }
 
 void VisibleChangesNotifier::Visit(PlayerMapType& m)

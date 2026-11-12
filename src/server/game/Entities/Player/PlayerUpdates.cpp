@@ -1727,7 +1727,8 @@ void Player::UpdateVisibilityForPlayer(bool mapChange)
 
     Acore::VisibleNotifier notifier(*this, mapChange);
     Cell::VisitObjects(GetSightPosition().GetPositionX(), GetSightPosition().GetPositionY(), GetMap(), notifier, GetSightRange());
-    Cell::VisitFarVisibleObjects(GetSightPosition().GetPositionX(), GetSightPosition().GetPositionY(), GetMap(), notifier, VISIBILITY_DISTANCE_GIGANTIC);
+    if (!IsBot())
+        Cell::VisitFarVisibleObjects(GetSightPosition().GetPositionX(), GetSightPosition().GetPositionY(), GetMap(), notifier, VISIBILITY_DISTANCE_GIGANTIC);
     notifier.SendToSelf();
 
     if (mapChange)
@@ -1773,7 +1774,8 @@ inline void UpdateVisibilityOf_helper(Player* player, Creature* target,
                                       std::vector<Unit*>& v)
 {
     player->GetObjectVisibilityContainer().LinkWorldObjectVisibility(target);
-    v.push_back(target);
+    if (!player->IsBot())
+        v.push_back(target);
 }
 
 template <>
@@ -1781,7 +1783,8 @@ inline void UpdateVisibilityOf_helper(Player* player, Player* target,
                                       std::vector<Unit*>& v)
 {
     player->GetObjectVisibilityContainer().LinkWorldObjectVisibility(target);
-    v.push_back(target);
+    if (!player->IsBot())
+        v.push_back(target);
 }
 
 template <class T>
