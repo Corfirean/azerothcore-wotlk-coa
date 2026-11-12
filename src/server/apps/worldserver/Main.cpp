@@ -29,6 +29,8 @@
 #include "CoAScriptLoader.h"
 #include "Common.h"
 #include "Config.h"
+#include "UpdateTime.h"
+#include "WorldTickObserver.h"
 #include "DatabaseEnv.h"
 #include "DatabaseLoader.h"
 #include "GameTime.h"
@@ -623,7 +625,11 @@ void WorldUpdateLoop()
             continue;
         }
 
+        WorldTickObserver::UpdateStarted();
+        auto const processingStarted = std::chrono::steady_clock::now();
         sWorld->Update(worldDiff);
+        sWorldUpdateTime.ObserveProcessingTime(uint64(std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - processingStarted).count()));
         realPrevTime = realCurrTime;
 
 #ifdef _WIN32

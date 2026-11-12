@@ -16,6 +16,10 @@
  */
 
 #include "SpellMgr.h"
+#include "SpellRankLookup.h"
+#include "SpellBookRevision.h"
+#include "Config.h"
+#include "SpellCandidateFilter.h"
 #include "Log.h"
 #include "BattlefieldMgr.h"
 #include "BattlegroundIC.h"
@@ -34,10 +38,30 @@
 #include "World.h"
 
 #include <algorithm>
+#include <atomic>
 #include <memory>
 
 namespace
 {
+std::atomic<bool> directRankLookup{false};
+std::atomic<uint64> rankMetadataEpoch{1};
+std::atomic<bool> trackSpellBookChanges{false};
+
+void ConfigureDirectRankLookup(SpellInfoMap const& store, SpellChainMap const& chains)
+{
+    directRankLookup.store(false, std::memory_order_relaxed);
+    if (!sConfigMgr->GetOption<bool>("World.Performance.DirectRankLookup", false))
+        return;
+
+    if (auto id = SpellRankLookup::FirstInconsistent(store, chains))
+    {
+        LOG_ERROR("server.loading", "Direct spell rank lookup disabled: inconsistent chain {}", *id);
+        return;
+    }
+    directRankLookup.store(true, std::memory_order_relaxed);
+    LOG_INFO("server.loading", "Direct spell rank lookup enabled after validating {} chain entries", chains.size());
+}
+
 bool IsValidSpellProcFamily(uint32 family)
 {
     // CoA class spell families follow the class ID with an offset of six.
@@ -45,6 +69,27 @@ bool IsValidSpellProcFamily(uint32 family)
     return !family || (family >= 3 && family <= 17 && family != 14 && family != 16) ||
         (family >= uint32(CLASS_BARBARIAN) + 6 && family <= uint32(CLASS_SPIRIT_MAGE) + 6);
 }
+}
+
+namespace SpellRankLookup
+{
+uint64 MetadataEpoch() { return rankMetadataEpoch.load(std::memory_order_relaxed); }
+void MetadataChanged() { rankMetadataEpoch.fetch_add(1, std::memory_order_relaxed); }
+}
+
+namespace SpellCandidateFilter
+{
+bool Enabled()
+{
+    static bool const enabled = sConfigMgr->GetOption<bool>("World.Performance.FilterSpellCandidates", false);
+    return enabled;
+}
+}
+
+namespace SpellBookRevision
+{
+bool TrackingEnabled() { return trackSpellBookChanges.load(std::memory_order_relaxed); }
+void EnableTracking() { trackSpellBookChanges.store(true, std::memory_order_relaxed); }
 }
 
 bool IsPrimaryProfessionSkill(uint32 skill)
@@ -621,11 +666,8 @@ SpellInfo const* SpellMgr::GetSpellForDifficultyFromSpell(SpellInfo const* spell
 
 SpellChainNode const* SpellMgr::GetSpellChainNode(uint32 spell_id) const
 {
-    SpellChainMap::const_iterator itr = mSpellChains.find(spell_id);
-    if (itr == mSpellChains.end())
-        return nullptr;
-
-    return &itr->second;
+    return SpellRankLookup::Find(mSpellInfoMap, mSpellChains, spell_id,
+        directRankLookup.load(std::memory_order_relaxed));
 }
 
 uint32 SpellMgr::GetFirstSpellInChain(uint32 spell_id) const
@@ -1252,6 +1294,8 @@ bool SpellArea::IsFitToRequirements(Player const* player, uint32 newZone, uint32
 
 void SpellMgr::UnloadSpellInfoChains()
 {
+    SpellRankLookup::MetadataChanged();
+    directRankLookup.store(false, std::memory_order_relaxed);
     for (SpellChainMap::iterator itr = mSpellChains.begin(); itr != mSpellChains.end(); ++itr)
         mSpellInfoMap[itr->first]->ChainEntry = nullptr;
 
@@ -1333,6 +1377,7 @@ void SpellMgr::LoadSpellRanks()
     {
         LOG_WARN("server.loading", ">> Loaded 0 spell rank records. DB table `spell_ranks` is empty.");
         LOG_INFO("server.loading", " ");
+        ConfigureDirectRankLookup(mSpellInfoMap, mSpellChains);
         return;
     }
 
@@ -1428,10 +1473,12 @@ void SpellMgr::LoadSpellRanks()
 
     LOG_INFO("server.loading", ">> Loaded {} spell rank records in {} ms", count, GetMSTimeDiffToNow(oldMSTime));
     LOG_INFO("server.loading", " ");
+    ConfigureDirectRankLookup(mSpellInfoMap, mSpellChains);
 }
 
 void SpellMgr::LoadAddedSpellRanks()
 {
+    SpellRankLookup::MetadataChanged();
     if (!_addedSpellRanks)
         return;
 
@@ -2457,7 +2504,7 @@ void SpellMgr::LoadSpellProcs()
                 addTriggerFlag = true;
 
             // Many proc auras with taken procFlag mask don't have
-            // attribute "can proc with triggered" — they should
+            // attribute "can proc with triggered" РІР‚вЂќ they should
             // proc nevertheless (e.g. mage armor spells with
             // judgement)
             if (!addTriggerFlag
@@ -3404,11 +3451,14 @@ SpellInfo* SpellMgr::RegisterRuntimeSpell(SpellEntry const& entry)
         mSpellInfoMap.resize(std::size_t(entry.Id) + 1, nullptr);
     SpellInfo* result = spellInfo.release();
     mSpellInfoMap[entry.Id] = result;
+    SpellRankLookup::MetadataChanged();
     return result;
 }
 
 void SpellMgr::UnloadSpellInfoStore()
 {
+    SpellRankLookup::MetadataChanged();
+    directRankLookup.store(false, std::memory_order_relaxed);
     for (uint32 i = 0; i < GetSpellInfoStoreSize(); ++i)
         delete mSpellInfoMap[i];
 

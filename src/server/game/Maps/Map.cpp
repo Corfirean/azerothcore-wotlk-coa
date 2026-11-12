@@ -16,6 +16,8 @@
  */
 
 #include "Map.h"
+#include "Config.h"
+#include "UpdateTime.h"
 #include "Battleground.h"
 #include "CellImpl.h"
 #include "Chat.h"
@@ -448,8 +450,27 @@ void Map::UpdatePlayerZoneStats(uint32 oldZone, uint32 newZone)
         ++_zonePlayerCountMap[newZone];
 }
 
+namespace
+{
+bool InterleaveWorldObjects(Map const* map)
+{
+    static bool const enabled = sConfigMgr->GetOption<bool>("World.Performance.InterleaveWorldObjects", false);
+    return enabled && !GameTime::IsSimulated() && !map->Instanceable() && !map->IsScriptedPrivateInstance();
+}
+}
+
 void Map::Update(const uint32 t_diff, const uint32 s_diff, bool  /*thread*/)
 {
+    auto processingPhase = sWorldUpdateTime.MeasurePhase("Map total");
+    bool interleaved = InterleaveWorldObjects(this);
+    if (interleaved)
+    {
+        bool compatible = _interleavedObjects.Compatible();
+        _interleavedObjects.Advance(s_diff, t_diff != 0);
+        if (compatible && !_interleavedObjects.Compatible())
+            LOG_WARN("maps", "Interleaved updates disabled for map {}: unexpected full-update cadence", GetId());
+        interleaved = _interleavedObjects.Compatible();
+    }
     if (t_diff)
         _mapCollisionData.GetDynamicTree().update(t_diff);
 
@@ -462,18 +483,32 @@ void Map::Update(const uint32 t_diff, const uint32 s_diff, bool  /*thread*/)
             // Update session
             WorldSession* session = player->GetSession();
             MapSessionFilter updater(session);
+            {
+                auto playerPhase = sWorldUpdateTime.MeasurePhase("Map sessions");
             session->Update(s_diff, updater);
+            }
 
             // update players at tick
             if (!t_diff)
+            {
+                auto playerPhase = sWorldUpdateTime.MeasurePhase("Map players");
                 player->Update(s_diff);
+            }
         }
     }
 
-    Events.Update(t_diff);
+    Events.Update(interleaved ? s_diff : t_diff);
 
     if (!t_diff)
     {
+        if (interleaved && _interleavedObjects.HasWork())
+        {
+            UpdateNonPlayerObjects(s_diff, true);
+            SendObjectUpdates();
+            MoveAllCreaturesInMoveList();
+            MoveAllGameObjectsInMoveList();
+            MoveAllDynamicObjectsInMoveList();
+        }
         HandleDelayedVisibility();
         return;
     }
@@ -501,7 +536,10 @@ void Map::Update(const uint32 t_diff, const uint32 s_diff, bool  /*thread*/)
         if (!player || !player->IsInWorld())
             continue;
 
-        player->Update(s_diff);
+        {
+            auto playerPhase = sWorldUpdateTime.MeasurePhase("Map players");
+            player->Update(s_diff);
+        }
 
         if (_updatableObjectListRecheckTimer.Passed())
         {
@@ -518,7 +556,7 @@ void Map::Update(const uint32 t_diff, const uint32 s_diff, bool  /*thread*/)
         }
     }
 
-    UpdateNonPlayerObjects(t_diff);
+    UpdateNonPlayerObjects(t_diff, interleaved);
 
     SendObjectUpdates();
 
@@ -552,8 +590,9 @@ void Map::Update(const uint32 t_diff, const uint32 s_diff, bool  /*thread*/)
         METRIC_TAG("map_instanceid", std::to_string(GetInstanceId())));
 }
 
-void Map::UpdateNonPlayerObjects(uint32 const diff)
+void Map::UpdateNonPlayerObjects(uint32 const diff, bool interleaved)
 {
+    auto processingPhase = sWorldUpdateTime.MeasurePhase("Map nonplayers");
     for (WorldObject* obj : _pendingAddUpdatableObjectList)
         _AddObjectToUpdateList(obj);
     _pendingAddUpdatableObjectList.clear();
@@ -562,6 +601,18 @@ void Map::UpdateNonPlayerObjects(uint32 const diff)
     auto const skipped = [simulatedPhases](WorldObject const* obj)
     {
         return simulatedPhases && !(obj->GetPhaseMask() & simulatedPhases);
+    };
+
+    auto update = [&](WorldObject* obj)
+    {
+        if (interleaved)
+        {
+            auto elapsed = _interleavedObjects.Due(reinterpret_cast<std::uintptr_t>(obj), obj->GetGUID().GetRawValue());
+            if (!elapsed) return false;
+            obj->Update(*elapsed);
+        }
+        else obj->Update(diff);
+        return true;
     };
 
     if (_updatableObjectListRecheckTimer.Passed())
@@ -575,7 +626,9 @@ void Map::UpdateNonPlayerObjects(uint32 const diff)
                 continue;
             }
 
-            obj->Update(diff);
+            bool updated = update(obj);
+            if (interleaved && !updated && !obj->IsUpdateNeeded())
+                obj->Update(_interleavedObjects.Force(reinterpret_cast<std::uintptr_t>(obj)));
 
             if (!obj->IsUpdateNeeded())
             {
@@ -596,7 +649,7 @@ void Map::UpdateNonPlayerObjects(uint32 const diff)
             if (!obj->IsInWorld() || skipped(obj))
                 continue;
 
-            obj->Update(diff);
+            update(obj);
         }
     }
 }
@@ -628,6 +681,7 @@ void Map::_AddObjectToUpdateList(WorldObject* obj)
 // Internal use only
 void Map::_RemoveObjectFromUpdateList(WorldObject* obj)
 {
+    _interleavedObjects.Forget(reinterpret_cast<std::uintptr_t>(obj));
     UpdatableMapObject* mapUpdatableObject = dynamic_cast<UpdatableMapObject*>(obj);
     ASSERT(mapUpdatableObject && mapUpdatableObject->GetUpdateState() == UpdatableMapObject::UpdateState::Updating);
 
@@ -718,6 +772,7 @@ ZoneWideVisibleWorldObjectsSet const* Map::GetZoneWideVisibleWorldObjectsForZone
 
 void Map::HandleDelayedVisibility()
 {
+    auto processingPhase = sWorldUpdateTime.MeasurePhase("Map visibility");
     while (!i_objectsForDelayedVisibility.empty())
     {
         Unit* unit = *i_objectsForDelayedVisibility.begin();
@@ -1736,6 +1791,7 @@ void Map::SendRemoveTransports(Player* player)
 
 void Map::SendObjectUpdates()
 {
+    auto processingPhase = sWorldUpdateTime.MeasurePhase("Map packets");
     UpdateDataMapType update_players;
 
     while (!_updateObjects.empty())

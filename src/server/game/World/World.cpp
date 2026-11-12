@@ -1223,6 +1223,7 @@ void World::Update(uint32 diff)
 
     {
         METRIC_TIMER("world_update_time", METRIC_TAG("type", "Update sessions"));
+        auto processingPhase = sWorldUpdateTime.MeasurePhase("Update sessions");
         sWorldSessionMgr->UpdateSessions(diff);
     }
 
@@ -1250,6 +1251,7 @@ void World::Update(uint32 diff)
     {
         ///- Update objects when the timer has passed (maps, transport, creatures, ...)
         METRIC_TIMER("world_update_time", METRIC_TAG("type", "Update maps"));
+        auto processingPhase = sWorldUpdateTime.MeasurePhase("Update maps");
         sMapMgr->Update(diff);
     }
 
@@ -1290,6 +1292,7 @@ void World::Update(uint32 diff)
 
     {
         METRIC_TIMER("world_update_time", METRIC_TAG("type", "Process query callbacks"));
+        auto processingPhase = sWorldUpdateTime.MeasurePhase("Process query callbacks");
         // execute callbacks from sql queries that were queued recently
         ProcessQueryCallbacks();
     }
@@ -1351,6 +1354,7 @@ void World::Update(uint32 diff)
 
     {
         METRIC_TIMER("world_update_time", METRIC_TAG("type", "Update world scripts"));
+        auto processingPhase = sWorldUpdateTime.MeasurePhase("Update world scripts");
         sScriptMgr->OnWorldUpdate(diff);
     }
 

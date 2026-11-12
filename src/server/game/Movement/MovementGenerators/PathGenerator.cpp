@@ -15,6 +15,7 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "WorldEntityProfiler.h"
 #include "PathGenerator.h"
 #include "Creature.h"
 #include "DetourCommon.h"
@@ -161,6 +162,7 @@ bool PathGenerator::CalculatePath(float destX, float destY, float destZ, bool fo
 
 bool PathGenerator::CalculatePath(float x, float y, float z, float destX, float destY, float destZ, bool forceDest)
 {
+    auto profileSample = WorldEntityProfiler::Sample("Core path sample");
     if (!Acore::IsValidMapCoord(destX, destY, destZ) || !Acore::IsValidMapCoord(x, y, z))
         return false;
 

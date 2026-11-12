@@ -15,6 +15,7 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "SpellBookRevision.h"
 #include "Player.h"
 #include "CoaCustomRacials.h"
 #include "AscensionSpellCopy.h"
@@ -3463,6 +3464,7 @@ bool Player::_addSpell(uint32 spellId, uint8 addSpecMask, bool temporary, bool l
         newspell->specMask = addSpecMask;
 
         m_spells[spellId] = newspell;
+        SpellBookRevision::Changed(CustomData);
     }
 
     // pussywizard: return if spell not in current spec
@@ -3475,6 +3477,7 @@ bool Player::_addSpell(uint32 spellId, uint8 addSpecMask, bool temporary, bool l
     {
         LOG_INFO("entities.player", "TRYING TO LEARN SPELL WITH EFFECT LEARN 2: {}, PLAYER: {}", spellId, GetGUID().ToString());
         m_spells.erase(spellInfo->Id); // mem leak, but should never happen
+        SpellBookRevision::Changed(CustomData);
         return false;
         //ABORT();
     }
@@ -3770,6 +3773,7 @@ void Player::removeSpell(uint32 spell_id, uint8 removeSpecMask, bool onlyTempora
         {
             delete itr->second;
             m_spells.erase(itr);
+            SpellBookRevision::Changed(CustomData);
         }
         else
             itr->second->State = PLAYERSPELL_REMOVED;

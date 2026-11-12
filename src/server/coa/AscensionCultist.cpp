@@ -13,6 +13,7 @@
 #include "SpellAuraEffects.h"
 #include "SpellAuras.h"
 #include "SpellMgr.h"
+#include "SpellCandidateFilter.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
 #include <algorithm>
@@ -124,7 +125,8 @@ uint32 Highest(Player* player, uint32 root)
 {
     uint32 result = root;
     for (auto const& pair : player->GetSpellMap())
-        if (player->HasSpell(pair.first) && Named(sSpellMgr->GetSpellInfo(pair.first), root) &&
+        if (SpellCandidateFilter::Known(player, pair.first,
+                [&] { return Named(sSpellMgr->GetSpellInfo(pair.first), root); }) &&
             sSpellMgr->GetSpellInfo(pair.first)->SpellLevel >= sSpellMgr->GetSpellInfo(result)->SpellLevel)
             result = pair.first;
     return result;
@@ -132,7 +134,8 @@ uint32 Highest(Player* player, uint32 root)
 void Reduce(Player* player, uint32 root, int32 milliseconds)
 {
     for (auto const& pair : player->GetSpellMap())
-        if (player->HasSpell(pair.first) && Named(sSpellMgr->GetSpellInfo(pair.first), root))
+        if (SpellCandidateFilter::Known(player, pair.first,
+                [&] { return Named(sSpellMgr->GetSpellInfo(pair.first), root); }))
         {
             if (milliseconds == INT32_MAX)
                 player->RemoveSpellCooldown(pair.first, true);
@@ -277,7 +280,8 @@ void Refresh(Player* player)
         if (active && !player->HasSpell(replacement))
             player->learnSpell(replacement, true);
         for (auto const& pair : player->GetSpellMap())
-            if (player->HasSpell(pair.first) && Named(sSpellMgr->GetSpellInfo(pair.first), root))
+            if (SpellCandidateFilter::Known(player, pair.first,
+                [&] { return Named(sSpellMgr->GetSpellInfo(pair.first), root); }))
                 player->SetTemporarySpellReplacement(pair.first, active ? replacement : 0);
         if (!active)
             player->removeSpell(replacement, SPEC_MASK_ALL, true);

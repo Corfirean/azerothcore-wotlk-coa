@@ -16,6 +16,7 @@
  */
 
 #include "MotionMaster.h"
+#include <cmath>
 #include "ConfusedMovementGenerator.h"
 #include "Creature.h"
 #include "CreatureAISelector.h"
@@ -504,6 +505,27 @@ void MotionMaster::MovePoint(uint32 id, float x, float y, float z, ForcedMovemen
         LOG_DEBUG("movement.motionmaster", "Creature ({}) targeted point (ID: {} X: {} Y: {} Z: {})", _owner->GetGUID().ToString(), id, x, y, z);
         Mutate(new PointMovementGenerator<Creature>(id, x, y, z, forcedMovement, speed, orientation, nullptr, generatePath, forceDestination, animTier), slot);
     }
+}
+
+bool MotionMaster::MovePointWithValidatedPath(uint32 id, float x, float y, float z, Movement::PointsArray const& path)
+{
+    Player* player = _owner->ToPlayer();
+    if (!player || !player->IsBot() || path.size() < 2 || player->CanFly() || player->GetDirectTransport() ||
+        player->HasUnitFlag(UNIT_FLAG_DISABLE_MOVE) || player->HasUnitState(UNIT_STATE_NOT_MOVE) ||
+        player->IsMovementPreventedByCasting() || id == EVENT_CHARGE || id == EVENT_CHARGE_PREPATH)
+        return false;
+
+    G3D::Vector3 const position(player->GetPositionX(), player->GetPositionY(), player->GetPositionZ());
+    G3D::Vector3 const destination(x, y, z);
+    if ((position - path.front()).squaredLength() > 1.0f || (destination - path.back()).squaredLength() > 1.0f)
+        return false;
+    for (G3D::Vector3 const& point : path)
+        if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z))
+            return false;
+
+    Mutate(new PointMovementGenerator<Player>(id, x, y, z, FORCED_MOVEMENT_NONE, 0.0f, 0.0f, &path,
+        true, false, std::nullopt, ObjectGuid::Empty, false, ObjectGuid::Empty, true), MOTION_SLOT_ACTIVE);
+    return true;
 }
 
 void MotionMaster::MoveSplinePath(Movement::PointsArray* path, ForcedMovement forcedMovement)

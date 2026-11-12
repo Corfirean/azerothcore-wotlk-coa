@@ -18,6 +18,7 @@
 #ifndef ACORE_MAP_H
 #define ACORE_MAP_H
 
+#include "InterleavedUpdateClock.h"
 #include "Cell.h"
 #include "DBCStructure.h"
 #include "DataMap.h"
@@ -572,6 +573,7 @@ public:
     }
 
     size_t GetUpdatableObjectsCount() const { return _updatableObjectList.size(); }
+    bool UsesInterleavedWorldUpdates() const { return _interleavedObjects.Started() && _interleavedObjects.Compatible(); }
 
     // Only used while GameTime runs a simulated clock (gameplay test harness): objects that share no phase with
     // these bits are invisible to every test player, so the fast-forwarded world skips their updates.
@@ -688,7 +690,7 @@ private:
     template<class T>
     void DeleteFromWorld(T*);
 
-    void UpdateNonPlayerObjects(uint32 const diff);
+    void UpdateNonPlayerObjects(uint32 const diff, bool interleaved = false);
 
     void _AddObjectToUpdateList(WorldObject* obj);
     void _RemoveObjectFromUpdateList(WorldObject* obj);
@@ -748,6 +750,7 @@ private:
     std::unordered_set<Object*> _updateObjects;
 
     UpdatableObjectList _updatableObjectList;
+    InterleavedUpdateClock _interleavedObjects;
     static inline std::atomic<uint32> _simulatedUpdatePhases{0};
     PendingAddUpdatableObjectList _pendingAddUpdatableObjectList;
     IntervalTimer _updatableObjectListRecheckTimer;

@@ -15,6 +15,7 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "SpellBookRevision.h"
 #include "AscensionItemRecovery.h"
 #include "AccountMgr.h"
 #include "AchievementMgr.h"
@@ -8027,6 +8028,7 @@ void Player::_SaveSpells(CharacterDatabaseTransaction trans)
         {
             delete itr->second;
             m_spells.erase(itr++);
+            SpellBookRevision::Changed(CustomData);
         }
         else
         {

@@ -17,6 +17,7 @@
 
 #ifndef __UPDATETIME_H
 #define __UPDATETIME_H
+#define COA_WORLD_PROCESSING_OBSERVER 1
 
 #include "Define.h"
 #include "Duration.h"
@@ -65,12 +66,43 @@ class AC_GAME_API WorldUpdateTime : public UpdateTime
 {
 public:
     WorldUpdateTime() : UpdateTime(), _recordUpdateTimeInverval(0), _recordUpdateTimeMin(0), _lastRecordTime(0) { }
+    using PhaseObserver = void (*)(char const*, uint64);
+    void SetPhaseObserver(PhaseObserver observer) { _phaseObserver = observer; }
+    class PhaseScope
+    {
+    public:
+        PhaseScope(PhaseObserver observer, char const* name) : _observer(observer), _name(name)
+        {
+            if (_observer) _start = std::chrono::steady_clock::now();
+        }
+        ~PhaseScope()
+        {
+            if (_observer)
+                _observer(_name, uint64(std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - _start).count()));
+        }
+        PhaseScope(PhaseScope const&) = delete;
+        PhaseScope& operator=(PhaseScope const&) = delete;
+    private:
+        PhaseObserver _observer;
+        char const* _name;
+        std::chrono::steady_clock::time_point _start;
+    };
+    PhaseScope MeasurePhase(char const* name) const { return PhaseScope(_phaseObserver, name); }
+    using ProcessingObserver = void (*)(uint64);
+    void SetProcessingObserver(ProcessingObserver observer) { _processingObserver = observer; }
+    void ObserveProcessingTime(uint64 microseconds) const
+    {
+        if (_processingObserver) _processingObserver(microseconds);
+    }
     void LoadFromConfig();
     void SetRecordUpdateTimeInterval(Milliseconds t);
     void RecordUpdateTime(Milliseconds gameTimeMs, uint32 diff, uint32 sessionCount);
     void RecordUpdateTimeDuration(std::string const& text);
 
 private:
+    ProcessingObserver _processingObserver = nullptr;
+    PhaseObserver _phaseObserver = nullptr;
     Milliseconds _recordUpdateTimeInverval;
     Milliseconds _recordUpdateTimeMin;
     Milliseconds _lastRecordTime;

@@ -15,6 +15,7 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "WorldEntityProfiler.h"
 #include "AchievementMgr.h"
 #include "AscensionQuestMarkers.h"
 #include "BattlefieldMgr.h"
@@ -56,6 +57,7 @@ constexpr int32 XP_SOURCE_MASK_PROFESSION = 4;
 
 void Player::Update(uint32 p_time)
 {
+    auto profileSample = WorldEntityProfiler::Sample("Player sample");
     if (!IsInWorld())
         return;
 

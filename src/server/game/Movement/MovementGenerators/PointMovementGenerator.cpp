@@ -37,6 +37,11 @@ void PointMovementGenerator<T>::DoInitialize(T* unit)
     {
         // the next line is to ensure that a new spline is created in DoUpdate() once the unit is no longer rooted/stunned
         /// @todo: rename this flag to something more appropriate since it is set to true even without speed change now.
+        if (_trustedInitialPath)
+        {
+            m_precomputedPath.clear();
+            _trustedInitialPath = false;
+        }
         i_recalculateSpeed = true;
         return;
     }
@@ -66,7 +71,16 @@ void PointMovementGenerator<T>::DoInitialize(T* unit)
     if (_reverseOrientation)
         init.SetOrientationInversed();
 
-    if (m_precomputedPath.size() > 2) // pussywizard: for charge
+    if (_trustedInitialPath && !m_precomputedPath.empty() &&
+        (G3D::Vector3(unit->GetPositionX(), unit->GetPositionY(), unit->GetPositionZ()) - m_precomputedPath.front()).squaredLength() > 1.0f)
+    {
+        m_precomputedPath.clear();
+        _trustedInitialPath = false;
+    }
+
+    if (_trustedInitialPath && m_precomputedPath.size() >= 2)
+        init.MovebyPath(m_precomputedPath);
+    else if (m_precomputedPath.size() > 2) // pussywizard: for charge
         init.MovebyPath(m_precomputedPath);
     else if (_generatePath)
     {
@@ -136,6 +150,7 @@ void PointMovementGenerator<T>::DoInitialize(T* unit)
         init.SetAnimation(*_animTier);
 
     init.Launch();
+    _trustedInitialPath = false;
 }
 
 template<class T>

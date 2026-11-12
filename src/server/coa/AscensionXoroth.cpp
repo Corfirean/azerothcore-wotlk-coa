@@ -12,6 +12,7 @@
 #include "SpellAuraEffects.h"
 #include "SpellAuras.h"
 #include "SpellMgr.h"
+#include "SpellCandidateFilter.h"
 #include <algorithm>
 #include <memory>
 #include <mutex>
@@ -55,7 +56,8 @@ std::list<Unit*> Nearby(Unit* center, float range)
 void Reduce(Player* player, uint32 root, int32 milliseconds)
 {
     for (auto const& pair : player->GetSpellMap())
-        if (player->HasSpell(pair.first) && Named(sSpellMgr->GetSpellInfo(pair.first), root))
+        if (SpellCandidateFilter::Known(player, pair.first,
+                [&] { return Named(sSpellMgr->GetSpellInfo(pair.first), root); }))
             if (milliseconds == INT32_MAX)
                 player->RemoveSpellCooldown(pair.first, true);
             else
@@ -69,7 +71,8 @@ void Replace(Player* player, uint32 root, uint32 replacement)
                 sSpellMgr->GetSpellRank(id) > sSpellMgr->GetSpellRank(replacement))
                 replacement = id;
     for (auto const& pair : player->GetSpellMap())
-        if (player->HasSpell(pair.first) && Named(sSpellMgr->GetSpellInfo(pair.first), root))
+        if (SpellCandidateFilter::Known(player, pair.first,
+                [&] { return Named(sSpellMgr->GetSpellInfo(pair.first), root); }))
             player->SetTemporarySpellReplacement(pair.first, replacement);
 }
 
@@ -115,7 +118,8 @@ uint32 Highest(Player* player, uint32 root)
 {
     uint32 id = root;
     for (auto const& pair : player->GetSpellMap())
-        if (player->HasSpell(pair.first) && Named(sSpellMgr->GetSpellInfo(pair.first), root) &&
+        if (SpellCandidateFilter::Known(player, pair.first,
+                [&] { return Named(sSpellMgr->GetSpellInfo(pair.first), root); }) &&
             sSpellMgr->GetSpellInfo(pair.first)->SpellLevel >= sSpellMgr->GetSpellInfo(id)->SpellLevel)
             id = pair.first;
     return id;

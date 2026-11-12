@@ -15,6 +15,7 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "WorldEntityProfiler.h"
 #include "Creature.h"
 #include "DungeonHealth.h"
 #include "BattlegroundMgr.h"
@@ -740,6 +741,7 @@ bool Creature::UpdateEntry(uint32 Entry, CreatureData const* data, bool changele
 
 void Creature::Update(uint32 diff)
 {
+    auto profileSample = WorldEntityProfiler::Sample("Creature sample");
     if (IsAIEnabled && TriggerJustRespawned && getDeathState() != DeathState::Dead)
     {
         TriggerJustRespawned = false;

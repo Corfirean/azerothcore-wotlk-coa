@@ -16,6 +16,7 @@
 #include "SpellAuraEffects.h"
 #include "SpellAuras.h"
 #include "SpellMgr.h"
+#include "SpellCandidateFilter.h"
 #include <algorithm>
 #include <memory>
 #include <mutex>
@@ -136,7 +137,8 @@ uint32 Highest(Player* player, uint32 root)
 {
     uint32 result = root;
     for (auto const& pair : player->GetSpellMap())
-        if (player->HasSpell(pair.first) && Named(sSpellMgr->GetSpellInfo(pair.first), root) &&
+        if (SpellCandidateFilter::Known(player, pair.first,
+                [&] { return Named(sSpellMgr->GetSpellInfo(pair.first), root); }) &&
             sSpellMgr->GetSpellInfo(pair.first)->SpellLevel >= sSpellMgr->GetSpellInfo(result)->SpellLevel)
             result = pair.first;
     return result;
@@ -144,7 +146,8 @@ uint32 Highest(Player* player, uint32 root)
 void Reduce(Player* player, uint32 root, int32 milliseconds)
 {
     for (auto const& pair : player->GetSpellMap())
-        if (player->HasSpell(pair.first) && Named(sSpellMgr->GetSpellInfo(pair.first), root))
+        if (SpellCandidateFilter::Known(player, pair.first,
+                [&] { return Named(sSpellMgr->GetSpellInfo(pair.first), root); }))
         {
             if (milliseconds == INT32_MAX)
                 player->RemoveSpellCooldown(pair.first, true);
@@ -351,7 +354,8 @@ void Refresh(Player* player)
         player->removeSpell(GatlingGun,SPEC_MASK_ALL,false);
     uint32 shot = Highest(player,500549);
     for (auto const& pair : player->GetSpellMap())
-        if (player->HasSpell(pair.first) && Named(sSpellMgr->GetSpellInfo(pair.first),500549))
+        if (SpellCandidateFilter::Known(player, pair.first,
+                [&] { return Named(sSpellMgr->GetSpellInfo(pair.first),500549); }))
             player->SetTemporarySpellReplacement(pair.first,mech && suit && pair.first == shot ? GatlingGun : 0);
     if (!mech)
     {
@@ -362,8 +366,8 @@ void Refresh(Player* player)
         FillMechsuitBar(player);
     bool mines = player->HasAura(803074);
     for (auto const& pair : player->GetSpellMap())
-        mines |= player->HasSpell(pair.first) &&
-            Any(sSpellMgr->GetSpellInfo(pair.first),{801718,805354,704463,706647});
+        mines |= SpellCandidateFilter::Known(player, pair.first, [&] {
+            return Any(sSpellMgr->GetSpellInfo(pair.first),{801718,805354,704463,706647}); });
     if (mines && !player->HasSpell(801798))
         player->learnSpell(801798);
     else if (!mines && player->HasSpell(801798))
@@ -375,7 +379,8 @@ void Refresh(Player* player)
     if (gear && !player->HasSpell(504594))
         player->learnSpell(504594,true);
     for (auto const& pair : player->GetSpellMap())
-        if (player->HasSpell(pair.first) && Named(sSpellMgr->GetSpellInfo(pair.first),504527))
+        if (SpellCandidateFilter::Known(player, pair.first,
+                [&] { return Named(sSpellMgr->GetSpellInfo(pair.first),504527); }))
             player->SetTemporarySpellReplacement(pair.first,gear ? 504594 : 0);
     if (!gear)
         player->removeSpell(504594,SPEC_MASK_ALL,true);

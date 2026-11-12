@@ -16,6 +16,7 @@
  */
 
 #include "UpdateTime.h"
+#include "WorldTickObserver.h"
 #include "Config.h"
 #include "Log.h"
 #include "Timer.h"
@@ -25,6 +26,32 @@
 
 // create instance
 WorldUpdateTime sWorldUpdateTime;
+
+namespace WorldTickObserver
+{
+    namespace
+    {
+        Observer periodObserver = nullptr;
+        std::chrono::steady_clock::time_point previousStart;
+        bool haveStart = false;
+    }
+
+    void SetPeriodObserver(Observer observer)
+    {
+        periodObserver = observer;
+        haveStart = false;
+    }
+
+    void UpdateStarted()
+    {
+        if (!periodObserver) return;
+        auto const now = std::chrono::steady_clock::now();
+        if (haveStart)
+            periodObserver(uint64(std::chrono::duration_cast<std::chrono::microseconds>(now - previousStart).count()));
+        previousStart = now;
+        haveStart = true;
+    }
+}
 
 UpdateTime::UpdateTime()
 {

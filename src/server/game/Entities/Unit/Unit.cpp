@@ -15,6 +15,7 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "WorldEntityProfiler.h"
 #include "Unit.h"
 #include "AscensionSpellCopy.h"
 #include "AscensionIncarnation.h"
@@ -598,6 +599,7 @@ Unit::~Unit()
 
 void Unit::Update(uint32 p_time)
 {
+    auto profileSample = WorldEntityProfiler::Sample(GetTypeId() == TYPEID_PLAYER ? "Player unit sample" : "Creature unit sample");
     sScriptMgr->OnUnitUpdate(this, p_time);
 
     // WARNING! Order of execution here is important, do not change.
