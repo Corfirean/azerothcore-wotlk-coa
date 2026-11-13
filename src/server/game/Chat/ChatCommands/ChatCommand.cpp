@@ -34,7 +34,13 @@ void Acore::Impl::ChatCommands::ChatCommandNode::LoadFromBuilder(ChatCommandBuil
 {
     if (std::holds_alternative<ChatCommandBuilder::InvokerEntry>(builder._data))
     {
-        ASSERT(!_invoker, "Duplicate blank sub-command.");
+        // Plugin host: a plugin may register a command the core or another module already has (SQUID 3.0 and
+        // mod-ah-bot-plus both define .ahbot). Keep the first registration instead of stopping the world server.
+        if (_invoker)
+        {
+            LOG_ERROR("server.loading", "Chat command '{}' is registered twice; the first registration is kept.", builder._name);
+            return;
+        }
         AcoreStrings help;
         std::tie(_invoker, help, _permission) = *(std::get<ChatCommandBuilder::InvokerEntry>(builder._data));
         if (help)
