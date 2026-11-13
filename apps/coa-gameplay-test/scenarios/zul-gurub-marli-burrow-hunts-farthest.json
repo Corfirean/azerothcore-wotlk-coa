@@ -1,13 +1,18 @@
 {
   "schema": 1,
-  "name": "Zul'Gurub: High Priestess Mar'li comes up from her Burrow on the player farthest from her",
+  "name": "Zul'Gurub: High Priestess Mar'li comes up from her Burrow at the player farthest from her",
   "contract": [
     "The tester of 2026-11-04 (live): when Mar'li comes up from Burrow (2118140) she goes for the player farthest",
     "from her, not a random one, and stays fixed on them for 8 s. In her spider form Burrow is cast 20.5 s after the",
     "change (2 s cast, 3 s under ground, CoA combat log of 2026-08-02). The tank holds her with the most threat, some",
     "2.7 million after the wound that halves her health, as a long fight builds; the archer, who hit her once, stands",
     "about 30 yards away. After the Burrow she must attack the archer, who carries Menacing Gaze (2118141) while",
-    "hunted, for the whole 8 s however much threat the tank holds, and return to the tank once they are over."
+    "hunted, for the whole 8 s however much threat the tank holds, and return to the tank once they are over.",
+    "The tester of 2026-11-08 (live): the hunt cannot be taunted, so the tank's Hand of Reckoning (62124) during it",
+    "leaves her on the archer. Under ground she shows the Hide Body display 22452 (Burrow's misc value, creature",
+    "24417, as Kurinnaxx's Tunneling) and comes up in her spider display 15226 again. The tester of 2026-11-12:",
+    "she comes up at her fixated player, not where she burrowed, so the archer 30 yards off has her within 5 yards",
+    "the moment the gaze lands."
   ],
   "timeout_ms": 150000,
   "location": {
@@ -20,7 +25,7 @@
     {
       "id": "tank",
       "race": 1,
-      "class": 1,
+      "class": 2,
       "level": 60,
       "melee_hit_rating": 10000,
       "expertise_rating": 10000
@@ -50,6 +55,11 @@
       "actor": "archer",
       "value": 10000000,
       "maximum": 10000000
+    },
+    {
+      "action": "learn",
+      "actor": "tank",
+      "spell": 62124
     },
     {
       "action": "group",
@@ -187,12 +197,28 @@
     },
     {
       "action": "assert",
+      "label": "DISCRIMINATING: under ground she shows the Hide Body display",
+      "actor": "marli",
+      "metric": "display_id",
+      "equals": 22452,
+      "within_ms": 1000
+    },
+    {
+      "action": "assert",
       "label": "DISCRIMINATING: she comes up gazing at the farthest player",
       "actor": "archer",
       "metric": "aura",
       "spell": 2118141,
       "equals": 1,
       "within_ms": 6000
+    },
+    {
+      "action": "assert",
+      "label": "DISCRIMINATING: she comes up where the archer stands, not where she burrowed",
+      "actor": "archer",
+      "metric": "distance",
+      "target": "marli",
+      "max": 5
     },
     {
       "action": "assert",
@@ -212,9 +238,35 @@
       "equals": 0
     },
     {
+      "action": "assert",
+      "label": "DISCRIMINATING: she comes up in her spider display again",
+      "actor": "marli",
+      "metric": "display_id",
+      "equals": 15226
+    },
+    {
+      "action": "cast",
+      "label": "The tank taunts her during the hunt",
+      "actor": "tank",
+      "spell": 62124,
+      "target": "marli"
+    },
+    {
+      "action": "wait",
+      "ms": 1000
+    },
+    {
+      "action": "assert",
+      "label": "DISCRIMINATING: the taunt does not take her off the archer",
+      "actor": "marli",
+      "metric": "victim",
+      "target": "archer",
+      "equals": 1
+    },
+    {
       "action": "wait",
       "label": "Six of the 8 s pass",
-      "ms": 6000
+      "ms": 5000
     },
     {
       "action": "assert",

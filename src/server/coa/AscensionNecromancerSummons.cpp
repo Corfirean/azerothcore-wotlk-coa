@@ -145,6 +145,10 @@ void Evict(Player* player, int32 needed)
     }
 }
 }
+bool FollowsOwner(uint32 entry)
+{
+    return Follows(entry);
+}
 bool Responds(uint32 entry, uint32 command)
 {
     switch (command)
@@ -407,8 +411,12 @@ bool Summon(Player* player, uint32 spell, Unit* target, Position const& position
                     point.SetOrientation(heading);
                     player->MovePositionToFirstCollision(point, 2.0f, heading - player->GetOrientation());
                     float const lateral = (float(i) - (count - 1) / 2.0f) * 1.0f;
-                    point.m_positionX += std::cos(heading + float(M_PI) / 2) * lateral;
-                    point.m_positionY += std::sin(heading + float(M_PI) / 2) * lateral;
+                    float const lateralX = std::cos(heading + float(M_PI) / 2) * lateral;
+                    float const lateralY = std::sin(heading + float(M_PI) / 2) * lateral;
+                    point.m_positionX += lateralX;
+                    point.m_positionY += lateralY;
+                    aim.m_positionX += lateralX;
+                    aim.m_positionY += lateralY;
                     point.SetOrientation(heading);
                 }
                 else
@@ -518,7 +526,8 @@ class npc_ascension_necromancer : public ScriptedAI
         me->SetHealth(me->GetMaxHealth());
         me->SetPower(POWER_MANA, me->GetMaxPower(POWER_MANA));
         if (_cost && player->HasAura(504866))
-            player->CastCustomSpell(505224, SPELLVALUE_BASE_POINT0, int32(me->CountPctFromMaxHealth(40)), me, true);
+            player->CastCustomSpell(SummonShield, SPELLVALUE_BASE_POINT0, int32(me->CountPctFromMaxHealth(40)), me,
+                                    true);
         if (me->GetEntry() == 50073)
             player->AddAura(805290, me);
         if (uint32 occupancy = OccupancyAura(me->GetEntry()))
