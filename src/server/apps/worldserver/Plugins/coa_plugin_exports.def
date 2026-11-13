@@ -169,7 +169,7 @@ EXPORTS
     ?AllLootRemovedFromCorpse@Creature@@QEAAXXZ
     ?AllowedForPlayer@LootItem@@QEBA_NPEBVPlayer@@VObjectGuid@@@Z
     ?AnticheatSetUnderACKmount@ScriptMgr@@QEAAXPEAVPlayer@@@Z
-    ?Apply@AscensionRulesets@@YAXPEAVPlayer@@W4Ruleset@1@@Z
+    ?Apply@AscensionRulesets@@YAXPEAVPlayer@@W4Ruleset@1@_N@Z
     ?ApplyAttackTimePercentMod@Unit@@QEAAXW4WeaponAttackType@@M_N@Z
     ?ApplyBuildUpload@AscensionWildcard@@YA?AUBuildChoice@1@PEAVPlayer@@AEBV?$vector@UKnownEntry@AscensionCoATalentState@@V?$allocator@UKnownEntry@AscensionCoATalentState@@@std@@@std@@@Z
     ?ApplyCastTimePercentMod@Unit@@QEAAXM_N@Z
