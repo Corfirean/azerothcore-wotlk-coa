@@ -17,6 +17,7 @@
 
 class Creature;
 class CreatureTemplate;
+class Map;
 class Item;
 class Player;
 class Quest;
@@ -84,6 +85,18 @@ inline std::uint32_t RewardKeepPercent(std::uint32_t floorPercent, std::int32_t 
     std::uint32_t const sharePercent = std::uint32_t(questLevel) * 100 / effectiveLevel;
     return floorPercent + (100 - floorPercent) * sharePercent / 100;
 }
+using PersonalInstanceScalingResolver = bool (*)(Map const*, Player const*);
+inline std::atomic<PersonalInstanceScalingResolver> PersonalInstanceScalingOwner{nullptr};
+
+inline bool PersonalInstanceScalingFor(Map const* map, Player const* viewer = nullptr)
+{
+    PersonalInstanceScalingResolver const owner = PersonalInstanceScalingOwner.load(std::memory_order_relaxed);
+    return owner && map && owner(map, viewer);
+}
+
+using CreatureViewDamageResolver = double (*)(Player const*, Creature const*);
+inline std::atomic<CreatureViewDamageResolver> CreatureViewDamageOwner{nullptr};
+AC_GAME_API uint32 PersonalDamageHealthFor(Unit const* source, Unit const* target);
 
 inline std::atomic<bool> QuestEnabled{false};
 inline std::atomic<bool> ContentScalingActive{false};

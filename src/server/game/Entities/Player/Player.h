@@ -2003,6 +2003,7 @@ public:
     float GetManaBonusFromIntellect();
 
     bool UpdateStats(Stats stat) override;
+    [[nodiscard]] float GetExactStatValue(Stats stat) const;
     bool UpdateAllStats() override;
     void ApplySpellPenetrationBonus(int32 amount, bool apply);
     void UpdateResistances(uint32 school) override;
@@ -2351,6 +2352,7 @@ public:
     void CastItemCombatSpell(Unit* target, WeaponAttackType attType, uint32 procVictim, uint32 procEx, Item* item, ItemTemplate const* proto);
 
     void SendEquipmentSetList();
+    [[nodiscard]] EquipmentSets const& GetEquipmentSets() const { return m_EquipmentSets; }
     void SetEquipmentSet(uint32 index, EquipmentSet eqset);
     void DeleteEquipmentSet(uint64 setGuid);
 
@@ -2745,6 +2747,7 @@ public:
 
     [[nodiscard]] float GetRealParry() const { return m_realParry; }
     [[nodiscard]] float GetRealDodge() const { return m_realDodge; }
+    void SetRealDodgeParryForTest(float dodge, float parry) { m_realDodge = dodge; m_realParry = parry; }
     // mt maps
     [[nodiscard]] PlayerTalentMap const& GetTalentMap() const { return m_talents; }
     [[nodiscard]] uint32 GetNextSave() const { return m_nextSave; }

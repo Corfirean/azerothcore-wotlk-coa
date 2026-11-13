@@ -9,16 +9,23 @@
  * From stock: the start when the Vilebranch Speaker dies, the ride down, Ohgan
  * at his side, the chained spirits that revive the dead, and the gaze. Ohgan,
  * the spirits and the speaker keep their stock scripts, with the spells of the
- * log.
+ * log. Up on the ledge he can be neither attacked nor selected until the
+ * Speaker dies (live: he engaged 4.1-5.5s after the Speaker's death in 6 of 6
+ * pulls).
  *
- *   Berserker Charge  first 10s, every 25s   the nearest player he can see,
- *                                            knocked down; the tank keeps his
- *                                            threat (the live log)
+ *   Berserker Charge  first 10s, every 25s   a random player out of his melee
+ *                                            range he can see, knocked down;
+ *                                            the tank keeps his threat (the
+ *                                            live log: 21 charges, never on
+ *                                            his victim, 13 on ranged players)
  *   Whirlwind         as the charge lands     at once, 5 yards around him;
  *                                            in the charge's place when no
  *                                            one stands out of melee
  *   Mortal Strike     first 8s,  every 12s   the tank in melee range, -25%
- *                                            healing, stacks 3
+ *                                            healing, stacks 3; it and
+ *                                            Decapitate always hit (live:
+ *                                            never dodged, parried or
+ *                                            missed; SpellFix.cpp)
  *   Threatening Gaze  first 15s, every 20s   he stares at a player for 4s,
  *                                            then Menacing Gaze for 4s: an
  *                                            active hostile action (a spell
@@ -30,7 +37,6 @@
  *                                            rarer than on the other bosses
  *   Level Up!         +4% damage for every player who dies near him
  *   Frenzy            when Ohgan dies
- *   Mounted           while he rides Ohgan before the pull
  *   Bloodlord's Presence  at the pull, on enemies within 30 yards: no
  *                     durability loss; taken off when the fight ends
  *
@@ -40,8 +46,9 @@
  *     tooltip. These auras and Bloodlord's Presence are never logged (their
  *     spells are flagged so), which is why the log does not show them;
  *   - Bloodlord's Presence once at the pull; its aura lasts until removed;
- *   - Mounted only out of combat: the log has Ohgan fighting on his own from
- *     the first second;
+ *   - he stands unmounted before the pull and Mounted (2118412) is never cast
+ *     (tester and user, 2026-11-13); the log has Ohgan fighting on his own
+ *     from the first second;
  *   - Ohgan runs in from the arena entrance at the pull (tester, live,
  *     2026-11-04); the spot, the gap in the chained spirits' ring on the
  *     north-west side, is estimated;
@@ -93,7 +100,6 @@ namespace
         SPELL_BERSERKER_CHARGE  = 2118406,
         SPELL_WHIRLWIND         = 2118408,
         SPELL_DECAPITATE        = 2118410,
-        SPELL_MOUNTED           = 2118412,
         SPELL_LEAP              = 2118413,
         SPELL_BLOODLORDS_PRESENCE = 2118415,
         SPELL_LEVEL_UP          = 2118416,
@@ -128,7 +134,6 @@ namespace
     {
         ACTION_REVIVE        = 2,
         GUID_SENTENCED       = 1,
-        MODEL_OHGAN_MOUNT    = 15271,
         POINT_MANDOKIR_END   = 25,
         CHAINED_SPIRIT_COUNT = 20
     };
@@ -205,7 +210,8 @@ namespace
             _reviveGUID.Clear();
             RemovePresence();
 
-            if (me->GetPositionZ() > 140.0f)
+            bool const waitingForSpeaker = me->GetPositionZ() > 140.0f;
+            if (waitingForSpeaker)
             {
                 events.ScheduleEvent(EVENT_CHECK_START, 1s);
                 if (Creature* speaker = ObjectAccessor::GetCreature(*me, instance->GetGuidData(NPC_VILEBRANCH_SPEAKER)))
@@ -217,10 +223,17 @@ namespace
             me->RemoveAurasDueToSpell(SPELL_LEVEL_UP);
             for (uint32 streak : { SPELL_FIRST_BLOOD, SPELL_KILLING_SPREE, SPELL_RAMPAGE, SPELL_UNSTOPPABLE, SPELL_LEGENDARY })
                 me->RemoveAurasDueToSpell(streak);
-            me->SetImmuneToAll(false);
+            SetUntouchable(waitingForSpeaker);
             instance->SetBossState(DATA_OHGAN, NOT_STARTED);
-            me->Mount(MODEL_OHGAN_MOUNT);
-            DoCastSelf(SPELL_MOUNTED, true);
+        }
+
+        void SetUntouchable(bool untouchable)
+        {
+            me->SetImmuneToAll(untouchable);
+            if (untouchable)
+                me->SetUnitFlag(UNIT_FLAG_NOT_SELECTABLE);
+            else
+                me->RemoveUnitFlag(UNIT_FLAG_NOT_SELECTABLE);
         }
 
         void RemovePresence()
@@ -264,8 +277,6 @@ namespace
 
             me->SetHomePosition(me->GetPositionX(), me->GetPositionY(), me->GetPositionZ(), me->GetOrientation());
             Talk(SAY_AGGRO);
-            me->Dismount();
-            me->RemoveAurasDueToSpell(SPELL_MOUNTED);
             DoCastSelf(SPELL_BLOODLORDS_PRESENCE, true);
             Position entrance = PosArenaEntrance;
             me->UpdateGroundPositionZ(entrance.GetPositionX(), entrance.GetPositionY(), entrance.m_positionZ);
@@ -402,7 +413,7 @@ namespace
                         }
                         else if (eventId == EVENT_STARTED)
                         {
-                            me->SetImmuneToAll(false);
+                            SetUntouchable(false);
                             me->SetInCombatWithZone();
                         }
                     }
@@ -418,7 +429,7 @@ namespace
                 switch (eventId)
                 {
                     case EVENT_BERSERKER_CHARGE:
-                        if (Unit* target = SelectTarget(SelectTargetMethod::MinDistance, 0, [this](Unit const* u)
+                        if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, [this](Unit const* u)
                             {
                                 return u->IsPlayer() && !me->IsWithinMeleeRange(u) && me->IsWithinLOSInMap(u);
                             }))
