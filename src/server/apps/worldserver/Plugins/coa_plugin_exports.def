@@ -1681,3 +1681,9 @@ EXPORTS
     ?utf8truncate@@YAXAEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@_K@Z
     ?wstrToLower@@YAXAEAV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@Z
     SHA256
+    ?HasLootAppearance@CompanionLooting@Ascension@@YA_NPEBVPlayer@@@Z
+    ?HasSkinningAppearance@CompanionLooting@Ascension@@YA_NPEBVPlayer@@@Z
+    ?CompanionLoots@CompanionLooting@Ascension@@YA_NPEBVPlayer@@@Z
+    ?CompanionSkins@CompanionLooting@Ascension@@YA_NPEBVPlayer@@@Z
+    ?LootRadius@CompanionLooting@Ascension@@YAMPEBVPlayer@@@Z
+    ?SkinningRadius@CompanionLooting@Ascension@@YAMPEBVPlayer@@@Z
