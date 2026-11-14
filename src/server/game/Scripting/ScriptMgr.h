@@ -85,6 +85,7 @@ class SpellScriptLoader;
 
 struct AchievementCriteriaData;
 struct AuctionEntry;
+struct SkillRaceClassInfoEntry;
 struct Mail;
 struct Condition;
 struct ConditionSourceInfo;
@@ -467,6 +468,7 @@ public: /* PlayerScript */
     void OnPlayerApplyAmmoBonuses(Player* player, ItemTemplate const* proto, float& currentAmmoDPS);
     void OnPlayerGetAmmoDisplay(Player* player, SpellInfo const* spellInfo, uint32& displayId, uint32& inventoryType);
     void OnPlayerGetShapeshiftModel(Player* player, uint8 form, uint32 spellId, uint32& modelId);
+    void OnPlayerLoadForeignSkill(Player const* player, uint16 skill, SkillRaceClassInfoEntry const*& entry);
     void OnPlayerGetNameQueryRace(Player* player, uint8& race);
     bool OnPlayerCanEquipItem(Player* player, uint8 slot, uint16& dest, Item* pItem, bool swap, bool not_loading);
     bool OnPlayerCanUnequipItem(Player* player, uint16 pos, bool swap);
@@ -539,6 +541,9 @@ public: /* PlayerScript */
     void OnPlayerCoAPrestigeSaved(Player* player);
     void OnPlayerMasterLootItem(Player* player, Item* item, uint32 count, ObjectGuid lootguid);
     std::optional<uint32> OnPlayerGetGameModeMask(Player const* player);
+    std::optional<uint32> OnPlayerGetQuestRaceMask(Player const* player);
+    bool OnPlayerKeepsOwnLook(Player const* player, uint32 spellId);
+    void OnPlayerBeforeBoardedBy(Player* player, Unit* clicker);
 
     // Anti cheat
     void AnticheatSetCanFlybyServer(Player* player, bool apply);
@@ -637,6 +642,7 @@ public: /* UnitScript */
     uint32 DealDamage(Unit* AttackerUnit, Unit* pVictim, uint32 damage, DamageEffectType damagetype,
                       std::optional<uint32>* scriptHealthLeechDamage = nullptr);
     void OnBeforeRollMeleeOutcomeAgainst(Unit const* attacker, Unit const* victim, WeaponAttackType attType, int32& attackerMaxSkillValueForLevel, int32& victimMaxSkillValueForLevel, int32& attackerWeaponSkill, int32& victimDefenseSkill, int32& crit_chance, int32& miss_chance, int32& dodge_chance, int32& parry_chance, int32& block_chance);
+    void ModifySpellMissChance(Unit const* caster, Unit const* victim, SpellInfo const* spellInfo, int32& missChance);
     void OnAuraApply(Unit* /*unit*/, Aura* /*aura*/);
     void OnAuraRemove(Unit* unit, AuraApplication* aurApp, AuraRemoveMode mode);
     void OnSendAuraUpdate(Unit* target, Player* receiver, AuraApplication const* application, bool remove);

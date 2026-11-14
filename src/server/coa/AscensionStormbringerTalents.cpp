@@ -1,5 +1,6 @@
 /* Copyright (C) 2016+ AzerothCore, GNU AGPL v3. */
 #include "AscensionCustomResourceData.h"
+#include "AscensionSpecialization.h"
 #include "CellImpl.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
@@ -196,11 +197,11 @@ public:
     void OnSpellCast(Spell* spell, Unit* caster, SpellInfo const* info, bool) override
     {
         Player* player = caster ? caster->ToPlayer() : nullptr;
-        if (player && player->getClass() == CLASS_STORMBRINGER && info->SpellFamilyName == 22 &&
+        if (player && UsesAscensionClassMechanics(player, CLASS_STORMBRINGER) && info->SpellFamilyName == 22 &&
             info->Id == SPELL_CLOUDBURST && !spell->IsTriggered())
             player->CastSpell(player, SPELL_CLOUDBURST_KNOCKBACK, true);
 
-        if (player && player->getClass() == CLASS_STORMBRINGER && IsConjureStorm(info) &&
+        if (player && UsesAscensionClassMechanics(player, CLASS_STORMBRINGER) && IsConjureStorm(info) &&
             !spell->IsTriggered() && player->HasSpell(SPELL_CONJURATION_MASTERY))
             player->CastSpell(player, SPELL_REFUND_STATIC_10, true);
     }
@@ -209,7 +210,7 @@ public:
     {
         Player* player = spell->GetCaster()->ToPlayer();
         SpellInfo const* info = spell->GetSpellInfo();
-        if (!player || player->getClass() != CLASS_STORMBRINGER || info->SpellFamilyName != 22 ||
+        if (!player || !UsesAscensionClassMechanics(player, CLASS_STORMBRINGER) || info->SpellFamilyName != 22 ||
             !target || target == player || player->IsFriendlyTo(target) || miss != SPELL_MISS_NONE)
             return;
 
@@ -292,7 +293,8 @@ public:
     {
         Unit* caster = spell->GetCaster();
         SpellInfo const* info = spell->GetSpellInfo();
-        if (!count || !target || !caster->IsPlayer() || caster->getClass() != CLASS_STORMBRINGER ||
+        if (!count || !target || !caster->IsPlayer() ||
+            !UsesAscensionClassMechanics(caster->ToPlayer(), CLASS_STORMBRINGER) ||
             info->Id != SPELL_STORMBREAKER || info->SpellFamilyName != 22 ||
             info->Effects[effect].MiscValue != DISPEL_MAGIC ||
             !caster->HasAura(SPELL_PULSE_CONVERSION, caster->GetGUID()))
@@ -362,7 +364,7 @@ class spell_ascension_stormbringer_cooldown_reduction : public SpellScript
 
     bool Load() override
     {
-        return GetCaster()->IsPlayer() && GetCaster()->getClass() == CLASS_STORMBRINGER;
+        return GetCaster()->IsPlayer() && UsesAscensionClassMechanics(GetCaster()->ToPlayer(), CLASS_STORMBRINGER);
     }
 
     void Reduce(SpellEffIndex index)
@@ -451,7 +453,8 @@ class aura_ascension_dark_skies : public AuraScript
     {
         Unit* player = GetTarget();
         Unit* victim = event.GetActionTarget();
-        return player->IsPlayer() && player->getClass() == CLASS_STORMBRINGER && player->IsAlive() &&
+        return player->IsPlayer() && UsesAscensionClassMechanics(player->ToPlayer(), CLASS_STORMBRINGER) &&
+            player->IsAlive() &&
             GetCaster() == player && event.GetActor() == player && victim && victim != player &&
             !player->IsFriendlyTo(victim) && event.GetDamageInfo() && event.GetDamageInfo()->GetDamage();
     }
@@ -493,7 +496,8 @@ class aura_ascension_thorims_gift : public AuraScript
 
     bool Load() override
     {
-        return GetUnitOwner()->IsPlayer() && GetUnitOwner()->getClass() == CLASS_STORMBRINGER;
+        return GetUnitOwner()->IsPlayer() &&
+            UsesAscensionClassMechanics(GetUnitOwner()->ToPlayer(), CLASS_STORMBRINGER);
     }
 
     bool Check(ProcEventInfo& event)

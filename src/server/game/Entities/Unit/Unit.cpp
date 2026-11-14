@@ -3805,6 +3805,11 @@ SpellMissInfo Unit::MeleeSpellHitResult(Unit* victim, SpellInfo const* spellInfo
     uint32 missChance = uint32(MeleeSpellMissChance(victim, attType, skillDiff, spellInfo->Id) * 100.0f);
     if (IsPlayer() && getClass() == CLASS_STARCALLER && HasAura(802203))
         missChance = 0;
+    {
+        int32 scriptedMissChance = int32(missChance);
+        sScriptMgr->ModifySpellMissChance(this, victim, spellInfo, scriptedMissChance);
+        missChance = uint32(std::max(0, scriptedMissChance));
+    }
     // Roll miss
     uint32 tmp = missChance;
     if (roll < tmp)
@@ -4064,6 +4069,8 @@ SpellMissInfo Unit::MagicSpellHitResult(Unit* victim, SpellInfo const* spellInfo
     int32 tmp = 10000 - HitChance;
     if (IsPlayer() && getClass() == CLASS_STARCALLER && HasAura(802203))
         tmp = 0;
+    sScriptMgr->ModifySpellMissChance(this, victim, spellInfo, tmp);
+    tmp = std::max(0, tmp);
 
     int32 rand = irand(1, 10000); // Needs to be  1 to 10000 to avoid the 1/10000 chance to miss on 100% hit rating
 
@@ -11811,6 +11818,7 @@ void Unit::Mount(uint32 mount, uint32 VehicleId, uint32 creatureEntry)
         {
             if (CreateVehicleKit(VehicleId, creatureEntry))
             {
+                GetVehicleKit()->MarkMountKit();
                 GetVehicleKit()->Reset();
 
                 // Send others that we now have a vehicle
@@ -11880,8 +11888,8 @@ void Unit::Dismount()
     data << GetPackGUID();
     SendMessageToSet(&data, true);
 
-    // dismount as a vehicle
-    if (IsPlayer() && GetVehicleKit())
+    // dismount as a vehicle; a vehicle kit the mount did not create stays
+    if (IsPlayer() && GetVehicleKit() && GetVehicleKit()->IsMountKit())
     {
         // Send other players that we are no longer a vehicle
         data.Initialize(SMSG_PLAYER_VEHICLE_DATA, 8 + 4);
@@ -14634,6 +14642,8 @@ void Unit::RestoreDisplayId()
         // iterate over already applied transform auras - from newest to oldest
         for (auto i = transforms.rbegin(); i != transforms.rend(); ++i)
         {
+            if (Player const* player = ToPlayer(); player && sScriptMgr->OnPlayerKeepsOwnLook(player, (*i)->GetId()))
+                continue;
             if (AuraApplication const* aurApp = (*i)->GetBase()->GetApplicationOfTarget(GetGUID()))
             {
                 if (!handledAura)
@@ -17043,6 +17053,9 @@ uint32 Unit::GetCombatRatingDamageReduction(CombatRating cr, float rate, float c
 
 uint32 Unit::GetModelForForm(ShapeshiftForm form, uint32 spellId)
 {
+    if (Player const* player = ToPlayer(); player && sScriptMgr->OnPlayerKeepsOwnLook(player, spellId))
+        return 0;
+
     // Hardcoded cases
     switch (spellId)
     {
@@ -17134,6 +17147,9 @@ void Unit::JumpTo(WorldObject* obj, float speedZ)
 
 bool Unit::HandleSpellClick(Unit* clicker, int8 seatId)
 {
+    if (Player* player = ToPlayer())
+        sScriptMgr->OnPlayerBeforeBoardedBy(player, clicker);
+
     Creature* creature = ToCreature();
     if (creature && creature->IsAIEnabled)
     {
@@ -18708,15 +18724,15 @@ uint32 Unit::getRaceMask() const
     switch (race)
     {
         case 12: case 13: case 15: case 16: case 18: case 20: case 22: case 27: case 30:
-        case 32: case 47: case 50: case 65: case 71: case 79: case 80: case 82: case 103:
+        case 32: case 47: case 50: case 65: case 71: case 79: case 80: case 82: case 96: case 103:
             return 1u << (RACE_HUMAN - 1);
         case 19: case 21: case 23: case 24: case 25: case 26: case 28: case 29: case 31:
         case 49: case 51: case 53: case 55: case 56: case 57: case 58: case 69: case 70:
-        case 74: case 83: case 86: case 87: case 89: case 98: case 104:
+        case 74: case 83: case 85: case 86: case 87: case 89: case 98: case 104:
             return 1u << (RACE_ORC - 1);
         case 48: case 67: case 68:
             return 1u << (RACE_DWARF - 1);
-        case 14: case 54: case 59: case 61: case 62: case 75: case 85: case 97: case 99:
+        case 14: case 54: case 59: case 61: case 62: case 75: case 97: case 99:
         case 100: case 107: case 109: case 110:
             return 1u << (RACE_NIGHTELF - 1);
         case 60: case 63: case 81: case 84: case 90: case 101:

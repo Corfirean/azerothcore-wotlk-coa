@@ -2,6 +2,7 @@
 
 #include "AscensionPooledVitality.h"
 #include "ObjectAccessor.h"
+#include "AscensionSpecialization.h"
 #include "Player.h"
 #include "Random.h"
 #include "ScriptMgr.h"
@@ -60,8 +61,8 @@ bool IsRank(std::array<uint32, N> const& ranks, uint32 id)
 Player* Bloodmage(Unit* unit)
 {
     Player* player = unit ? unit->ToPlayer() : nullptr;
-    return player && player->getClass() == CLASS_SON_OF_ARUGAL && player->IsAlive() && player->IsInWorld()
-        ? player : nullptr;
+    return player && UsesAscensionClassMechanics(player, CLASS_SON_OF_ARUGAL) && player->IsAlive() &&
+        player->IsInWorld() ? player : nullptr;
 }
 
 uint8 Shards(Player* player)
