@@ -33,8 +33,7 @@ namespace
             && player->GetDisplayId() == player->GetNativeDisplayId();
     }
 
-    // CoA: Vampire Bat Form works anywhere out of combat (no riding skill, outdoor or flyable-area requirement)
-    bool FlightAllowed(Player* /*player*/)
+    bool FlightAllowed(Player*)
     {
         return sSpellMgr->GetSpellInfo(BatAura) != nullptr;
     }
@@ -66,7 +65,6 @@ public:
 
     void OnPlayerLogin(Player* player) override
     {
-        // Saved travel state cannot grant a fresh combat timer on reconnect.
         EndHover(player);
         player->RemoveAurasDueToSpell(BatAura);
         player->RemoveAurasDueToSpell(BatSpeed);
@@ -123,7 +121,7 @@ class spell_venthyr_racial : public SpellScript
 {
     PrepareSpellScript(spell_venthyr_racial);
 
-    bool Validate(SpellInfo const* /*info*/) override
+    bool Validate(SpellInfo const*) override
     {
         return ValidateSpellInfo({Feast, HoverAura, Resolve, BatAura, BatSpeed, BatDescent, AnimaHeal})
             && sCreatureDisplayInfoStore.LookupEntry(VampireBatDisplay)
@@ -151,7 +149,7 @@ class spell_venthyr_racial : public SpellScript
         return SPELL_CAST_OK;
     }
 
-    void Toggle(SpellEffIndex /*index*/)
+    void Toggle(SpellEffIndex)
     {
         Player* player = GetCaster()->ToPlayer();
         if (!player)
@@ -203,7 +201,7 @@ class spell_venthyr_crimson_feast : public AuraScript
 {
     PrepareAuraScript(spell_venthyr_crimson_feast);
 
-    void Amount(AuraEffect const* /*effect*/, int32& amount, bool& recalculate)
+    void Amount(AuraEffect const*, int32& amount, bool& recalculate)
     {
         recalculate = false;
         Unit* caster = GetCaster();
@@ -230,7 +228,7 @@ class spell_venthyr_anima_hunger : public AuraScript
 {
     PrepareAuraScript(spell_venthyr_anima_hunger);
 
-    bool Validate(SpellInfo const* /*info*/) override { return ValidateSpellInfo({AnimaHeal}); }
+    bool Validate(SpellInfo const*) override { return ValidateSpellInfo({AnimaHeal}); }
 
     bool Check(ProcEventInfo& eventInfo)
     {
@@ -240,7 +238,7 @@ class spell_venthyr_anima_hunger : public AuraScript
             && eventInfo.GetActor() == player && victim != player && player->isHonorOrXPTarget(victim);
     }
 
-    void Heal(AuraEffect const* effect, ProcEventInfo& /*eventInfo*/)
+    void Heal(AuraEffect const* effect, ProcEventInfo&)
     {
         PreventDefaultAction();
         GetTarget()->CastSpell(GetTarget(), AnimaHeal, true, nullptr, effect);
@@ -258,13 +256,13 @@ class spell_venthyr_hover_height : public AuraScript
     PrepareAuraScript(spell_venthyr_hover_height);
     float _previousHeight = 0.0f;
 
-    void Apply(AuraEffect const* /*effect*/, AuraEffectHandleModes /*mode*/)
+    void Apply(AuraEffect const*, AuraEffectHandleModes)
     {
         _previousHeight = GetTarget()->GetFloatValue(UNIT_FIELD_HOVERHEIGHT);
         GetTarget()->SetFloatValue(UNIT_FIELD_HOVERHEIGHT, HoverHeight);
     }
 
-    void Remove(AuraEffect const* /*effect*/, AuraEffectHandleModes /*mode*/)
+    void Remove(AuraEffect const*, AuraEffectHandleModes)
     {
         GetTarget()->SetFloatValue(UNIT_FIELD_HOVERHEIGHT, _previousHeight);
         if (m_scriptSpellId == HoverAura)
@@ -287,18 +285,16 @@ class spell_venthyr_bat_form : public AuraScript
 {
     PrepareAuraScript(spell_venthyr_bat_form);
 
-    bool Validate(SpellInfo const* /*info*/) override { return ValidateSpellInfo({BatSpeed, BatDescent}); }
+    bool Validate(SpellInfo const*) override { return ValidateSpellInfo({BatSpeed, BatDescent}); }
 
-    void Apply(AuraEffect const* /*effect*/, AuraEffectHandleModes /*mode*/)
+    void Apply(AuraEffect const*, AuraEffectHandleModes)
     {
         GetTarget()->CastSpell(GetTarget(), BatSpeed, true);
         GetTarget()->RemoveAurasDueToSpell(BatDescent);
     }
 
-    void BeforeRemove(AuraEffect const* /*effect*/, AuraEffectHandleModes /*mode*/)
+    void BeforeRemove(AuraEffect const*, AuraEffectHandleModes)
     {
-        // Apply protection before the native fly effect is removed. Manual
-        // cancellation, combat, map changes and dispels all use this path.
         Player* player = GetTarget()->ToPlayer();
         if (player && player->IsAlive() && !player->IsInWater()
             && (player->IsFlying() || player->IsFalling()
@@ -306,7 +302,7 @@ class spell_venthyr_bat_form : public AuraScript
             player->CastSpell(player, BatDescent, true);
     }
 
-    void Remove(AuraEffect const* /*effect*/, AuraEffectHandleModes /*mode*/)
+    void Remove(AuraEffect const*, AuraEffectHandleModes)
     {
         GetTarget()->RemoveAurasDueToSpell(BatSpeed);
     }

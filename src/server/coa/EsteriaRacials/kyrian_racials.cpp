@@ -55,8 +55,6 @@ namespace
 
     void ChargeArrived(Player* player, Unit* target, bool dive)
     {
-        // Keep flight permission during the accepted spline, then consume Hover
-        // even if the target has died or moved out of reach before impact.
         if (dive)
             KyrianHover::EndForCharge(player);
 
@@ -76,7 +74,6 @@ namespace
         int32 const impact = dive ? damage + CalculatePct(damage, ChargeDiveBonusPercent) : damage;
         player->CastCustomSpell(ChargeImpact, SPELLVALUE_BASE_POINT0, impact, target, true);
         player->CastSpell(player, ChargeSlow, true);
-        // The persistent ground aura snapshots the same AP/SP choice at arrival.
         int32 const ringTick = std::max<int32>(1, CalculatePct(damage, ChargeRingTickPercent));
         player->CastCustomSpell(ChargeRing, SPELLVALUE_BASE_POINT0, ringTick, player, true);
     }
@@ -99,7 +96,7 @@ public:
     }
 
     void OnPlayerReleasedGhost(Player* player) override { UpdateSpiritSpeed(player); }
-    void OnPlayerResurrect(Player* player, float /*percent*/, bool& /*sickness*/) override
+    void OnPlayerResurrect(Player* player, float, bool&) override
     {
         player->RemoveAurasDueToSpell(SpiritSpeed);
     }
@@ -137,8 +134,6 @@ public:
         if (!player->movespline->Finalized())
             return;
 
-        // Only the original, completed spline may deliver the impact. A new
-        // spline, interrupted charge, logout or teleport never deals a late hit.
         if (player->GetExactDist(&data->destination) > 2.0f)
         {
             CancelCharge(player);
@@ -156,7 +151,7 @@ class spell_kyrian_ascendant_charge : public SpellScript
     Position _destination;
     bool _dive = false;
 
-    bool Validate(SpellInfo const* /*info*/) override
+    bool Validate(SpellInfo const*) override
     {
         return ValidateSpellInfo({Charge, ChargeImpact, ChargeSlow, ChargeRing, KyrianHover::Wings});
     }
@@ -200,7 +195,7 @@ class spell_kyrian_ascendant_charge : public SpellScript
         return SPELL_CAST_OK;
     }
 
-    void Launch(SpellEffIndex /*index*/)
+    void Launch(SpellEffIndex)
     {
         Player* player = GetCaster()->ToPlayer();
         Unit* target = GetHitUnit();
@@ -213,14 +208,11 @@ class spell_kyrian_ascendant_charge : public SpellScript
         data->destination = _destination;
         data->elapsed = 0;
         data->dive = _dive;
-        // A target already at the arrival point needs no zero-length spline.
         if (player->GetExactDist(&_destination) <= 0.5f)
         {
             ChargeArrived(player, target, data->dive);
             return;
         }
-        // A shallow arc leaps from the ground; a zero-amplitude arc dives in
-        // a straight line while retaining the existing Wings flight permission.
         uint32 const previousSpline = player->movespline->GetId();
         player->GetMotionMaster()->MoveJump(_destination.GetPositionX(), _destination.GetPositionY(),
             _destination.GetPositionZ(), _dive ? 30.0f : 24.0f, _dive ? 0.0f : 8.0f,

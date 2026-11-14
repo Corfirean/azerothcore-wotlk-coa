@@ -1084,7 +1084,6 @@ class spell_race_visage : public SpellScript
         if (!player)
             return;
 
-        // Retail adapter: with a saved Dragon/Visage look pair the client swaps the model, no morph needed.
         bool const toggled = player->ToggleRetailForm();
         LOG_INFO("coa", "Visage: {} toggled the retail form: {}", player->GetName(), toggled);
         if (toggled)
@@ -1105,12 +1104,11 @@ class spell_race_visage : public SpellScript
     }
 };
 
-// Worgen: Two Forms (110690) switches between the Wolf and Human looks.
 class spell_race_two_forms : public SpellScript
 {
     PrepareSpellScript(spell_race_two_forms);
 
-    void HandleDummy(SpellEffIndex /*effIndex*/)
+    void HandleDummy(SpellEffIndex)
     {
         if (Player* player = GetCaster()->ToPlayer())
             LOG_INFO("coa", "Two Forms: {} toggled the retail form: {}", player->GetName(), player->ToggleRetailForm());

@@ -34,7 +34,6 @@ namespace
     {
         return IsHoverRace(player->getRace(true)) && player->IsAlive() && !player->IsMounted()
             && !player->IsInFlight() && !player->GetVehicle() && !player->GetTransport()
-            // Warrior stances are shapeshift records, but keep the native Kyrian body.
             && !player->IsInWater() && !player->IsInDisallowedMountForm()
             && player->GetDisplayId() == player->GetNativeDisplayId();
     }
@@ -49,8 +48,6 @@ namespace
         player->RemoveAurasDueToSpell(Wings);
         player->RemoveAurasDueToSpell(StunImmunity);
         player->RemoveAurasDueToSpell(Descent);
-        // Aura additions can be coalesced away on an immediate touchdown.
-        // Explicitly tell observers when the grounded landing finish may play.
         if (player->IsAlive() && IsGrounded(player) && !player->IsInWater()
             && !player->IsMounted() && !player->GetVehicle() && !player->IsInFlight())
             player->HandleEmoteCommand(EMOTE_ONESHOT_LAND);
@@ -66,7 +63,6 @@ namespace
             if (data->state.phase != Phase::Grounded)
             {
                 data->state.Descend();
-                // Grant safe descent before revoking flight, including at altitude.
                 if (player->IsAlive() && !player->HasAura(Descent))
                     player->CastSpell(player, Descent, true);
                 player->RemoveAurasDueToSpell(Wings);
@@ -100,8 +96,6 @@ public:
             return;
 
         player->learnSpell(Ability);
-        // A saved wings aura without runtime state indicates an interrupted session.
-        // End that activation instead of granting a fresh combat allowance on reconnect.
         if (player->HasAura(Wings) || player->HasAura(Descent))
         {
             HoverData* data = player->CustomData.GetDefault<HoverData>("KyrianHover");
@@ -144,8 +138,6 @@ public:
             Land(player);
     }
 
-    // Preserve the descent aura across an airborne logout/map change. Landing,
-    // including after the next login, is what starts the cooldown.
     void OnPlayerBeforeLogout(Player* player) override { EndFlight(player); }
     void OnPlayerMapChanged(Player* player) override { EndFlight(player); }
     void OnPlayerJustDied(Player* player) override { Land(player); }
@@ -155,7 +147,7 @@ class spell_kyrian_hover : public SpellScript
 {
     PrepareSpellScript(spell_kyrian_hover);
 
-    bool Validate(SpellInfo const* /*info*/) override
+    bool Validate(SpellInfo const*) override
     {
         return ValidateSpellInfo({Ability, Wings, StunImmunity, Descent});
     }
@@ -177,7 +169,7 @@ class spell_kyrian_hover : public SpellScript
         return SPELL_CAST_OK;
     }
 
-    void Activate(SpellEffIndex /*index*/)
+    void Activate(SpellEffIndex)
     {
         Player* player = GetCaster()->ToPlayer();
         if (!player)
@@ -217,7 +209,7 @@ class spell_kyrian_hover_wings : public AuraScript
 {
     PrepareAuraScript(spell_kyrian_hover_wings);
 
-    void Removed(AuraEffect const* /*effect*/, AuraEffectHandleModes /*mode*/)
+    void Removed(AuraEffect const*, AuraEffectHandleModes)
     {
         if (Player* player = GetTarget()->ToPlayer())
             if (HoverData* data = GetHover(player))

@@ -5808,7 +5808,6 @@ private:
       for (AddedVanityRow const &added : LoadAddedVanityRows())
         _rows.VanityItemIds.insert(added.ItemId);
       _rows.CreatureModels = BuildCreatureModelPatchRows();
-      // Upstream streams every textured display row from the world table; the race overlay names above win.
       for (auto &[displayId, textures] : LoadCreatureDisplayTextureRows())
         _rows.CreatureDisplayTextures.try_emplace(displayId, std::move(textures));
       _rowsPrepared = true;
@@ -9826,7 +9825,6 @@ public:
 
     if (opcode == CMSG_ANTICHEAT_ALERT)
       return true;
-    // The retail form looks are a regular handler (WorldSession::HandleEsteriaFormLookOpcode), not a consumed extension packet.
     if (opcode == CMSG_ESTERIA_FORM_LOOK)
       return true;
 
