@@ -319,6 +319,12 @@ void MotionTransport::Update(uint32 diff)
         }
     }
 
+    if (_animKickN)
+    {
+        if (diff >= _animKickT) { SetGoState(GO_STATE_READY); --_animKickN; _animKickT = 3000; } // next tick re-sets ACTIVE while moving
+        else _animKickT -= diff;
+    }
+
     sScriptMgr->OnTransportUpdate(this, diff);
 }
 
@@ -721,6 +727,8 @@ void MotionTransport::DelayedTeleportTransport()
     GetMap()->AddToMap<Transport>(this);
 
     LoadStaticPassengers();
+
+    if (GetEntry() == 9900101 || GetEntry() == 9900102) { _animKickN = 2; _animKickT = 3000; }
 }
 
 void MotionTransport::UpdatePassengerPositions(PassengerSet& passengers)
