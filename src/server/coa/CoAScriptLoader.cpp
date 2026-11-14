@@ -73,6 +73,7 @@ void AddSC_drakkin_racials();
 void AddSC_drakonid_racials();
 void AddSC_darkfallen_racials();
 void AddSC_broken_racials();
+void AddSC_titan_aegis();
 void AddSC_CoABossLeash();
 void AddSC_kyrian_hover();
 void AddSC_kyrian_racials();
@@ -898,6 +899,7 @@ void AddCoAScripts()
     AddSC_drakonid_racials();
     AddSC_darkfallen_racials();
     AddSC_broken_racials();
+    AddSC_titan_aegis();
     AddSC_CoABossLeash();
     AddSC_kyrian_hover();
     AddSC_kyrian_racials();
