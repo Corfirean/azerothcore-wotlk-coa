@@ -63,9 +63,13 @@ namespace
         CatalogLoaded = true;
         if (!CatalogMatches(*Pending))
         {
-            LOG_ERROR("server.loading", "CoA Custom Races: race catalog changed; review DisabledRaceIds before applying a new policy");
-            Pending.reset();
-            return;
+            // An update changed the race catalog after the list was saved: custom races stay as configured and the
+            // listed races the catalog still has stay closed, instead of dropping the whole policy.
+            LOG_WARN("server.loading", "CoA Custom Races: race catalog changed since DisabledRaceIds was saved; listed races stay disabled, review the list in the Manager");
+            std::erase_if(Pending->Disabled, [](uint8 race)
+            {
+                return sChrRacesStore.LookupEntry(race) == nullptr;
+            });
         }
         if (!CoARaceAvailability::Valid(Pending->Disabled, [](uint8 race)
             {
