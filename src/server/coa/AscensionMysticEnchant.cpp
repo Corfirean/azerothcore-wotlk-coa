@@ -1197,11 +1197,15 @@ public:
 
 bool ApplyGuide(Player* player, std::vector<GuideEnchant> const& guide, bool learnMissing)
 {
-    State* state = Ready ? Find(player) : nullptr;
-    if (!state || guide.empty())
+    if (!player || !Ready || guide.empty())
         return false;
+    State* state = Find(player);
+    if (!state)
+        state = &Load(player);
     ClientConfig const config = CurrentClientConfig();
     Character character = Describe(player, config);
+    if (character.Wildcard())
+        return false;
     character.Known = &state->Known;
     if (learnMissing)
         for (uint32 spell : GuideLessons(Loaded, character, guide))
@@ -1211,6 +1215,7 @@ bool ApplyGuide(Player* player, std::vector<GuideEnchant> const& guide, bool lea
     if (after == before)
         return false;
     state->Active() = after;
+    SaveHeader(player, *state);
     for (uint32 slot = 0; slot < SLOT_COUNT; ++slot)
         if (before[slot] != after[slot])
             SaveSlot(player, state->ActivePreset, slot, after[slot]);
@@ -1235,7 +1240,8 @@ std::vector<GuideEnchant> RecommendEnchants(Player const* player, uint32 maxCoun
 
     for (Enchant const& enchant : Loaded.Rows)
     {
-        if (!enchant.Spell || enchant.Quality < QUALITY_UNCOMMON)
+        uint32 const quality = QualityOf(enchant, character.Class);
+        if (!enchant.Spell || quality < QUALITY_UNCOMMON || quality >= QUALITY_MAX)
             continue;
         if (!ClassAllowed(enchant, character.Class))
             continue;

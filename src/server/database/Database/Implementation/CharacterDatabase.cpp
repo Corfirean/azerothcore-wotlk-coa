@@ -181,6 +181,9 @@ void CharacterDatabaseConnection::DoPrepareStatements()
         "SELECT entry, id, leveling_id, pve_id, pvp_id, class, owner_account, author, name, subtext, description, "
         "icon, upvotes, created, updated, category, roles, primary_stat, needs_repairs, flags, difficulty "
         "FROM coa_build_creator", CONNECTION_SYNCH);
+    PrepareStatement(CHAR_SEL_COA_BUILD_CREATOR_BY_ID,
+        "SELECT entry, id, name, roles, primary_stat FROM coa_build_creator WHERE id = ? LIMIT 1",
+        CONNECTION_SYNCH);
     PrepareStatement(CHAR_SEL_COA_BUILD_CREATOR_SPELLS,
         "SELECT entry, spell, level, core, optimal, empowering, synergistic, flags, comment "
         "FROM coa_build_creator_spell ORDER BY entry, slot", CONNECTION_SYNCH);
