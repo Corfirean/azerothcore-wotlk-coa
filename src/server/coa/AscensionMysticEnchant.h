@@ -25,6 +25,8 @@ struct Collection
 
 bool ApplyGuide(Player* player, std::vector<GuideEnchant> const& guide, bool learnMissing = false);
 
+std::vector<GuideEnchant> RecommendEnchants(Player const* player, uint32 maxCount = 7);
+
 uint32 ClearActivePreset(Player* player);
 
 std::optional<Collection> Summarize(Player const* player);
