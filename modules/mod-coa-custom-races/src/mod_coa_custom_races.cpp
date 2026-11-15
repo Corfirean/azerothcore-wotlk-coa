@@ -123,13 +123,24 @@ public:
 class CoACustomRacesAccount : public AccountScript
 {
 public:
-    CoACustomRacesAccount() : AccountScript("CoACustomRacesAccount", { ACCOUNTHOOK_CAN_ACCOUNT_CREATE_CHARACTER }) { }
+    CoACustomRacesAccount() : AccountScript("CoACustomRacesAccount",
+        { ACCOUNTHOOK_CAN_ACCOUNT_CREATE_CHARACTER, ACCOUNTHOOK_CAN_ACCOUNT_LOGIN_CHARACTER }) { }
 
     bool CanAccountCreateCharacter(uint32 /*accountId*/, uint8 race, uint8 /*charClass*/) override
     {
         std::lock_guard<std::mutex> guard(PolicyMutex);
         ApplyPendingPolicy();
         return CoARaceAvailability::CanCreate(CustomRacesEnabled, DisabledRaceIds, race);
+    }
+
+    bool CanAccountLoginCharacter([[maybe_unused]] uint32 accountId, uint8 race, uint8 /*charClass*/) override
+    {
+        std::lock_guard<std::mutex> guard(PolicyMutex);
+        ApplyPendingPolicy();
+        if (CoARaceAvailability::CanEnterWorld(CustomRacesEnabled, race))
+            return true;
+        LOG_INFO("module", "CoA Custom Races: account {} cannot enter the world with race {} while custom races are off", accountId, race);
+        return false;
     }
 };
 

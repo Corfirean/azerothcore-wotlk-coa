@@ -564,6 +564,7 @@ public: /* AccountScript */
     void OnPasswordChange(uint32 accountId);
     void OnFailedPasswordChange(uint32 accountId);
     bool CanAccountCreateCharacter(uint32 accountId, uint8 charRace, uint8 charClass);
+    bool CanAccountLoginCharacter(uint32 accountId, uint8 charRace, uint8 charClass);
 
 public: /* GuildScript */
     void OnGuildAddMember(Guild* guild, Player* player, uint8& plRank);
