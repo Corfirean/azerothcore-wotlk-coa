@@ -49,6 +49,7 @@ inline Store sChrRacesStore;
 #pragma once
 #define LOG_INFO(...) do {} while (false)
 #define LOG_ERROR(...) do {} while (false)
+#define LOG_WARN(...) do {} while (false)
 ''')
         (directory / 'CryptoHash.h').write_text('''
 #pragma once
@@ -70,7 +71,7 @@ namespace Acore::Crypto
 #pragma once
 #include "DBCStores.h"
 #include <initializer_list>
-enum {WORLDHOOK_ON_BEFORE_CONFIG_LOAD, WORLDHOOK_ON_STARTUP, ACCOUNTHOOK_CAN_ACCOUNT_CREATE_CHARACTER};
+enum {WORLDHOOK_ON_BEFORE_CONFIG_LOAD, WORLDHOOK_ON_STARTUP, ACCOUNTHOOK_CAN_ACCOUNT_CREATE_CHARACTER, ACCOUNTHOOK_CAN_ACCOUNT_LOGIN_CHARACTER};
 struct WorldScript
 {
     WorldScript(char const*, std::initializer_list<int>) { }
@@ -82,6 +83,7 @@ struct AccountScript
 {
     AccountScript(char const*, std::initializer_list<int>) { }
     virtual bool CanAccountCreateCharacter(uint32, uint8, uint8) { return true; }
+    virtual bool CanAccountLoginCharacter(uint32, uint8, uint8) { return true; }
     virtual ~AccountScript() = default;
 };
 ''')
@@ -136,7 +138,8 @@ int main(int, char** argv)
     ConfigInstance.Values["CoACustomRaces.DisabledRaceIds"] = "97";
     ConfigInstance.Values["CoACustomRaces.DisabledRaceCatalogSha256"] = std::string(64, '1');
     world.OnBeforeConfigLoad(true);
-    Require(account.CanAccountCreateCharacter(1, 97, 12));
+    Require(!account.CanAccountCreateCharacter(1, 97, 12));
+    Require(account.CanAccountCreateCharacter(1, 82, 12));
     ConfigInstance.Values["CoACustomRaces.DisabledRaceCatalogSha256"] = std::string(64, '0');
     world.OnBeforeConfigLoad(true);
     Require(!account.CanAccountCreateCharacter(1, 97, 12));
@@ -148,7 +151,16 @@ int main(int, char** argv)
     world.OnBeforeConfigLoad(true);
     Require(!account.CanAccountCreateCharacter(1, 82, 12));
     Require(account.CanAccountCreateCharacter(1, 1, 12));
-    std::cout << "PASS: production module parser, lifecycle, stock races, rejection, re-enable and atomic invalid-config handling";
+    Require(!account.CanAccountLoginCharacter(1, 82, 12));
+    Require(!account.CanAccountLoginCharacter(1, 97, 12));
+    for (auto race : {1,2,3,4,5,6,7,8,10,11})
+        Require(account.CanAccountLoginCharacter(1, static_cast<uint8>(race), 12));
+    ConfigInstance.Values["CoACustomRaces.Enable"] = "1";
+    ConfigInstance.Values["CoACustomRaces.DisabledRaceIds"] = "82";
+    world.OnBeforeConfigLoad(true);
+    Require(account.CanAccountLoginCharacter(1, 82, 12));
+    Require(account.CanAccountLoginCharacter(1, 97, 12));
+    std::cout << "PASS: production module parser, lifecycle, stock races, rejection, re-enable, atomic invalid-config handling, kept restriction on a changed catalog and custom-race logins only while enabled";
 }
 ''')
         executable = directory / 'policy.exe'

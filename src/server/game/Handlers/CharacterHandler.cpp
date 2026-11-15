@@ -988,6 +988,15 @@ void WorldSession::HandlePlayerLoginFromDB(LoginQueryHolder const& holder)
         return;
     }
 
+    if (!sScriptMgr->CanAccountLoginCharacter(GetAccountId(), pCurrChar->getRace(true), pCurrChar->getClass()))
+    {
+        SetPlayer(nullptr);
+        KickPlayer("WorldSession::HandlePlayerLogin character refused by a script");
+        delete pCurrChar;
+        m_playerLoading = false;
+        return;
+    }
+
     pCurrChar->GetMotionMaster()->Initialize();
     pCurrChar->SendDungeonDifficulty(false);
 

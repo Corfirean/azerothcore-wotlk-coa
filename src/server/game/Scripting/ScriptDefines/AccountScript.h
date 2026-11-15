@@ -32,6 +32,7 @@ enum AccountHook
     ACCOUNTHOOK_ON_PASSWORD_CHANGE,
     ACCOUNTHOOK_ON_FAILED_PASSWORD_CHANGE,
     ACCOUNTHOOK_CAN_ACCOUNT_CREATE_CHARACTER,
+    ACCOUNTHOOK_CAN_ACCOUNT_LOGIN_CHARACTER,
     ACCOUNTHOOK_END
 };
 
@@ -67,6 +68,8 @@ public:
 
     // Called when creating a character on the Account
     [[nodiscard]] virtual bool CanAccountCreateCharacter(uint32 /*accountId*/, uint8 /*charRace*/, uint8 /*charClass*/) { return true;}
+
+    [[nodiscard]] virtual bool CanAccountLoginCharacter(uint32 /*accountId*/, uint8 /*charRace*/, uint8 /*charClass*/) { return true; }
 };
 
 #endif

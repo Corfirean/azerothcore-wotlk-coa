@@ -63,9 +63,13 @@ namespace
         CatalogLoaded = true;
         if (!CatalogMatches(*Pending))
         {
-            LOG_ERROR("server.loading", "CoA Custom Races: race catalog changed; review DisabledRaceIds before applying a new policy");
-            Pending.reset();
-            return;
+            // An update changed the race catalog after the list was saved: custom races stay as configured and the
+            // listed races the catalog still has stay closed, instead of dropping the whole policy.
+            LOG_WARN("server.loading", "CoA Custom Races: race catalog changed since DisabledRaceIds was saved; listed races stay disabled, review the list in the Manager");
+            std::erase_if(Pending->Disabled, [](uint8 race)
+            {
+                return sChrRacesStore.LookupEntry(race) == nullptr;
+            });
         }
         if (!CoARaceAvailability::Valid(Pending->Disabled, [](uint8 race)
             {
@@ -119,13 +123,24 @@ public:
 class CoACustomRacesAccount : public AccountScript
 {
 public:
-    CoACustomRacesAccount() : AccountScript("CoACustomRacesAccount", { ACCOUNTHOOK_CAN_ACCOUNT_CREATE_CHARACTER }) { }
+    CoACustomRacesAccount() : AccountScript("CoACustomRacesAccount",
+        { ACCOUNTHOOK_CAN_ACCOUNT_CREATE_CHARACTER, ACCOUNTHOOK_CAN_ACCOUNT_LOGIN_CHARACTER }) { }
 
     bool CanAccountCreateCharacter(uint32 /*accountId*/, uint8 race, uint8 /*charClass*/) override
     {
         std::lock_guard<std::mutex> guard(PolicyMutex);
         ApplyPendingPolicy();
         return CoARaceAvailability::CanCreate(CustomRacesEnabled, DisabledRaceIds, race);
+    }
+
+    bool CanAccountLoginCharacter([[maybe_unused]] uint32 accountId, uint8 race, uint8 /*charClass*/) override
+    {
+        std::lock_guard<std::mutex> guard(PolicyMutex);
+        ApplyPendingPolicy();
+        if (CoARaceAvailability::CanEnterWorld(CustomRacesEnabled, race))
+            return true;
+        LOG_INFO("module", "CoA Custom Races: account {} cannot enter the world with race {} while custom races are off", accountId, race);
+        return false;
     }
 };
 
