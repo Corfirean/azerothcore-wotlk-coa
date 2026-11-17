@@ -1,0 +1,16 @@
+## Interface: 30300
+## Title: Dev Menu
+## Notes: Made by ilusixn. In-game editor for NPCs, services, quests (AI helper) and objects: browse/search every NPC, Ctrl+click 3D preview, spawn & save, move, paths, emotes, roles, rename. GM only. /npc
+## Version: 2.0
+## SavedVariables: IlusixnDevMenuDB
+EmoteData.lua
+DevMenu.lua
+DevMenu_Ext.lua
+DevMenu_CoA.lua
+DevMenu_Create.lua
+DevMenu_Help.lua
+DevMenu_Share.lua
+DevMenu_Combat.lua
+DevMenu_Items.lua
+DevMenu_Me.lua
+DevMenu_Server.lua

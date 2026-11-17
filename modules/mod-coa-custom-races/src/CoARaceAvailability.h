@@ -78,6 +78,11 @@ namespace CoARaceAvailability
     {
         return IsStockRace(race) || (enabled && disabled.find(race) == disabled.end());
     }
+
+    inline bool CanEnterWorld(bool enabled, std::uint8_t race)
+    {
+        return (race >= 1 && race <= 11) || enabled;
+    }
 }
 
 #endif

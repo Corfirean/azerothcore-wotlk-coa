@@ -1,4 +1,5 @@
 /* Copyright (C) 2016+ AzerothCore, GNU AGPL v3. */
+#include "AscensionSpecialization.h"
 #include "Log.h"
 #include "Player.h"
 #include "ScriptMgr.h"
@@ -192,7 +193,7 @@ public:
     {
         Player* player = spell->GetCaster()->ToPlayer();
         SpellInfo const* info = spell->GetSpellInfo();
-        if (!player || player->getClass() != CLASS_RANGER || miss != SPELL_MISS_NONE || !target ||
+        if (!player || !UsesAscensionClassMechanics(player, CLASS_RANGER) || miss != SPELL_MISS_NONE || !target ||
             !IsRangerSpell(info))
             return;
 
@@ -242,7 +243,7 @@ class aura_ascension_ranger_hawkeye : public AuraScript
     bool IsMarkedEnemy(Unit* target)
     {
         Unit* ranger = GetUnitOwner();
-        if (!target || !ranger || !ranger->IsPlayer() || ranger->ToPlayer()->getClass() != CLASS_RANGER)
+        if (!target || !ranger || !ranger->IsPlayer() || !UsesAscensionClassMechanics(ranger->ToPlayer(), CLASS_RANGER))
             return false;
         return target == ranger ||
             (!ranger->IsFriendlyTo(target) && target->GetAuraOfRankedSpell(CHAIN_HUNTING_SHOT, ranger->GetGUID()));

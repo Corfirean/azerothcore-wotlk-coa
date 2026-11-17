@@ -111,6 +111,8 @@ private:
     mutable std::mutex Lock;
     bool _passengersLoaded;
     bool _delayedTeleport;
+    uint32 _animKickT = 0; // ferry animation workaround after map teleport
+    uint8 _animKickN = 0;
 
     bool _requiresFirstDepartureSync;
     std::chrono::system_clock::time_point _firstDepartureTime;

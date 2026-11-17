@@ -1,6 +1,7 @@
 /* Copyright (C) 2016+ AzerothCore, GNU AGPL v3. */
 
 #include "AscensionRunemasterEchoes.h"
+#include "AscensionSpecialization.h"
 #include "DataMap.h"
 #include "GameTime.h"
 #include "Player.h"
@@ -47,7 +48,7 @@ struct Runtime : DataMap::Base
 
 bool IsRunemaster(Player const* player)
 {
-    return player && player->getClass() == CLASS_SPIRIT_MAGE;
+    return player && UsesAscensionClassMechanics(player, CLASS_SPIRIT_MAGE);
 }
 
 uint64 Now()
@@ -463,7 +464,7 @@ void SynchronizeAscensionRunemasterEchoes(Player* player, uint32 specializationI
     if (!IsRunemaster(player))
         return;
     Runtime& runtime = *player->CustomData.GetDefault<Runtime>(RUNTIME_KEY);
-    runtime.Specialization = specializationId;
+    runtime.Specialization = AscensionSpecializationForClass(player, CLASS_SPIRIT_MAGE, specializationId);
     Synchronize(player, runtime);
 }
 

@@ -1084,6 +1084,14 @@ class spell_race_visage : public SpellScript
         if (!player)
             return;
 
+        bool const toggled = player->ToggleRetailForm();
+        LOG_INFO("coa", "Visage: {} toggled the retail form: {}", player->GetName(), toggled);
+        if (toggled)
+        {
+            player->RemoveAurasDueToSpell(SPELL_VISAGE_FORM);
+            return;
+        }
+
         if (player->HasAura(SPELL_VISAGE_FORM))
             player->RemoveAurasDueToSpell(SPELL_VISAGE_FORM);
         else
@@ -1093,6 +1101,22 @@ class spell_race_visage : public SpellScript
     void Register() override
     {
         OnEffectHitTarget += SpellEffectFn(spell_race_visage::HandleDummy, EFFECT_0, SPELL_EFFECT_DUMMY);
+    }
+};
+
+class spell_race_two_forms : public SpellScript
+{
+    PrepareSpellScript(spell_race_two_forms);
+
+    void HandleDummy(SpellEffIndex)
+    {
+        if (Player* player = GetCaster()->ToPlayer())
+            LOG_INFO("coa", "Two Forms: {} toggled the retail form: {}", player->GetName(), player->ToggleRetailForm());
+    }
+
+    void Register() override
+    {
+        OnEffectHitTarget += SpellEffectFn(spell_race_two_forms::HandleDummy, EFFECT_0, SPELL_EFFECT_DUMMY);
     }
 };
 
@@ -1568,6 +1592,7 @@ void AddSC_race_racials()
     RegisterSpellScript(spell_race_rummage_your_bag);
     RegisterSpellScript(spell_race_visage);
     RegisterSpellScript(spell_race_visage_form);
+    RegisterSpellScript(spell_race_two_forms);
     RegisterSpellScript(spell_race_chosen_identity);
     RegisterSpellScript(spell_race_ingest_minerals);
     RegisterSpellScript(spell_race_quiet_contemplation);

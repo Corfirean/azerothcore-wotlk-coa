@@ -551,6 +551,16 @@ std::vector<AscensionCoATalentState::KnownEntry> KnownEntries(Player const* play
 std::vector<AscensionCoATalentState::KnownEntry> KnownEntries(Player const* player, std::uint32_t spec);
 BuildChoice ApplyBuildUpload(Player* player, std::vector<AscensionCoATalentState::KnownEntry> const& upload);
 using StarterPick = std::function<std::size_t(std::vector<std::vector<Slot>> const& candidates)>;
+struct WildcardArchetypeResult
+{
+    bool Success = false;
+    std::string Reason;
+    std::uint32_t AppliedSpells = 0;
+    std::uint32_t PrimaryStat = 0;
+};
+
+WildcardArchetypeResult ApplyArchetypeBuild(Player* player, std::uint32_t spec, std::uint32_t primaryStatEntry,
+    std::vector<std::pair<std::uint32_t, std::uint8_t>> const& spells, std::string const& buildId = "");
 void DraftBuild(Player* player, StarterPick const& pickStarters = {}, std::uint32_t starterDraws = 1);
 void ClaimLevelingScrolls(Player* player);
 bool UnlearnForReroll(Player* player, std::uint32_t entryId);
