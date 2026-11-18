@@ -24,6 +24,8 @@ enum StormbringerTalentSpells : uint32
 {
     SPELL_CLOUDBURST = 801838,
     SPELL_CLOUDBURST_KNOCKBACK = 802385,
+    SPELL_RIDE_THE_LIGHTNING = 800099,
+    SPELL_RIDE_THE_LIGHTNING_LEAP = 800139,
     SPELL_SHOCK = 804020,
     SPELL_SHOCK_DOT = 560336,
     SPELL_SHOCK_HIDDEN_PASSIVE = 707058,
@@ -63,8 +65,8 @@ enum StormbringerTalentSpells : uint32
     SPELL_UNBOUND_ELEMENTALIST = 705702,
     SPELL_CONDUCTIVE_PASSIVE = 92098,
     SPELL_CONDUCTIVE = 567559,
-    SPELL_CONDUCTIVE_STACKS = 567573,
-    SPELL_CONDUCTION = 567560
+    SPELL_CONDUCTION = 567560,
+    SPELL_AEROBLAST_ECHO = 802750
 };
 
 constexpr int32 ASCENSION_SPELLMOD_BONUS_MULTIPLIER = 41;
@@ -201,6 +203,10 @@ public:
             info->Id == SPELL_CLOUDBURST && !spell->IsTriggered())
             player->CastSpell(player, SPELL_CLOUDBURST_KNOCKBACK, true);
 
+        if (player && UsesAscensionClassMechanics(player, CLASS_STORMBRINGER) && info->Id == SPELL_RIDE_THE_LIGHTNING &&
+            !spell->IsTriggered())
+            player->CastSpell(player, SPELL_RIDE_THE_LIGHTNING_LEAP, true);
+
         if (player && UsesAscensionClassMechanics(player, CLASS_STORMBRINGER) && IsConjureStorm(info) &&
             !spell->IsTriggered() && player->HasSpell(SPELL_CONJURATION_MASTERY))
             player->CastSpell(player, SPELL_REFUND_STATIC_10, true);
@@ -251,11 +257,7 @@ public:
 
         if (damage && !spell->IsTriggered() && (info->SpellFamilyFlags[1] & TORRENTIAL_WRATH_FAMILY_FLAG_ONE) &&
             (info->SpellFamilyFlags[2] & TORRENTIAL_WRATH_FAMILY_FLAG_TWO) && player->HasAura(SPELL_CONDUCTIVE))
-        {
             player->CastSpell(target, SPELL_CONDUCTION, true);
-            player->RemoveAurasDueToSpell(SPELL_CONDUCTIVE);
-            player->RemoveAurasDueToSpell(SPELL_CONDUCTIVE_STACKS);
-        }
 
         if (damage && !spell->IsTriggered() &&
             ((info->SpellFamilyFlags[0] & SHOCK_FAMILY_FLAG_ZERO) || (info->SpellFamilyFlags[1] & BRINE_FAMILY_FLAG_ONE)) &&
@@ -328,6 +330,11 @@ public:
         }
         if (info->Id == SPELL_THORIMS_GIFT_PATCH)
             info->AscensionInheritsResolvedAmount = true;
+        if (info->Id == SPELL_AEROBLAST_ECHO)
+        {
+            info->AscensionInheritsResolvedAmount = true;
+            info->AscensionInheritsPowerScaling = true;
+        }
         if (info->Id == SPELL_PERPETUAL_SHOCK)
             info->Effects[EFFECT_1].Effect = 0;
         if (info->Id == SPELL_CHARGED_CONDUIT)

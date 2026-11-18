@@ -57,6 +57,7 @@ enum UnitHook
     UNITHOOK_ON_HEALTH_CHANGED,
     UNITHOOK_MODIFY_MELEE_DAMAGE_RANGE,
     UNITHOOK_MODIFY_SPELL_MISS_CHANCE,
+    UNITHOOK_ON_UPDATE_RUN_SPEED,
     UNITHOOK_END
 };
 
@@ -104,6 +105,10 @@ public:
 
     // Called with a melee swing's damage range before the roll
     virtual void ModifyMeleeDamageRange(Unit* /*target*/, Unit* /*attacker*/, float& /*minDamage*/, float& /*maxDamage*/) { }
+
+    // Called with the run speed modifiers before slows are applied
+    virtual void OnUnitUpdateRunSpeed(Unit* /*unit*/, int32& /*mainSpeedMod*/, float& /*stackBonus*/,
+        float& /*nonStackBonus*/) { }
 
     // Called when Spell Damage is being Dealt
     virtual void ModifySpellDamageTaken(Unit* /*target*/, Unit* /*attacker*/, int32& /*damage*/, SpellInfo const* /*spellInfo*/) { }

@@ -28,6 +28,16 @@ other steps leave of the harness's 10000-step limit (`MAX_SCENARIO_STEPS`, `run.
 simulated clock; the harness runs one step per world update); otherwise the effect is read once and its verdict is
 `measured`. Templar: 51 rolled tokens, 2 to 1716 reads (Vindication 501589 102, Reckoning 572741 366).
 
+When the rolled token carries a power term (`$AP`, `$RAP`, `$SP`, `$sp<school>`) and the effect owner has a
+`spell_bonus_data` row with terms (its own row, or for a rank without one the row of the first rank of its
+`SpellRank.dbc` chain, as `SpellMgr::GetSpellBonusData` resolves it; ADR 0688), the reads are modelled before the
+judgement (ADR 0679): a direct damage effect
+(`SCHOOL_DAMAGE`, `HEALTH_LEECH`) adds `ap_bonus` x AP (RAP for a ranged weapon spell outside the melee class) and
+`direct_bonus` x the school's spell power, the terms `Unit::SpellDamageBonusDone` adds after `CalcValue`; the verdict
+names the row and its SQL source in `detail['bonus_data']`. The case is `not_measured` when the row cannot be
+modelled from the recorded stats (a periodic term, another effect type, a level penalty or a family coefficient
+modifier on a non-zero stat, no single school) or when `bonus_data.py` cannot read the table.
+
 A token without an id names the spell whose tooltip holds it: for a token of an expanded `@s:` tooltip that is the
 referenced spell, so its `$sN`, `$u` and `$d` are checked as tokens of another spell (Zealotry 92108 `$s2` is
 `effect_value` of 801450 effect 1; Glory 801481 checks its own `$d` as `aura_duration_ms` and the `$d` of Downfall
@@ -54,6 +64,10 @@ max health, strictly below the 35% gate and above any lower-threshold check that
 ms for `Unit::Update` to recompute the derived aura state flag. Without the wait the cast can still see the stale
 flag and fail `SPELL_FAILED_TARGET_AURASTATE` (111). An unmapped `TargetAuraState` is `unmodelled: target aura state
 <n> has no scenario fixture`, never silently skipped. Templar: Titanstrike 806521/806834/806835.
+`AURA_STATE_HEALTHLESS_20_PERCENT` (2) sets the target to 15% the same way. `AURA_STATE_FROZEN` (4) is not a health
+flag: `SpellInfo::GetAuraState` derives it from a Frost-school stun or root aura, so the fixture is a harness
+`set_aura` of Frost Nova 122 (Frost, root) on the target, a precondition fixture in the sense of rule 4 point 6.
+Necromancer: Glacial Impact 704355 (frozen), Death's Due 808016 (below 20%).
 
 A value that cannot be compared is never dropped; its `rule` starts with a stable prefix:
 `unreadable: <entry>` for a part the reader could not evaluate (the scenario measures the spell's first active effect
@@ -67,7 +81,8 @@ rather than left for the reader to keep re-investigating),
 `unmeasurable: <reason>` for a readable token with no no-combat metric (a periodic total or `mixed` token left to
 the hit scenario, a chance token, an aura of a passive or cast-time spell, a foreign amplitude or an amplitude of a
 passive effect, another spell's effect or radius that `Spell.dbc` does not define or that `disabled_foreign_effects`
-names, which `spell_effect_value`/`spell_effect_radius` refuse). Only `unmeasurable` expectations may lack a
+names, which `spell_effect_value`/`spell_effect_radius` refuse). A class file's `removed_own_effects` (ADR 0364) keeps an effect a class contract removes from being the
+rank's first effect for its unreadable tokens (Runic Harvest 562210-562213, effect 0). Only `unmeasurable` expectations may lack a
 measurement step. The rank's own radius (`$aN`), own period (`$tN`/`$TN` after an instant cast) and own stack count
 (`$u`) are measured, through `spell_effect_radius`, `aura_amplitude_ms` and `spell_max_stacks`; `$i`
 (`MaxAffectedTargets`) still has no no-combat metric.
@@ -87,6 +102,12 @@ citing the DBC trigger effect or the script that applies it) lists the pairs thi
 test player reached by its own reset-cooldown-and-recast sequence, chosen by whether the rank's own effects target
 `TARGET_UNIT_TARGET_ALLY` (`targets_ally`). Only the listed pairs get this extra check, so an uninvestigated
 `foreign_duration` match elsewhere in the class is unaffected (ADR 0051).
+An aura that `SPELL_EFFECT_ASCENSION_APPLY_AURA_TO_SUMMONS` (190) applies reaches the caster's summons only, never the
+caster. A class file's `summon_aura_carriers` (`{spell, entry, summon, learn, reason}`, ADR 0697) names a summon for
+such a rank: `value_scenario` learns `learn` and `summon`, casts `summon` (at the dummy when it is hostile), requires
+one owned `entry` creature, then casts the rank and reads the aura on that creature: presence as
+`owned_creature_count` with the spell, the duration as `owned_creature_aura_max_duration_ms`; an amount or amplitude
+has no owned-creature metric and is unmeasurable. A rank without an entry keeps the caster read.
 `spell_effect_value` is `SpellEffectInfo::CalcValue`, before aura scripts: every `effect_value` verdict carries
 `detail['scope']` "CalcValue before aura scripts (CalcAmount hooks not covered)". Each judged `effect_value` read
 (`read <kind>` rule, own or foreign effect) is followed by `<label> calc_amount_hooks`, the harness metric

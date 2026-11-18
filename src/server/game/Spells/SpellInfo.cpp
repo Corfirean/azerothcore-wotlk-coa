@@ -2763,6 +2763,10 @@ void SpellInfo::_LoadImmunityInfo()
                     case 54508: // Demonic Empowerment
                         mechanicImmunityMask |= (1ULL << MECHANIC_SNARE) | (1ULL << MECHANIC_ROOT) | (1ULL << MECHANIC_STUN);
                         break;
+                    case 804652: // Vial of Moonwell Water
+                        mechanicImmunityMask |= IMMUNE_TO_MOVEMENT_IMPAIRMENT_AND_LOSS_CONTROL_MASK &
+                            ~((1ULL << MECHANIC_SNARE) | (1ULL << MECHANIC_DAZE));
+                        break;
                     default:
                         if (miscVal < 1)
                             break;
@@ -3102,7 +3106,13 @@ uint32 SpellInfo::CalcCastTime(Unit* caster, Spell* spell) const
         uint32 const firstRank = GetFirstRankSpell()->Id;
         tinkerShot = firstRank == 500549 || firstRank == 500235;
     }
-    if (HasAttribute(SPELL_ATTR0_USES_RANGED_SLOT) && !artificersWand && !tinkerShot &&
+    bool witchHunterShot = false;
+    if (SpellFamilyName == 21)
+    {
+        uint32 const firstRank = GetFirstRankSpell()->Id;
+        witchHunterShot = firstRank == 804179 || firstRank == 805754;
+    }
+    if (HasAttribute(SPELL_ATTR0_USES_RANGED_SLOT) && !artificersWand && !tinkerShot && !witchHunterShot &&
         (!IsAutoRepeatRangedSpell()) && (castTime || !IsChanneled()))
         castTime += 500;
 

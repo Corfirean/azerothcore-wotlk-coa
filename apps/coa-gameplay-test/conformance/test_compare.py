@@ -8,6 +8,7 @@ from statistics import fmean, pstdev
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 from compare import (ALERT_COLUMNS, CONFORMANT, DATA_ONLY, EFFECT_VALUE_SCOPE, ENGINE_ROUNDING, NOT_MEASURED,
                      PER_LEVEL_ROUNDING, PER_LEVEL_UNMODELLED, per_level_loss, per_level_unmodelled,
@@ -16,10 +17,12 @@ from compare import (ALERT_COLUMNS, CONFORMANT, DATA_ONLY, EFFECT_VALUE_SCOPE, E
                      BuildMismatch, DbcTooltips, ScenarioDrift, Verdict, evaluate,
                      alert_rows, banded_status, compare, delta_margin, log_query_of, measured_values,
                      observation_lines, owner_fallback, question_detail, read_verdicts, resolve_linked_statuses,
+                     apply_value_links, resolve_base_roll_links,
                      write_outputs)
 from behaviours import BEHAVIOUR_METRIC_DELTA
+from bonus_data import BonusRow, BonusTable
 from hits import HitModel, Modifier
-from profile import CLASSES_DIR, DBC_DIR
+from profile import DBC_DIR, FIXTURE_CLASSES_DIR, load_fixture_class_file
 from classes import class_spells
 from tooltip import CasterStats, Displayed, Readout, Unreadable, read_tooltip
 from values import (GAP_CLOSER_DISTANCE, GAP_CLOSER_MARGIN_YD, NOMINAL_MELEE_RANGE_YD, Expectation,
@@ -29,7 +32,7 @@ from values import (GAP_CLOSER_DISTANCE, GAP_CLOSER_MARGIN_YD, NOMINAL_MELEE_RAN
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 import batch
 
-CLASS_FILE = json.loads((CLASSES_DIR / 'templar.json').read_text(encoding='utf-8'))
+CLASS_FILE = json.loads((FIXTURE_CLASSES_DIR / 'templar.json').read_text(encoding='utf-8'))
 RANK = 1001
 FIXED_POINTS = (0, 1)
 ROLLS = range(100, 110)
@@ -175,6 +178,19 @@ class FakeTooltips:
         return 0
 
 
+class BonusTooltips(FakeTooltips):
+    def __init__(self, tokens, points=None, fields=None, modifiers=None, first_ranks=None):
+        super().__init__(tokens, points, fields)
+        self.modifiers = modifiers or []
+        self.first_ranks = first_ranks or {}
+
+    def coefficient_modifiers(self, spell_id):
+        return self.modifiers
+
+    def first_rank(self, spell_id):
+        return self.first_ranks.get(spell_id)
+
+
 def rolled_reads_needed():
     values = [roll + 313 * 0.45 for roll in ROLLS]
     return values, mean_samples(values)
@@ -282,6 +298,99 @@ class CompareTest(unittest.TestCase):
         item = expectation(label, 'effect_value', text, 'read flat', 0, {'samples': samples or len(reads)})
         steps = [assert_step(name, str(read)) for name, read in zip(labels, reads)]
         return self.value_run([item], [text], steps, FakeTooltips(tokens, {(RANK, 0): (99, 10)}))[label]
+
+    def bonus_verdict(self, row, reads=None, modifiers=(), spell_level=0, row_spell=RANK, first_ranks=None):
+        text = '${$m1+0+$AP*0.55+$sps*1}'
+        label = '1001 effect_value e0 #0'
+
+        def tokens(caster, forced):
+            roll = forced[2] if forced else 100
+            return [Displayed(text, roll + caster.ap * 0.55 + caster.sp_by_school[5], 0, 'flat')]
+
+        reads = reads or [ROLLS[index % len(ROLLS)] for index in range(20)]
+        labels = sample_labels(label, len(reads))
+        item = expectation(label, 'effect_value', text, 'read flat', 0, {'samples': len(reads)})
+        steps = [assert_step(name, str(read)) for name, read in zip(labels, reads)]
+        reader = BonusTooltips(tokens, {(RANK, 0): (99, 10)},
+                               {(RANK, 'Effect[0]'): 2, (RANK, 'SchoolMask'): 32, (RANK, 'SpellLevel'): spell_level,
+                                (RANK, 'MaxLevel'): 80, (RANK, 'DmgClass'): 1}, modifiers=list(modifiers),
+                               first_ranks=first_ranks)
+        table = BonusTable({row_spell: row} if row else {})
+        with mock.patch('compare.bonus_table', return_value=table):
+            verdict = self.value_run([item], [text], steps, reader)[label]
+        self.fresh()
+        return verdict
+
+    def test_bare_calc_value_reads_plus_the_bonus_data_terms_are_ok(self):
+        verdict = self.bonus_verdict(BonusRow(RANK, 1.0, 0.0, 0.55, 0.0, 'rev_bonus.sql'))
+        self.assertEqual(verdict.status, 'ok')
+        self.assertIn('spell_bonus_data 1001 (rev_bonus.sql)', verdict.explanation)
+        self.assertEqual(verdict.detail['bonus_data']['ap_term'], 172.0)
+        self.assertAlmostEqual(verdict.detail['bonus_data']['ap_formula'], 313 * 0.55, places=3)
+        self.assertEqual(verdict.detail['bonus_data']['truncated_terms'], 1)
+        self.assertIn('terms modelled from spell_bonus_data, not observed', verdict.explanation)
+        self.assertIn('int32 172 (Unit.cpp:9885)', verdict.explanation)
+
+    def test_reads_more_than_one_below_per_truncated_term_alert(self):
+        row = BonusRow(RANK, 1.0, 0.0, 0.55, 0.0, 'rev.sql')
+        lowered = [ROLLS[index % len(ROLLS)] - 2 for index in range(20)]
+        self.assertEqual(self.bonus_verdict(row, reads=lowered).status, 'alert')
+        self.assertEqual(self.bonus_verdict(row, reads=[read + 1 for read in lowered]).status, 'ok')
+
+    def test_a_rank_without_its_own_row_reads_its_first_ranks_row(self):
+        row = BonusRow(1000, 1.0, 0.0, 0.55, 0.0, 'rev_first.sql')
+        verdict = self.bonus_verdict(row, row_spell=1000, first_ranks={RANK: 1000})
+        self.assertEqual(verdict.status, 'ok')
+        self.assertIn('spell_bonus_data 1000 (rev_first.sql), the first rank of 1001', verdict.explanation)
+        self.assertIn('SpellMgr.cpp:1010-1016', verdict.explanation)
+        self.assertEqual(verdict.detail['bonus_data']['first_rank_of'], RANK)
+
+    def test_a_first_ranks_row_without_the_chain_or_without_its_terms_alerts(self):
+        row = BonusRow(1000, 1.0, 0.0, 0.55, 0.0, 'rev_first.sql')
+        self.assertEqual(self.bonus_verdict(row, row_spell=1000).status, 'alert')
+        self.assertEqual(self.bonus_verdict(row, row_spell=1000, first_ranks={RANK: 999}).status, 'alert')
+        mutant = BonusRow(1000, 1.0, 0.0, 0.0, 0.0, 'mutant.sql')
+        self.assertEqual(self.bonus_verdict(mutant, row_spell=1000, first_ranks={RANK: 1000}).status, 'alert')
+
+    def test_a_rank_with_its_own_row_keeps_it_over_its_first_rank(self):
+        own = self.bonus_verdict(BonusRow(RANK, 1.0, 0.0, 0.55, 0.0, 'rev_bonus.sql'), first_ranks={RANK: 1000})
+        self.assertEqual(own.status, 'ok')
+        self.assertNotIn('first_rank_of', own.detail['bonus_data'])
+
+    def test_a_row_without_its_attack_power_coefficient_alerts(self):
+        self.assertEqual(self.bonus_verdict(BonusRow(RANK, 1.0, 0.0, 0.0, 0.0, 'mutant.sql')).status, 'alert')
+
+    def test_a_zero_row_keeps_the_verdict_without_a_row(self):
+        zero = self.bonus_verdict(BonusRow(RANK, 0.0, 0.0, 0.0, 0.0, 'zero.sql'))
+        absent = self.bonus_verdict(None)
+        self.assertEqual(asdict(zero), asdict(absent))
+        self.assertEqual(zero.status, 'alert')
+        self.assertNotIn('bonus_data', zero.detail)
+
+    def test_a_periodic_row_or_an_attack_power_coefficient_modifier_is_not_measured(self):
+        periodic = self.bonus_verdict(BonusRow(RANK, 0.0, 0.3, 0.0, 0.0, 'dot.sql'))
+        modified = self.bonus_verdict(BonusRow(RANK, 1.0, 0.0, 0.55, 0.0, 'rev.sql'), modifiers=[(700001, 'ap')])
+        self.assertEqual([periodic.status, modified.status], [NOT_MEASURED] * 2)
+        self.assertIn('periodic terms', periodic.explanation)
+        self.assertIn('700001', modified.explanation)
+
+    def test_a_spell_power_modifier_or_a_level_penalty_without_spell_power_keeps_the_model(self):
+        row = BonusRow(RANK, 1.0, 0.0, 0.55, 0.0, 'rev.sql')
+        self.assertEqual(self.bonus_verdict(row, modifiers=[(700001, 'sp')]).status, 'ok')
+        self.assertEqual(self.bonus_verdict(row, spell_level=10).status, 'ok')
+
+    def test_an_unreadable_bonus_table_is_not_measured_rather_than_passed(self):
+        reads = [ROLLS[index % len(ROLLS)] for index in range(20)]
+        text = '${$m1+0+$AP*0.55+$sps*1}'
+        label = '1001 effect_value e0 #0'
+        item = expectation(label, 'effect_value', text, 'read flat', 0, {'samples': len(reads)})
+        steps = [assert_step(name, str(read)) for name, read in zip(sample_labels(label, len(reads)), reads)]
+        reader = BonusTooltips(lambda caster, forced: [Displayed(text, (forced[2] if forced else 100) + 172.15, 0,
+                                                                 'flat')], {(RANK, 0): (99, 10)}, {})
+        with mock.patch('compare.bonus_table', return_value=BonusTable({}, 'rev_x.sql: REPLACE')):
+            verdict = self.value_run([item], [text], steps, reader)[label]
+        self.assertEqual(verdict.status, NOT_MEASURED)
+        self.assertIn('rev_x.sql: REPLACE', verdict.explanation)
 
     def test_reads_of_a_rolled_effect_follow_the_hit_mean_rule(self):
         values, needed = rolled_reads_needed()
@@ -470,6 +579,120 @@ class CompareTest(unittest.TestCase):
         verdict = self.rolled_verdict([248])
         self.assertEqual(verdict.status, 'measured')
         self.assertIn('needs 10 reads', verdict.explanation)
+
+    def spell_power_roll_verdict(self, count, flagged=True):
+        text = '${$m3+0+$sps*.175}'
+        label = '1001 effect_value e2 #0'
+
+        def tokens(caster, forced):
+            roll = forced[2] if forced else 61
+            return [Displayed(text, roll + caster.sp_by_school[6] * 0.175, 2, 'flat')]
+
+        item = expectation(label, 'effect_value', text, 'read flat', 2, {'samples': count})
+        steps = [assert_step(name, str(61 + index % 12)) for index, name in enumerate(sample_labels(label, count))]
+        reader = FakeTooltips(tokens, {(RANK, 2): (60, 12)})
+        reader.class_file = {'effect_overrides': [{'spell': 1001, 'effect': 2, 'citation': 'seeded',
+                                                   **({'placeholder_sample_count': True} if flagged else {})}]}
+        return self.value_run([item], [text], steps, reader)[label]
+
+    def test_a_rolled_effect_is_judged_at_the_reads_its_generation_sized(self):
+        values = [roll + 0.175 for roll in range(61, 73)]
+        self.assertEqual((mean_samples(list(range(61, 73))), mean_samples(values)), (179, 178))
+        verdict = self.spell_power_roll_verdict(178)
+        self.assertEqual(verdict.status, 'ok')
+        self.assertEqual(verdict.detail['reads_needed'], 178)
+
+    def test_an_unflagged_rolled_effect_keeps_the_count_of_its_measured_stats(self):
+        verdict = self.spell_power_roll_verdict(178, flagged=False)
+        self.assertEqual(verdict.status, 'measured')
+        self.assertEqual(verdict.detail['reads_needed'], 179)
+        self.assertIn('needs 179 reads', verdict.explanation)
+
+    BASE_ROLL_LABEL = '1001 effect_value 1002e2 #0'
+    BASE_ROLL_HIT = '1002 script_hit 1003 strike'
+    BASE_ROLL_CONTRAST = '1002 script_hit 1003 strike_rap'
+
+    def base_roll_verdict(self, measured='56', flagged=True, links=True, term=0.15):
+        text = '${$m3*$<scalingbp>+$RAP*0.15}'
+
+        def tokens(caster, forced):
+            return [Displayed(text, 56.2835 + caster.rap * term, 2, 'flat')]
+
+        item = expectation(self.BASE_ROLL_LABEL, 'effect_value', text, 'read flat', None,
+                           {'effect_spell': 1002, 'effect': 2})
+        reader = FakeTooltips(tokens)
+        override = {'spell': 1002, 'effect': 2, 'citation': 'seeded'}
+        if flagged:
+            override['base_roll_only'] = True
+        if links:
+            override.update({'power_term_label': self.BASE_ROLL_HIT, 'contrast_label': self.BASE_ROLL_CONTRAST})
+        reader.class_file = {'effect_overrides': [override]}
+        return self.value_run([item], [text], [assert_step(self.BASE_ROLL_LABEL, measured)], reader)[
+            self.BASE_ROLL_LABEL]
+
+    def unlinked_base_roll_verdict(self, **options):
+        with mock.patch('compare.resolve_base_roll_links', side_effect=lambda verdicts: verdicts):
+            return self.base_roll_verdict(**options)
+
+    def linked_hit(self, label, status, check='hit_mean'):
+        return Verdict(label, status, None, None, None, None, '', check=check)
+
+    def test_an_unflagged_power_token_is_judged_on_its_full_value(self):
+        verdict = self.base_roll_verdict(flagged=False)
+        self.assertEqual(verdict.status, 'alert')
+        self.assertAlmostEqual(verdict.expected, 56.2835 + 182 * 0.15)
+        self.assertNotIn('base_roll_only', verdict.detail)
+
+    def test_a_base_roll_only_token_is_judged_on_its_base_and_shows_the_full_value_and_term(self):
+        verdict = self.unlinked_base_roll_verdict()
+        self.assertEqual(verdict.status, 'ok')
+        self.assertAlmostEqual(verdict.expected, 56.2835)
+        detail = verdict.detail['base_roll_only']
+        self.assertAlmostEqual(detail['full_value'], 56.2835 + 182 * 0.15)
+        self.assertAlmostEqual(detail['power_term'], 182 * 0.15)
+        self.assertAlmostEqual(detail['judged_base'], 56.2835)
+        self.assertEqual((detail['power_term_label'], detail['contrast_label']),
+                         (self.BASE_ROLL_HIT, self.BASE_ROLL_CONTRAST))
+        for words in ('full value 83.5835', 'power term 27.3', 'judged base 56.2835', self.BASE_ROLL_CONTRAST):
+            self.assertIn(words, verdict.explanation)
+
+    def test_a_base_roll_only_token_off_its_base_is_an_alert(self):
+        self.assertEqual(self.unlinked_base_roll_verdict(measured='83').status, 'alert')
+
+    def test_a_base_roll_only_token_with_its_passing_hit_label_and_contrast_is_accepted(self):
+        verdicts = [self.unlinked_base_roll_verdict(), self.linked_hit(self.BASE_ROLL_HIT, 'ok'),
+                    self.linked_hit(self.BASE_ROLL_CONTRAST, 'ok')]
+        self.assertEqual(resolve_base_roll_links(verdicts)[0].status, 'ok')
+
+    def test_a_base_roll_only_token_without_a_named_hit_label_is_an_alert(self):
+        verdict = self.base_roll_verdict(links=False)
+        self.assertEqual(verdict.status, 'alert')
+        self.assertIn('names no power_term_label and no contrast_label', verdict.explanation)
+
+    def test_a_base_roll_only_token_whose_hit_labels_are_not_in_the_comparison_is_an_alert(self):
+        verdict = self.base_roll_verdict()
+        self.assertEqual(verdict.status, 'alert')
+        self.assertIn(f'contrast_label "{self.BASE_ROLL_CONTRAST}" is not in this comparison', verdict.explanation)
+        self.assertIn('the base roll read alone would be ok', verdict.explanation)
+
+    def test_a_base_roll_only_token_whose_contrast_is_missing_or_failing_is_an_alert(self):
+        raw = self.unlinked_base_roll_verdict()
+        hit = self.linked_hit(self.BASE_ROLL_HIT, 'ok')
+        for contrast in ([], [self.linked_hit(self.BASE_ROLL_CONTRAST, 'alert')],
+                         [self.linked_hit(self.BASE_ROLL_CONTRAST, 'unmeasured')],
+                         [self.linked_hit(self.BASE_ROLL_CONTRAST, 'ok', check='effect_value')]):
+            with self.subTest(contrast=contrast):
+                self.assertEqual(resolve_base_roll_links([raw, hit, *contrast])[0].status, 'alert')
+
+    def test_a_base_roll_only_token_without_a_power_term_is_an_alert(self):
+        verdict = self.unlinked_base_roll_verdict(term=0.0)
+        self.assertEqual(verdict.status, 'alert')
+        self.assertIn('holds no power term', verdict.explanation)
+
+    def test_fewer_reads_than_generation_sized_stay_measured(self):
+        verdict = self.spell_power_roll_verdict(177)
+        self.assertEqual(verdict.status, 'measured')
+        self.assertIn('needs 178 reads', verdict.explanation)
 
     def test_reads_missing_from_the_run_leave_a_rolled_effect_measured(self):
         _, needed = rolled_reads_needed()
@@ -1190,6 +1413,42 @@ class PassiveDeltaTest(unittest.TestCase):
         self.assertEqual(divided.detail, {'metric': 'attack_time_ms'})
         self.assertEqual(self.single(entry, '2500', '2250', token).status, 'alert')
 
+    def ranged_cast_time_entry(self, haste=True):
+        entry = passive_expectation(PATIENCE, 1, 'spell_cast_time_ms', 'add', '$/1000;S2', 500.0, LIBRAM_OF_TENACITY,
+                                    named=True, in_mask=True)
+        if haste:
+            entry.model['ranged_haste'] = {'before': f'{entry.label} ranged attack_time_ms before',
+                                           'after': f'{entry.label} ranged attack_time_ms after',
+                                           'base_ms': 2100, 'item': 15809}
+        return entry
+
+    def ranged_cast_time(self, entry, after, haste_reads=('1826.087', '1826.087')):
+        token = [Displayed('$/1000;S2', 500.0, 1, 'duration_ms')]
+        extra = [assert_step(entry.model['ranged_haste'][moment], read)
+                 for moment, read in zip(('before', 'after'), haste_reads) if read is not None] \
+            if 'ranged_haste' in entry.model else []
+        return self.single(entry, '2173', after, token, name='Patience', extra_steps=extra)
+
+    def test_ranged_haste_after_a_flat_cast_time_modifier_scales_the_expected_delta(self):
+        entry = self.ranged_cast_time_entry()
+        verdict = self.ranged_cast_time(entry, '2608')
+        self.assertEqual(verdict.status, 'ok')
+        self.assertAlmostEqual(verdict.expected, 500 * 1826.087 / 2100, places=2)
+        self.assertIn('ranged haste multiplies the flat', verdict.explanation)
+
+    def test_a_seeded_unhasted_flat_delta_alerts_under_ranged_haste(self):
+        self.assertEqual(self.ranged_cast_time(self.ranged_cast_time_entry(), '2673').status, 'alert')
+
+    def test_a_missing_ranged_haste_read_is_not_judged_ok(self):
+        verdict = self.ranged_cast_time(self.ranged_cast_time_entry(), '2608', haste_reads=('1826.087', None))
+        self.assertEqual(verdict.status, 'alert')
+        self.assertIn('ranged attack_time_ms after', verdict.explanation)
+
+    def test_without_the_haste_model_the_flat_points_are_expected(self):
+        entry = self.ranged_cast_time_entry(haste=False)
+        self.assertEqual(self.ranged_cast_time(entry, '2608').status, 'alert')
+        self.assertEqual(self.ranged_cast_time(entry, '2673').status, 'ok')
+
     def test_override_naming_every_target_judges_each_one_ok(self):
         libram_a, libram_b = (
             passive_expectation(FURY_OF_AGGRAMAR, 1, 'spell_modifier', 'spell_mod_pct', '$s2', 100.0, target, True,
@@ -1284,6 +1543,26 @@ class PassiveDeltaTest(unittest.TestCase):
         missing = self.single(entry, '132', '132', token)
         self.assertEqual(missing.status, 'alert')
         self.assertNotIn(DATA_ONLY, missing.detail)
+
+    def test_a_run_speed_rate_delta_takes_the_hundredth_point_floor_in_rate_units(self):
+        entry = passive_expectation(712466, 0, 'run_speed_rate', 'scale', '$s1', 20.0)
+        token = [Displayed('$s1', 20.0, 0, 'percent')]
+        stated = self.single(entry, '1', '1.2000000476837158', token)
+        self.assertEqual(stated.status, 'ok')
+        self.assertAlmostEqual(stated.high - stated.expected, 1e-4)
+        self.assertNotIn(DATA_ONLY, stated.detail)
+        self.assertEqual(self.single(entry, '1', '1.1900000572204590', token).status, 'alert')
+        self.assertEqual(self.single(entry, '1', '1', token).status, 'alert')
+
+    def test_run_speed_rate_readings_of_ten_and_twenty_percent_are_judged_alike(self):
+        token = {10.0: [Displayed('$s1', 10.0, 0, 'percent')], 20.0: [Displayed('$s1', 20.0, 0, 'percent')]}
+        readings = {10.0: '1.1000000238418579', 20.0: '1.2000000476837158'}
+        for percent, reading in readings.items():
+            with self.subTest(percent=percent):
+                entry = passive_expectation(707754, 0, 'run_speed_rate', 'scale', '$s1', percent)
+                verdict = self.single(entry, '1', reading, token[percent])
+                self.assertEqual(verdict.status, 'ok')
+                self.assertNotIn(DATA_ONLY, verdict.detail)
 
     def test_exact_stat_reading_judges_a_sub_point_delta(self):
         entry = passive_expectation(BELLS_OF_LIGHT, 2, 'stat', 'scale', '$s1', 3.0, fields={'stat': 3}, exact=True)
@@ -1602,6 +1881,8 @@ class QuestionDetailTest(unittest.TestCase):
         self.assertEqual(delta_margin('spell_modifier', -30000.0), 150.0)
         self.assertEqual(delta_margin('armor', 1631.0), 1.0)
         self.assertEqual(delta_margin('spell_crit_chance', 600.0), 0.01)
+        self.assertAlmostEqual(delta_margin('run_speed_rate', 0.2), 1e-4)
+        self.assertAlmostEqual(delta_margin('run_speed_rate', 2.4), 1e-4)
         self.assertEqual(PERCENT_POINT_METRICS, frozenset({'melee_crit_chance', 'melee_crit_chance_refreshed',
                                                            'spell_crit_chance', 'melee_hit_chance', 'spell_hit_chance',
                                                            'parry_chance', 'dodge_chance', 'spell_done_crit_chance'}))
@@ -1755,13 +2036,18 @@ class GeneratedTokenTest(unittest.TestCase):
         self.assertEqual(self.judged(KEEPING_THE_OATH, '$803237d', '9000').status, 'alert')
 
 
+def fixture_generate(class_id: int, out: Path, **options) -> Path:
+    from conformance import generate
+    with mock.patch('conformance.load_class_file', load_fixture_class_file):
+        return generate(class_id, out, **options)
+
+
 @unittest.skipUnless(DBC_DIR.is_dir(), f'client DBC set not found at {DBC_DIR}')
 class GenerateTest(unittest.TestCase):
     def test_manifest_hashes_and_keys_match_what_the_runner_records(self):
-        from conformance import generate
         out = Path(tempfile.mkdtemp(prefix='conformance-generate-'))
         try:
-            manifest_path = generate(CLASS_FILE['class_id'], out, spells=[804929])
+            manifest_path = fixture_generate(CLASS_FILE['class_id'], out, spells=[804929])
             manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
             written = [entry for entry in manifest['scenarios'] if entry['file']]
             self.assertTrue(written)
@@ -1779,10 +2065,9 @@ class GenerateTest(unittest.TestCase):
             shutil.rmtree(out)
 
     def test_long_hit_is_written_in_parts_that_share_its_label(self):
-        from conformance import generate
         out = Path(tempfile.mkdtemp(prefix='conformance-generate-'))
         try:
-            manifest = json.loads(generate(CLASS_FILE['class_id'], out, spells=[RIGHTEOUS_UPHEAVAL]).read_text(
+            manifest = json.loads(fixture_generate(CLASS_FILE['class_id'], out, spells=[RIGHTEOUS_UPHEAVAL]).read_text(
                 encoding='utf-8'))
             hits = [entry for entry in manifest['scenarios'] if entry['kind'] == 'hit']
             self.assertEqual([entry['key'] for entry in hits],
@@ -1835,6 +2120,58 @@ class ResolveLinkedStatusesTest(unittest.TestCase):
         self.assertEqual(resolved[0], plain)
 
 
+VALUE_LINKS = {'value_links': [{'label': '1 effect_value #1', 'checked_by': ['1 behaviour_metric_delta rate'],
+                                 'arithmetic': '$h = ProcChance 5, the rate band 3%..7%'}]}
+
+
+def value_verdict(status: str = 'unmodelled') -> Verdict:
+    return Verdict('1 effect_value #1', status, None, None, None, None, 'unmeasurable: chance_pct token',
+                   check='effect_value')
+
+
+class ApplyValueLinksTest(unittest.TestCase):
+    def linked(self, measuring_status: str, value_status: str = 'unmodelled') -> Verdict:
+        verdicts = [value_verdict(value_status), verdict('1 behaviour_metric_delta rate', measuring_status)]
+        return resolve_linked_statuses(apply_value_links(verdicts, VALUE_LINKS))[0]
+
+    def test_a_passing_measuring_label_closes_the_linked_value_label(self):
+        resolved = self.linked('ok')
+        self.assertEqual(resolved.status, 'closed')
+        self.assertIn('"1 behaviour_metric_delta rate" (status ok)', resolved.explanation)
+        self.assertIn('ProcChance 5', resolved.explanation)
+
+    def test_a_failing_measuring_label_fails_the_linked_value_label_with_it(self):
+        resolved = self.linked('alert')
+        self.assertEqual(resolved.status, 'alert')
+        self.assertIn('(status alert)', resolved.explanation)
+
+    def test_a_not_measured_hooked_value_label_follows_its_link(self):
+        self.assertEqual(self.linked('ok', 'not_measured').status, 'closed')
+        self.assertEqual(self.linked('alert', 'not_measured').status, 'alert')
+
+    def test_an_ambiguous_sign_value_label_follows_its_link(self):
+        self.assertEqual(self.linked('ok', 'ambiguous_tooltip').status, 'closed')
+        self.assertEqual(self.linked('alert', 'ambiguous_tooltip').status, 'alert')
+
+    def test_an_unlinked_ambiguous_value_label_keeps_its_status(self):
+        verdicts = [replace(value_verdict('ambiguous_tooltip'), label='2 effect_value #1'),
+                    verdict('1 behaviour_metric_delta rate', 'ok')]
+        self.assertEqual(resolve_linked_statuses(apply_value_links(verdicts, VALUE_LINKS))[0].status,
+                         'ambiguous_tooltip')
+
+    def test_a_missing_measuring_label_leaves_the_value_label_unmodelled(self):
+        resolved = resolve_linked_statuses(apply_value_links([value_verdict()], VALUE_LINKS))[0]
+        self.assertEqual(resolved.status, 'unmodelled')
+
+    def test_an_already_judged_value_label_is_not_relinked(self):
+        verdicts = [value_verdict('ok'), verdict('1 behaviour_metric_delta rate', 'alert')]
+        self.assertEqual(resolve_linked_statuses(apply_value_links(verdicts, VALUE_LINKS))[0].status, 'ok')
+
+    def test_a_class_file_without_value_links_changes_nothing(self):
+        verdicts = [value_verdict(), verdict('1 behaviour_metric_delta rate', 'ok')]
+        self.assertEqual(apply_value_links(verdicts, {}), verdicts)
+
+
 class ObservationLinesTest(unittest.TestCase):
     def test_empty_without_any_player_observations(self):
         self.assertEqual(observation_lines({}, []), [])
@@ -1857,10 +2194,6 @@ class ObservationLinesTest(unittest.TestCase):
         lines = observation_lines(class_file, [verdict('92111 proc_rate', 'ambiguous_tooltip')])
         row = next(line for line in lines if line.startswith('| 92111 |'))
         self.assertIn('label not in this run', row)
-
-
-if __name__ == '__main__':
-    unittest.main()
 
 
 class MagnitudeExcludedTest(unittest.TestCase):
@@ -1895,3 +2228,153 @@ class ShareNeighbourTest(unittest.TestCase):
         scaled = share_neighbour_reason(self.verdict(16.0, 16.0), {'relation': 'scale'},
                                         SimpleNamespace(values={}), 'combat_rating')
         self.assertIsNone(scaled)
+
+
+class EngineAmountBandTests(unittest.TestCase):
+    STATED = {'bonus': 15, 'parts': [10], 'truncated': True, 'band': True}
+
+    def reading(self, ratio: float, half_ratio: float) -> str:
+        from bonus import Bonus
+        from compare import engine_amount_band_reading
+        found = Bonus((ratio - 1) * 100, half_ratio * 100, (1.11 / 1.10 - 1) * 100, 40)
+        return engine_amount_band_reading(found, self.STATED).status
+
+    def test_a_ratio_under_the_exact_step_is_inside_the_amount_band(self):
+        self.assertEqual(self.reading(1.0082, 0.0008), 'ok')
+        self.assertEqual(self.reading(1.0091, 0.0008), 'ok')
+
+    def test_no_talent_and_a_doubled_talent_alert(self):
+        self.assertEqual(self.reading(1.0, 0.0008), 'alert')
+        self.assertEqual(self.reading(1.12 / 1.10, 0.0008), 'alert')
+
+    def test_an_interval_across_a_band_edge_is_not_judged(self):
+        self.assertEqual(self.reading(1.0046, 0.0008), 'insufficient_trials')
+
+
+class BandedRateTests(unittest.TestCase):
+    EXPECTED = 0.15
+
+    def judged(self, procs: float, trials: float) -> str:
+        from compare import banded_rate, rate_judgement
+        status, low, high, why = rate_judgement(procs, trials, 1, self.EXPECTED)
+        return banded_rate(status, low, high, self.EXPECTED, why)[0]
+
+    def test_an_interval_inside_the_band_that_excludes_the_exact_chance_is_ok(self):
+        from procs import wilson_interval
+        low, high = wilson_interval(2213, 15573)
+        self.assertTrue(0.13 < low and high < 0.15)
+        self.assertEqual(self.judged(2213, 15573), 'ok')
+
+    def test_an_interval_across_a_band_edge_that_excludes_the_chance_alerts(self):
+        from procs import wilson_interval
+        low, high = wilson_interval(2000, 15573)
+        self.assertTrue(low < 0.13 < high < 0.15)
+        self.assertEqual(self.judged(2000, 15573), 'alert')
+
+    def test_an_interval_holding_the_chance_across_a_band_edge_stays_measured(self):
+        self.assertEqual(self.judged(300, 2000), 'measured')
+
+    def test_an_interval_wholly_outside_the_band_alerts(self):
+        self.assertEqual(self.judged(1500, 15573), 'alert')
+
+
+class BetweenPartIntervalTests(unittest.TestCase):
+    PARTS, TRIALS = 55, 300
+
+    def parts(self, chances: list[float], seed: int) -> list[tuple[float, float]]:
+        import random
+        draw = random.Random(seed)
+        return [(float(sum(draw.random() < chances[index % len(chances)] for _ in range(self.TRIALS))),
+                 float(self.TRIALS)) for index in range(self.PARTS)]
+
+    def widths(self, chances: list[float], seed: int) -> tuple[float, float]:
+        from compare import between_part_interval
+        from procs import wilson_interval
+        parts = self.parts(chances, seed)
+        low, high = between_part_interval(parts)
+        wilson = wilson_interval(sum(events for events, _ in parts), self.PARTS * self.TRIALS)
+        return high - low, wilson[1] - wilson[0]
+
+    def test_seeded_binomial_parts_give_about_the_wilson_width(self):
+        for seed in (1, 2, 3):
+            with self.subTest(seed=seed):
+                between, wilson = self.widths([0.15], seed)
+                self.assertLess(abs(between / wilson - 1), 0.25)
+
+    def test_seeded_overdispersed_parts_widen_the_interval(self):
+        for seed in (1, 2, 3):
+            with self.subTest(seed=seed):
+                between, wilson = self.widths([0.10, 0.20], seed)
+                self.assertGreater(between / wilson, 1.8)
+
+    def test_a_pooled_banded_rate_is_judged_on_the_between_part_interval(self):
+        from compare import between_part_judgement
+        binomial = self.parts([0.15], 4)
+        spread = self.parts([0.10, 0.20], 4)
+        self.assertEqual(between_part_judgement(binomial, 1, 0.15)[0], 'ok')
+        status, low, high, why = between_part_judgement(spread, 1, 0.15)
+        self.assertIn('between-part', why)
+        self.assertGreater(high - low, 0.02)
+
+    def test_seeded_nine_parts_keep_the_wilson_interval(self):
+        from compare import between_part_judgement
+        from procs import wilson_interval
+        parts = self.parts([0.10, 0.20], 5)[:9]
+        status, low, high, why = between_part_judgement(parts, 1, 0.15)
+        self.assertEqual((low, high), wilson_interval(sum(events for events, _ in parts), 9 * self.TRIALS))
+        self.assertIn('Wilson', why)
+
+    def test_seeded_ten_parts_take_the_between_part_t_interval(self):
+        from compare import between_part_interval, between_part_judgement
+        parts = self.parts([0.10, 0.20], 5)[:10]
+        status, low, high, why = between_part_judgement(parts, 1, 0.15)
+        self.assertEqual((low, high), between_part_interval(parts))
+        self.assertIn('t over 10 parts', why)
+
+    def test_one_part_has_no_between_part_interval(self):
+        from compare import between_part_interval
+        self.assertIsNone(between_part_interval([(10.0, 100.0)]))
+
+
+class BetweenPartHitRatioTests(unittest.TestCase):
+    CASTS = 20
+
+    def model(self) -> dict:
+        reads = {arm: [[f'{arm} {index} total', f'{arm} {index} count'] for index in range(self.CASTS + 1)]
+                 for arm in ('control', 'treatment')}
+        return {'kind': 'hit_ratio', 'reads': reads, 'minimum_hits': 1, 'trials': self.CASTS, 'expected': 1.0,
+                'expected_bonus': 0.0, 'expected_delta': 20.0, 'rate': 'critical', 'parts': 2}
+
+    def part(self, model: dict, shares: dict[str, float]):
+        values = {}
+        for arm, reads in model['reads'].items():
+            for index, (total, count) in enumerate(reads):
+                values[total] = index * 4 * shares[arm] + (index % 2) * 0.5
+                values[count] = index * 4.0
+        return type('Part', (), {'values': values, 'key': 'part', 'status': 'completed', 'message': ''})()
+
+    def test_overdispersed_parts_widen_a_pooled_rate_interval(self):
+        from compare import behaviour_hit_ratio_verdict
+        model = self.model()
+        base = Verdict('x', 'alert', None, None, None, None, '')
+        steady = [self.part(model, {'control': 0.05, 'treatment': 0.25}) for _ in range(10)]
+        spread = [self.part(model, {'control': 0.05, 'treatment': 0.25 + (0.04 if index % 2 else -0.04)})
+                  for index in range(10)]
+        narrow = behaviour_hit_ratio_verdict(base, steady, model).detail['bonus']['half']
+        wide = behaviour_hit_ratio_verdict(base, spread, model)
+        self.assertIn('between-part variance', wide.explanation)
+        self.assertGreater(wide.detail['bonus']['half'], 2 * narrow)
+
+    def test_nine_pooled_rate_parts_keep_the_per_cast_interval(self):
+        from compare import behaviour_hit_ratio_verdict
+        model = self.model()
+        base = Verdict('x', 'alert', None, None, None, None, '')
+        spread = [self.part(model, {'control': 0.05, 'treatment': 0.25 + (0.04 if index % 2 else -0.04)})
+                  for index in range(9)]
+        verdict = behaviour_hit_ratio_verdict(base, spread, model)
+        self.assertNotIn('between-part variance', verdict.explanation)
+        self.assertIn('per-cast interval', verdict.explanation)
+
+
+if __name__ == '__main__':
+    unittest.main()
