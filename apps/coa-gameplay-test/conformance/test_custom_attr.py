@@ -62,6 +62,15 @@ class CustomAttributesTest(unittest.TestCase):
         self.assertIn('rev_3.sql', table.unreadable)
         self.assertEqual(table.rows, {})
 
+    def test_custom_race_staging_rows_are_left_out_of_the_replay(self):
+        world = self.world()
+        world.update('rev_4.sql', "REPLACE INTO `spell_custom_attr` (`spell_id`,`attributes`) SELECT `spell_id`,"
+                                  "`attributes` FROM `coa_custom_15_spell_custom_attr_add`;
+")
+        table = custom_attributes(world.root)
+        self.assertEqual(table.unreadable, '')
+        self.assertEqual(table.rows, {100: 32768, 200: 32768})
+
     def test_the_repository_world_gives_every_stake_rank_the_ignore_armor_bit(self):
         table = custom_attributes()
         self.assertEqual(table.unreadable, '')

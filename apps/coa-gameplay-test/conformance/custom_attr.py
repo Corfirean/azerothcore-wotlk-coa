@@ -61,8 +61,15 @@ def updated(value: str, current: int, source: str) -> int:
     raise UnreadableTable(f'{source}: {TABLE} assignment {value.strip()[:80]!r} is not modelled')
 
 
+# The custom-race migrations merge their rows from coa_custom_<n>_<table>_add staging tables created in the same file;
+# those rows are race content, not class spells, so the replay leaves them out instead of declaring the table unreadable.
+CUSTOM_RACE_ROWS = re.compile(rf'(?is)^REPLACE\s+INTO\s+`?{TABLE}`?\s*\([^)]*\)\s*SELECT\s.*\sFROM\s+`?coa_custom_\w+_add`?\s*$')
+
+
 def apply(table: dict[int, int], sources: dict[int, str], statement: str, source: str, columns: tuple[str, ...]):
     if DUMP_ONLY.match(statement):
+        return
+    if CUSTOM_RACE_ROWS.match(statement):
         return
     if RESET.match(statement):
         table.clear()
