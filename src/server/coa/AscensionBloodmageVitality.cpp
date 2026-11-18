@@ -254,7 +254,7 @@ class spell_ascension_bloodmage_empowered : public SpellScript
 void SyncEmpoweredIndicator(Unit* unit)
 {
     Player* player = unit ? unit->ToPlayer() : nullptr;
-    if (!player || player->getClass() != CLASS_SON_OF_ARUGAL)
+    if (!player || !UsesAscensionClassMechanics(player, CLASS_SON_OF_ARUGAL))
         return;
     if (!CanEmpower(player))
         player->RemoveAurasDueToSpell(EmpoweredIndicator, player->GetGUID());

@@ -393,7 +393,7 @@ class witch_hunter_scaling : public UnitScript
         if (!attacker || (attacker->GetEntry() != 50124 && attacker->GetEntry() != 50224))
             return;
         Player* player = attacker->GetCharmerOrOwnerPlayerOrPlayerItself();
-        if (!player || player->getClass() != CLASS_WITCH_HUNTER)
+        if (!player || !UsesAscensionClassMechanics(player, CLASS_WITCH_HUNTER))
             return;
         crit += int32(std::max(0.0f, player->GetFloatValue(PLAYER_RANGED_CRIT_PERCENTAGE) - 5.0f) * 100);
         miss = std::max(0, miss - int32(std::max(0.0f, player->m_modRangedHitChance) * 100));

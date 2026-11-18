@@ -220,7 +220,7 @@ public:
     void ModifySpellDamageTaken(Unit* target, Unit* attacker, int32& damage, SpellInfo const* spellInfo) override
     {
         Player* player = attacker ? attacker->ToPlayer() : nullptr;
-        if (!player || player->getClass() != CLASS_RANGER || !target || !spellInfo || damage <= 0 ||
+        if (!player || !UsesAscensionClassMechanics(player, CLASS_RANGER) || !target || !spellInfo || damage <= 0 ||
             !IsRangerSpell(spellInfo) || spellInfo->CasterAuraSpell != SPELL_ADVANTAGE)
             return;
         RememberLandedDamage(player, target, uint32(damage));

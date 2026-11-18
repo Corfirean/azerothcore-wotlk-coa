@@ -819,7 +819,7 @@ class aura_ascension_bloodmage_animated_blood_leech : public AuraScript
         Unit* actor = event.GetActor();
         Unit* victim = event.GetActionTarget();
         Player* owner = actor ? ObjectAccessor::GetPlayer(*actor, actor->GetOwnerGUID()) : nullptr;
-        return owner && owner->getClass() == CLASS_SON_OF_ARUGAL && owner->IsAlive() &&
+        return owner && UsesAscensionClassMechanics(owner, CLASS_SON_OF_ARUGAL) && owner->IsAlive() &&
             victim && victim != owner && !owner->IsFriendlyTo(victim) && damage && damage->GetDamage();
     }
 

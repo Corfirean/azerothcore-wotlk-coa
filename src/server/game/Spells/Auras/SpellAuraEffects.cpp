@@ -43,8 +43,8 @@
 #include "Unit.h"
 #include "Util.h"
 #include "Vehicle.h"
-#include "World.h"
 #include "VenthyrRacials.h"
+#include "World.h"
 #include "WorldPacket.h"
 
 /// @todo: this import is not necessary for compilation and marked as unused by the IDE

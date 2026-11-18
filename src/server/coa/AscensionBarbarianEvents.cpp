@@ -430,7 +430,7 @@ public:
     {
         constexpr uint32 ThanesGrip = 803798;
         constexpr uint32 TwoHandedOffhandPenalty = 49152;
-        if (spellId != ThanesGrip || player->getClass() != CLASS_BARBARIAN || !player->CanTitanGrip())
+        if (spellId != ThanesGrip || !UsesAscensionClassMechanics(player, CLASS_BARBARIAN) || !player->CanTitanGrip())
             return;
         player->SetCanTitanGrip(false);
         player->RemoveAurasDueToSpell(TwoHandedOffhandPenalty);

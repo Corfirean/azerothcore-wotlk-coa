@@ -1,8 +1,8 @@
 /* Copyright (C) 2016+ AzerothCore, GNU AGPL v3. */
 
 #include "AscensionPooledVitality.h"
-#include "ObjectAccessor.h"
 #include "AscensionSpecialization.h"
+#include "ObjectAccessor.h"
 #include "Player.h"
 #include "Random.h"
 #include "ScriptMgr.h"

@@ -84,9 +84,13 @@ end
 local GEAR_SLOTS = { "Head", "Neck", "Shoulder", "Shirt", "Chest", "Waist", "Legs", "Feet", "Wrist", "Hands",
     "Finger0", "Finger1", "Trinket0", "Trinket1", "Back", "MainHand", "SecondaryHand", "Ranged", "Tabard" }
 
+local GEAR_WINDOWS = { "Character", "AscensionCharacter" }
+
 local GEAR_BUTTONS = {}
-for _, name in ipairs(GEAR_SLOTS) do
-    GEAR_BUTTONS["Character" .. name .. "Slot"] = true
+for _, window in ipairs(GEAR_WINDOWS) do
+    for _, name in ipairs(GEAR_SLOTS) do
+        GEAR_BUTTONS[window .. name .. "Slot"] = true
+    end
 end
 
 local function ShowFrozenTooltip(ice)
@@ -141,21 +145,43 @@ local function FreezeSlot(button)
 end
 
 local function FreezeGear()
-    for _, name in ipairs(GEAR_SLOTS) do
-        local button = _G["Character" .. name .. "Slot"]
+    for buttonName in pairs(GEAR_BUTTONS) do
+        local button = _G[buttonName]
         if button then
             FreezeSlot(button)
         end
     end
 end
 
+local watchedSlots = {}
+
+local function WatchGearSlots()
+    for buttonName in pairs(GEAR_BUTTONS) do
+        local button = _G[buttonName]
+        if button and not watchedSlots[button] then
+            watchedSlots[button] = true
+            button:HookScript("OnShow", FreezeSlot)
+        end
+    end
+end
+WatchGearSlots()
+
 if PaperDollItemSlotButton_Update then
     hooksecurefunc("PaperDollItemSlotButton_Update", FreezeSlot)
+end
+if CharacterFrame then
+    CharacterFrame:HookScript("OnShow", FreezeGear)
 end
 
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("CHAT_MSG_ADDON")
-frame:SetScript("OnEvent", function(_, _, prefix, message, _, sender)
+frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+frame:SetScript("OnEvent", function(_, event, prefix, message, _, sender)
+    if event == "PLAYER_ENTERING_WORLD" then
+        WatchGearSlots()
+        Send("PAIRSTATEASK")
+        return
+    end
     if prefix ~= PREFIX or sender ~= UnitName("player") then
         return
     end
@@ -308,6 +334,10 @@ if PaperDollFrame_SetLevel then
     hooksecurefunc("PaperDollFrame_SetLevel", AddPartnerClass)
 end
 
+function Ascension_Subclass.PartnerName()
+    return partnerName
+end
+
 function Ascension_Subclass.SetPartner(name, className, classHex)
     partnerClassName, partnerClassHex = name and className, name and classHex
     if name == partnerName then
@@ -321,6 +351,12 @@ end
 
 if PartyMemberFrame_UpdateMember then
     hooksecurefunc("PartyMemberFrame_UpdateMember", HidePartner)
+end
+for index = 1, MAX_PARTY_MEMBERS or 4 do
+    local partyFrame = _G["PartyMemberFrame" .. index]
+    if partyFrame then
+        partyFrame:HookScript("OnShow", HidePartner)
+    end
 end
 if UnitFrame_Update then
     hooksecurefunc("UnitFrame_Update", ShowJoinedName)
@@ -396,7 +432,7 @@ bodyBotButton.icon:SetAllPoints()
 bodyBotButton:Hide()
 
 local function PartnerBotMenu()
-    if not partnerName or not SquidBotsLite_IsBot or not SquidBotsLite_IsBot(partnerName) then
+    if not partnerName or not SquidBotsLite_IsBot then
         return nil
     end
     for index = 1, MAX_PARTY_MEMBERS or 4 do

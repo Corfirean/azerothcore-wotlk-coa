@@ -16,7 +16,9 @@
 #include "Opcodes.h"
 #include "Player.h"
 #include "PlayerScript.h"
+#include "ScriptMgr.h"
 #include "Spell.h"
+#include "SpellAuraEffects.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
 #include "SubclassRules.h"
@@ -46,15 +48,21 @@ void SendSubclassMessage(Player* player, std::string const& message);
 void TwoPlayersKeepBotRiderStill(Player* rider);
 Player* TwoPlayersSeatedPartner(Player const* head);
 void TwoPlayersShareBuffs(Player* first, Player* second);
+void TwoPlayersKeepSharedBuffsEven(Player* first, Player* second);
 void TwoPlayersDropSharedBuffs(Player* holder);
 void TwoPlayersSteerBotBody(Player* body, bool roam);
 void TwoPlayersKeepBotBodyRoaming(Player* body);
+void TwoPlayersBotBodyRides(Player* body, Player* rider, bool halted);
+std::string TwoPlayersBotBodyRideToggle(Player* body, Player* rider);
 void KeepTwoPlayersBrother(Player* player);
 
 namespace
 {
 constexpr uint32 KeepTogetherMs = 1000;
 constexpr float SeatReach = 40.0f;
+constexpr float SideBySide = 4.0f;
+constexpr float GhostLeash = 8.0f;
+constexpr uint32 InvisibleDisplay = 11686;
 constexpr uint32 LentBuffRecastMs = 60000;
 constexpr float LentHealBelowPct = 60.0f;
 constexpr std::size_t LentBarChunk = 200;
@@ -154,7 +162,7 @@ bool ClassAbilityOf(Player const* owner, uint32 spellId)
 bool HasBodyKit(Player const* body)
 {
     Vehicle const* kit = body->GetVehicleKit();
-    return kit && kit->GetVehicleInfo()->m_ID == Subclass::BodyVehicleFor(body->getRace(true));
+    return kit && Subclass::IsBodyVehicle(kit->GetVehicleInfo()->m_ID, body->getRace(true));
 }
 
 void SendVehicleData(Player* body, uint32 vehicleId)
@@ -189,6 +197,21 @@ void DropBodyKit(Player* body)
 bool Seated(Player const* left, Player const* right)
 {
     return left && right && right->GetVehicleBase() == left;
+}
+
+uint32 MountCreatureOf(Player const* body)
+{
+    Unit::AuraEffectList const& mounts = body->GetAuraEffectsByType(SPELL_AURA_MOUNTED);
+    return mounts.empty() ? 0 : uint32(mounts.front()->GetMiscValue());
+}
+
+uint32 KitWanted(Player const* body, uint32 mountCreature)
+{
+    uint32 const own = Subclass::BodyVehicleFor(body->getRace(true));
+    CreatureTemplate const* mount = mountCreature ? sObjectMgr->GetCreatureTemplate(mountCreature) : nullptr;
+    uint32 const carrying = mount && own == Subclass::TwoPlayersVehicle ?
+        Subclass::TwoPlayersVehicleCarrying(mount->VehicleId) : 0;
+    return carrying ? carrying : own;
 }
 
 bool RidesHidden(Player const* rider)
@@ -501,6 +524,33 @@ void RevealArrival(Player* rider, bool onlyWhenOverdue)
         rider->SetVisible(true);
 }
 
+void Seat(Player* left, Player* right);
+
+void CarryMountPassengers(Player* body, Player* rider)
+{
+    if (!HasBodyKit(body))
+        return;
+    uint32 const mountCreature = MountCreatureOf(body);
+    uint32 const wanted = KitWanted(body, mountCreature);
+    if (body->GetVehicleKit()->GetVehicleInfo()->m_ID == wanted)
+        return;
+    bool const reseat = rider && Seated(body, rider);
+    body->RemoveVehicleKit();
+    if (!body->CreateVehicleKit(wanted, wanted == Subclass::BodyVehicleFor(body->getRace(true)) ? 0 : mountCreature))
+    {
+        GiveBodyKit(body);
+        if (reseat)
+            Seat(body, rider);
+        return;
+    }
+    body->GetVehicleKit()->Reset();
+    body->RemoveNpcFlag(UNIT_NPC_FLAG_SPELLCLICK | UNIT_NPC_FLAG_PLAYER_VEHICLE);
+    SendVehicleData(body, wanted);
+    body->GetVehicleKit()->InstallAllAccessories(false);
+    if (reseat)
+        Seat(body, rider);
+}
+
 void Seat(Player* left, Player* right)
 {
     if (Seated(left, right) || !GiveBodyKit(left))
@@ -510,7 +560,12 @@ void Seat(Player* left, Player* right)
     if ((TwoPlayersHeadIsBot(right) || RidesHidden(right)) && !right->IsVisible())
         right->SetVisible(true);
     RevealArrival(right, false);
-    right->EnterVehicle(left, RightHeadSeat);
+    if (right->GetMap() == left->GetMap() && !right->IsWithinDist(left, SideBySide))
+        right->GetMap()->PlayerRelocation(right, left->GetPositionX(), left->GetPositionY(), left->GetPositionZ(),
+            left->GetOrientation());
+    right->CastCustomSpell(VEHICLE_SPELL_RIDE_HARDCODED, SPELLVALUE_BASE_POINT0, RightHeadSeat + 1, left,
+        TRIGGERED_FULL_MASK);
+    sScriptMgr->AnticheatSetUnderACKmount(right);
     if (!Seated(left, right))
         return;
     Reclaim(left);
@@ -643,6 +698,15 @@ bool BuffedRecently(Player const* bot, SpellInfo const* info, uint32 now)
     return false;
 }
 
+bool HoldsAnotherChoice(Player const* bot, SpellInfo const* info)
+{
+    for (auto const& [spellId, application] : bot->GetAppliedAuras())
+        if (spellId != info->Id && sSpellMgr->CheckSpellGroupStackRules(info,
+            application->GetBase()->GetSpellInfo()) != SPELL_GROUP_STACK_RULE_DEFAULT)
+            return true;
+    return false;
+}
+
 void UseLentAbilities(Player* bot, Player* body)
 {
     if (!TwoPlayersHeadIsBot(bot) || !bot->IsAlive() || bot->IsNonMeleeSpellCast(false))
@@ -672,7 +736,7 @@ void UseLentAbilities(Player* bot, Player* body)
         }
         else if (LeavesAnAura(info))
         {
-            if (!bot->HasAura(spellId) && !BuffedRecently(bot, info, now))
+            if (!bot->HasAura(spellId) && !HoldsAnotherChoice(bot, info) && !BuffedRecently(bot, info, now))
                 target = bot;
         }
         else if (body->GetHealthPct() < LentHealBelowPct)
@@ -694,6 +758,36 @@ bool TakeExitRequest(uint32 guid)
     return exitRequests.erase(guid) != 0;
 }
 
+bool IsGhost(Player const* player)
+{
+    return player->HasPlayerFlag(PLAYER_FLAGS_GHOST);
+}
+
+void ReleaseTogether(Player* released)
+{
+    Player* partner = Online(TwoPlayersPartnerOf(released->GetGUID().GetCounter()));
+    if (!partner || partner->IsAlive() || IsGhost(partner))
+        return;
+    partner->BuildPlayerRepop();
+    partner->RepopAtGraveyard();
+    Tell(partner, released->GetName() + " let go of the body you share, so your spirit goes with them.");
+}
+
+void GhostAlong(Player* rider, Player* body)
+{
+    if (rider->IsAlive() || !IsGhost(rider) || !IsGhost(body))
+        return;
+    if (!SameMap(body, rider))
+    {
+        rider->TeleportTo(body->GetMapId(), body->GetPositionX(), body->GetPositionY(), body->GetPositionZ(),
+            body->GetOrientation());
+        return;
+    }
+    if (!rider->IsWithinDist(body, GhostLeash))
+        rider->NearTeleportTo(body->GetPositionX(), body->GetPositionY(), body->GetPositionZ(),
+            body->GetOrientation());
+}
+
 void KeepTogether(Player* player)
 {
     uint32 const guid = player->GetGUID().GetCounter();
@@ -713,6 +807,8 @@ void KeepTogether(Player* player)
     if (!leaving)
         CallBotForMissingHead(player, partnerGuid, !connected, left);
     Player* partner = Online(partnerGuid);
+    if (left)
+        CarryMountPassengers(player, partner);
     if (!left)
         RevealArrival(player, partner != nullptr);
     if (!partner)
@@ -739,16 +835,23 @@ void KeepTogether(Player* player)
         TwoPlayersKeepBotBodyRoaming(body);
     if (left && SameMap(body, rider) && Ready(body) && Ready(rider))
         GroupUp(body, rider);
+    if (!left && TwoPlayersHeadIsBot(body) && Seated(body, rider))
+        TwoPlayersBotBodyRides(body, rider, Halted(guid));
     if (Seated(body, rider))
     {
         if (left)
         {
+            TwoPlayersKeepSharedBuffsEven(body, rider);
             LendBothWays(body, rider);
             UseLentAbilities(body, body);
             ShowOneBodyToGroup(body, rider);
         }
         else
+        {
             UseLentAbilities(rider, body);
+            if (rider->GetDisplayId() == InvisibleDisplay)
+                rider->RestoreDisplayId();
+        }
         return;
     }
     if (left)
@@ -765,11 +868,16 @@ void KeepTogether(Player* player)
         return;
     }
     if (!body->IsAlive())
+    {
+        GhostAlong(rider, body);
         return;
+    }
     if (!rider->IsAlive())
     {
         rider->ResurrectPlayer(body->GetHealthPct() / 100.0f);
         rider->SpawnCorpseBones();
+        if (close)
+            Seat(body, rider);
         Tell(rider, "The body you share is back on its feet, and so are you.");
     }
     if (!close)
@@ -930,9 +1038,16 @@ class mod_subclass_two_players_player : public PlayerScript
 {
 public:
     mod_subclass_two_players_player() : PlayerScript("mod_subclass_two_players_player", { PLAYERHOOK_ON_UPDATE,
-        PLAYERHOOK_ON_PLAYER_JUST_DIED, PLAYERHOOK_ON_LOGOUT, PLAYERHOOK_CAN_GROUP_ACCEPT, PLAYERHOOK_CAN_EQUIP_ITEM,
-        PLAYERHOOK_CAN_UNEQUIP_ITEM, PLAYERHOOK_ON_LOAD_FROM_DB, PLAYERHOOK_ON_BEFORE_LOGOUT })
+        PLAYERHOOK_ON_PLAYER_JUST_DIED, PLAYERHOOK_ON_PLAYER_RESURRECT, PLAYERHOOK_ON_PLAYER_RELEASED_GHOST,
+        PLAYERHOOK_ON_LOGOUT,
+        PLAYERHOOK_CAN_GROUP_ACCEPT, PLAYERHOOK_CAN_EQUIP_ITEM, PLAYERHOOK_CAN_UNEQUIP_ITEM,
+        PLAYERHOOK_ON_LOAD_FROM_DB, PLAYERHOOK_ON_BEFORE_LOGOUT, PLAYERHOOK_ON_KEEPS_OWN_VEHICLE })
     {
+    }
+
+    bool OnPlayerKeepsOwnVehicle(Player const* player) override
+    {
+        return HasBodyKit(player);
     }
 
     void OnPlayerLoadFromDB(Player* player) override
@@ -979,11 +1094,28 @@ public:
         if (!TwoPlayersIsLeftHead(guid))
             return;
         Player* right = Online(TwoPlayersPartnerOf(guid));
-        if (!Seated(player, right) || !right->IsAlive())
+        if (!right || !right->IsAlive())
+            return;
+        if (!Seated(player, right) && !(SameMap(player, right) && right->IsWithinDist(player, SideBySide)))
             return;
         right->ExitVehicle();
         Unit::Kill(right, right, false);
+        right->SetDisplayId(InvisibleDisplay);
         Tell(right, "The body you share has fallen, and you with it.");
+    }
+
+    void OnPlayerReleasedGhost(Player* player) override
+    {
+        ReleaseTogether(player);
+    }
+
+    void OnPlayerResurrect(Player* player, float /*restorePercent*/, bool& /*applySickness*/) override
+    {
+        uint32 const guid = player->GetGUID().GetCounter();
+        Player* partner = Online(TwoPlayersPartnerOf(guid));
+        bool const rejoiningBody = partner && partner->IsAlive() && !TwoPlayersIsLeftHead(guid);
+        if (player->GetDisplayId() == InvisibleDisplay && TwoPlayersPartnerOf(guid) && !rejoiningBody)
+            player->RestoreDisplayId();
     }
 
     bool OnPlayerCanGroupAccept(Player* player, Group* group) override
@@ -1205,6 +1337,27 @@ public:
         return true;
     }
 };
+}
+
+std::string TwoPlayersRide(Player* rider)
+{
+    uint32 const guid = rider->GetGUID().GetCounter();
+    Player* body = TwoPlayersSeatedPartner(rider);
+    if (!body || TwoPlayersIsLeftHead(guid))
+        return "Ride is for the Ranged Head, seated on a bot body.";
+    if (!TwoPlayersHeadIsBot(body))
+        return body->GetName() + " walks the body; ask them to mount up.";
+    return TwoPlayersBotBodyRideToggle(body, rider);
+}
+
+ObjectGuid TwoPlayersWornCopyAt(Player const* rider, uint8 slot)
+{
+    if (slot >= EQUIPMENT_SLOT_END)
+        return ObjectGuid::Empty;
+    std::lock_guard<std::mutex> lock(copyMutex);
+    auto const found = wornCopies.find(rider->GetGUID().GetCounter());
+    Item const* copy = found == wornCopies.end() ? nullptr : found->second[slot].Copy;
+    return copy ? copy->GetGUID() : ObjectGuid::Empty;
 }
 
 Player* TwoPlayersSeatedPartner(Player const* head)

@@ -189,7 +189,7 @@ public:
     void OnSpellBeforeEffects(Spell* spell, Unit* caster, SpellInfo const* info) override
     {
         Player* player = caster ? caster->ToPlayer() : nullptr;
-        if (player && player->getClass() == CLASS_STORMBRINGER && !spell->IsTriggered() &&
+        if (player && UsesAscensionClassMechanics(player, CLASS_STORMBRINGER) && !spell->IsTriggered() &&
             sSpellMgr->GetFirstSpellInChain(info->Id) == SPELL_ELECTROCUTE)
             player->RemoveAurasDueToSpell(SPELL_ELECTROCUTIONER);
     }
