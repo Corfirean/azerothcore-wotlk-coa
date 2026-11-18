@@ -158,8 +158,6 @@ def number(value: str | None) -> float:
         raise UnreadableTable(f'coefficient {value!r} is not a number') from None
 
 
-# The custom-race migrations merge their rows from coa_custom_<n>_<table>_add staging tables created in the same file;
-# those rows are race content, not class spells, so the replay leaves them out instead of declaring the table unreadable.
 CUSTOM_RACE_ROWS = re.compile(rf'(?is)^REPLACE\s+INTO\s+`?{TABLE}`?\s*\([^)]*\)\s*SELECT\s.*\sFROM\s+`?coa_custom_\w+_add`?\s*$')
 
 
