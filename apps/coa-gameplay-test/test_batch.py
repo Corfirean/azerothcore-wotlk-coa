@@ -379,10 +379,13 @@ SHIPPED_EXCLUSIVE = {'bloodforged-high-risk-drop', 'coa-prestige-chromie-spawns'
                      'path-to-ascension-arena-solo-queue-tutorial', 'pvp-armor-arena-10463',
                      'molten-core-lucifron-encounter', 'setis-world-boss-altar-loot',
                      'snowgrave-world-boss-instance', 'lfg-mythic-dungeons-follow-release-stage',
+                     'kazzak-throne-follows-release-stage',
                      'battleground-spirit-guide-queue-follows-range',
                      'battleground-spirit-guide-client-queue-request-10146',
                      'mercenary-battleground-team-faction', 'mercenary-war-mode-battleground',
-                     'high-risk-challenge-survives-battleground', 'mercenary-wintergrasp-team-faction'}
+                     'high-risk-challenge-survives-battleground', 'mercenary-wintergrasp-team-faction',
+                     'battleground-wide-bracket-boundary', 'battleground-wide-bracket-group-boundary',
+                     'battleground-wide-bracket-catch-up', 'battleground-wide-bracket-pet-catch-up'}
 UTC_EVENING = datetime(2026, 9, 24, 22, 40, tzinfo=timezone.utc)
 
 

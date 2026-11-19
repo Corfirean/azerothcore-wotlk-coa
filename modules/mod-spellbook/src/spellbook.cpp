@@ -874,7 +874,7 @@ public:
                                                  bool sent) override
     {
         if (sent)
-            SpellbookNotify::Push(player, replacement);
+            SpellbookNotify::Unmute(player, replacement);
         else
             SpellbookNotify::Mute(player, replacement);
     }
