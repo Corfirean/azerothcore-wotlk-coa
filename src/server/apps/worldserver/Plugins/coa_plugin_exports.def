@@ -1338,7 +1338,7 @@ EXPORTS
     ?SendLootStartRoll@Group@@QEAAXIIAEBVRoll@@@Z
     ?SendLooter@Group@@QEAAXPEAVCreature@@PEAVPlayer@@@Z
     ?SendMailResult@Player@@QEAAXIW4MailResponseType@@W4MailResponseResult@@III@Z
-    ?SendMailTo@MailDraft@@QEAAXV?$shared_ptr@V?$Transaction@VCharacterDatabaseConnection@@@@@std@@AEBVMailReceiver@@AEBVMailSender@@W4MailCheckMask@@II_N4@Z
+    ?SendMailTo@MailDraft@@QEAAIV?$shared_ptr@V?$Transaction@VCharacterDatabaseConnection@@@@@std@@AEBVMailReceiver@@AEBVMailSender@@W4MailCheckMask@@II_N4@Z
     ?SendMeleeAttackStop@Unit@@QEBAXPEBV1@@Z
     ?SendMovementFlagUpdate@Unit@@QEAAX_N@Z
     ?SendNameQueryOpcode@WorldSession@@QEAAXVObjectGuid@@@Z
