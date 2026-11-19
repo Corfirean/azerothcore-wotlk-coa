@@ -170,6 +170,7 @@ EXPORTS
     ?AllowedForPlayer@LootItem@@QEBA_NPEBVPlayer@@VObjectGuid@@@Z
     ?AnticheatSetUnderACKmount@ScriptMgr@@QEAAXPEAVPlayer@@@Z
     ?Apply@AscensionRulesets@@YAXPEAVPlayer@@W4Ruleset@1@_N@Z
+    ?ApplyArchetypeBuild@AscensionWildcard@@YA?AUWildcardArchetypeResult@1@PEAVPlayer@@IIAEBV?$vector@U?$pair@IE@std@@V?$allocator@U?$pair@IE@std@@@2@@std@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@5@@Z
     ?ApplyAttackTimePercentMod@Unit@@QEAAXW4WeaponAttackType@@M_N@Z
     ?ApplyBuildUpload@AscensionWildcard@@YA?AUBuildChoice@1@PEAVPlayer@@AEBV?$vector@UKnownEntry@AscensionCoATalentState@@V?$allocator@UKnownEntry@AscensionCoATalentState@@@std@@@std@@@Z
     ?ApplyCastTimePercentMod@Unit@@QEAAXM_N@Z
@@ -294,6 +295,7 @@ EXPORTS
     ?ClaimLevelingScrolls@AscensionWildcard@@YAXPEAVPlayer@@@Z
     ?ClassSkillLines@AscensionWarcraftReborn@@YA?AV?$vector@IV?$allocator@I@std@@@std@@AEBUData@1@AEBURealm@AscensionFreepick@@I@Z
     ?CleanupAfterTaxiFlight@Player@@QEAAXXZ
+    ?ClearActivePreset@AscensionMysticEnchant@@YAIPEAVPlayer@@@Z
     ?ClearCastWhenWillAvailable@Pet@@QEAAXXZ
     ?ClearEnchantment@Item@@QEAAXW4EnchantmentSlot@@@Z
     ?ClearGossipMenuFor@@YAXPEAVPlayer@@@Z
@@ -401,6 +403,7 @@ EXPORTS
     ?FindTextSoundEmoteFor@@YAPEBUEmotesTextSoundEntry@@III@Z
     ?FitGuide@AscensionFreepick@@YA?AV?$vector@UEntry@AscensionFreepick@@V?$allocator@UEntry@AscensionFreepick@@@std@@@std@@AEBUCatalog@1@AEBURealm@1@IIAEBV23@2@Z
     ?ForceValuesUpdateAtIndex@Object@@QEAAXI@Z
+    ?ForgetClassSpellsAbove@AscensionWarcraftReborn@@YA?AV?$unordered_set@IU?$hash@I@std@@U?$equal_to@I@2@V?$allocator@I@2@@std@@PEAVPlayer@@E@Z
     ?Gain@XP@Acore@@YAIPEAVPlayer@@PEAVUnit@@_N@Z
     ?GenerateActionBarData@Pet@@QEBA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ
     ?GenerateAuctionID@ObjectMgr@@QEAAIXZ
@@ -1029,6 +1032,7 @@ EXPORTS
     ?IsPrimaryProfessionSkill@@YA_NI@Z
     ?IsProfanityName@ObjectMgr@@QEBA_NV?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
     ?IsPvP@Player@@QEAA_NXZ
+    ?IsRebornCharacter@AscensionWarcraftReborn@@YA_NPEBVPlayer@@@Z
     ?IsReservedName@ObjectMgr@@QEBA_NV?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
     ?IsReturning@CharmInfo@@QEAA_NXZ
     ?IsScriptedPrivateInstance@Map@@QEBA_NXZ
@@ -1197,6 +1201,7 @@ EXPORTS
     ?ReadRealm@AscensionFreepick@@YA?AURealm@1@XZ
     ?RebornSpell@AscensionWarcraftReborn@@YAIIAEBV?$function@$$A6A_NI@Z@std@@@Z
     ?RecalculateAmountOfEffects@Aura@@QEAAXXZ
+    ?RecommendEnchants@AscensionMysticEnchant@@YA?AV?$vector@UGuideEnchant@AscensionMysticEnchant@@V?$allocator@UGuideEnchant@AscensionMysticEnchant@@@std@@@std@@PEBVPlayer@@I@Z
     ?RefreshDuration@Aura@@QEAAX_N@Z
     ?RegisterPayload@WardenPayloadMgr@@QEAA_NAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@G_N@Z
     ?RelocatePolarOffset@Position@@QEAAXMMM@Z
