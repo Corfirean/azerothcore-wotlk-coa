@@ -16,6 +16,7 @@
 #include "Opcodes.h"
 #include "PlayerScript.h"
 #include "ServerScript.h"
+#include "StringConvert.h"
 #include "SubclassRules.h"
 #include "WorldPacket.h"
 #include "WorldScript.h"
@@ -35,6 +36,11 @@ std::string PairClassLabel(uint8 classId);
 void TwoPlayersSeparate(uint32 first, uint32 second);
 bool TwoPlayersEnabled();
 std::string TwoPlayersHalt(Player* rider, bool halt);
+std::string TwoPlayersRide(Player* rider);
+std::string TwoPlayersSendCourier(Player* presser);
+void TwoPlayersCourierList(Player* presser);
+void TwoPlayersCourierMark(Player* presser, uint32 entry, bool mark);
+void TwoPlayersCourierSellOne(Player* presser, std::string_view owner, uint32 entry);
 
 namespace
 {
@@ -611,6 +617,11 @@ uint32 TwoPlayersPartnerOf(uint32 guid)
     return PartnerOf(guid);
 }
 
+void TwoPlayersSendAddon(Player* player, std::string const& message)
+{
+    SendPairAddon(player, message);
+}
+
 bool TwoPlayersIsLeftHead(uint32 guid)
 {
     return IsLeftHead(guid);
@@ -639,6 +650,30 @@ void HandlePairMessage(Player* player, std::vector<std::string_view> const& word
         Decline(player);
     else if (words.size() == 1 && words[0] == "PAIRSTATUS")
         Status(player);
+    else if (words.size() == 1 && words[0] == "PAIRJUNK")
+    {
+        if (std::string const refusal = TwoPlayersSendCourier(player); !refusal.empty())
+            Tell(player, refusal);
+    }
+    else if (words.size() == 1 && words[0] == "COURIERLIST")
+        TwoPlayersCourierList(player);
+    else if (words.size() == 2 && (words[0] == "COURIERMARK" || words[0] == "COURIERUNMARK"))
+    {
+        if (Optional<uint32> const entry = Acore::StringTo<uint32>(words[1]))
+            TwoPlayersCourierMark(player, *entry, words[0] == "COURIERMARK");
+    }
+    else if (words.size() == 3 && words[0] == "COURIERSELLONE")
+    {
+        if (Optional<uint32> const entry = Acore::StringTo<uint32>(words[1]))
+            TwoPlayersCourierSellOne(player, words[2], *entry);
+    }
+    else if (words.size() == 1 && words[0] == "PAIRMOUNT")
+    {
+        if (std::string const refusal = TwoPlayersRide(player); !refusal.empty())
+            Tell(player, refusal);
+    }
+    else if (words.size() == 1 && words[0] == "PAIRSTATEASK")
+        SendPairAddon(player, StateOf(player));
     else if (words.size() == 1 && words[0] == "PAIRECHO")
         ShowEcho(player);
     else if (words.size() == 1 && (words[0] == "PAIRSTOP" || words[0] == "PAIRGO"))

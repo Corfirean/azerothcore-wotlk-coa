@@ -31,6 +31,7 @@ uint32 TwoPlayersPartnerOf(uint32 guid);
 bool TwoPlayersHeadIsBot(Player const* head);
 bool TwoPlayersIsLeftHead(uint32 guid);
 Player* TwoPlayersSeatedPartner(Player const* head);
+void TwoPlayersSendAddon(Player* player, std::string const& message);
 
 namespace
 {
@@ -42,21 +43,11 @@ constexpr uint32 DisagreeAura = 9530132;
 constexpr uint32 BonkHeadsSpell = 9530133;
 constexpr uint32 RacialTickMs = 1000;
 constexpr uint32 BothPressMs = 1000;
-constexpr uint32 BreathTicks = 10;
-constexpr float BreathReach = 10.0f;
-constexpr float BreathArc = float(M_PI) / 2.0f;
+constexpr uint32 BreathTicks = 4;
+constexpr uint32 BreathBudgetTicks = 10;
+constexpr uint32 DragonsBreath = 31661;
 constexpr uint32 HeroicThrow = 57755;
 constexpr uint32 AvengersShield = 31935;
-
-struct SchoolSpell
-{
-    SpellSchoolMask School;
-    uint32 Spell;
-};
-
-constexpr SchoolSpell BreathSpells[] = {
-    { SPELL_SCHOOL_MASK_FIRE, 2136 }, { SPELL_SCHOOL_MASK_FROST, 116 }, { SPELL_SCHOOL_MASK_SHADOW, 8092 },
-    { SPELL_SCHOOL_MASK_NATURE, 5176 }, { SPELL_SCHOOL_MASK_ARCANE, 30451 }, { SPELL_SCHOOL_MASK_HOLY, 585 } };
 
 struct LimitBreak
 {
@@ -65,7 +56,6 @@ struct LimitBreak
     uint32 MeleePressedAt = 0;
     uint32 RangedPressedAt = 0;
     uint32 BreathLeft = 0;
-    uint32 BreathSpell = 0;
 };
 
 std::mutex& racialMutex = *new std::mutex;
@@ -77,6 +67,13 @@ std::unordered_map<uint32, LimitBreak>& limitBreaks = *new std::unordered_map<ui
 uint32 GaugeSize()
 {
     return std::max<uint32>(1, sConfigMgr->GetOption<uint32>("Subclass.TwoPlayers.BonkHeads.SharedHits", 20));
+}
+
+void TellBonkReady(Player* body, Player* rider, bool ready)
+{
+    for (Player* head : { body, rider })
+        if (head)
+            TwoPlayersSendAddon(head, ready ? "BONKREADY" : "BONKSPENT");
 }
 
 void Tell(Player* player, std::string const& text)
@@ -179,6 +176,7 @@ void CountHit(Player* head, Unit* victim)
             "a second.";
         Tell(body, line);
         Tell(rider, line);
+        TellBonkReady(body, rider, true);
     }
     if (after.Mode == before.Mode && after.Stacks == before.Stacks)
         return;
@@ -270,22 +268,6 @@ void ShareBlood(Player* rider, Player const* body)
         rider->SetHealth(health);
 }
 
-uint32 BreathSpellOf(Player* rider)
-{
-    SchoolSpell best = BreathSpells[0];
-    int32 most = rider->SpellBaseDamageBonusDone(best.School);
-    for (SchoolSpell const& option : BreathSpells)
-    {
-        int32 const power = rider->SpellBaseDamageBonusDone(option.School);
-        if (power > most)
-        {
-            most = power;
-            best = option;
-        }
-    }
-    return best.Spell;
-}
-
 Unit* SwapTarget(Player* body)
 {
     Unit* target = body->GetVictim();
@@ -309,20 +291,12 @@ void ThrowWhatIsWielded(Player* body, Unit* target)
         body->CastSpell(target, HeroicThrow, TRIGGERED_FULL_MASK);
 }
 
-void Breathe(Player* body, Player* rider, uint32 spell)
+void Breathe(Player* body, Player* rider)
 {
-    std::list<Unit*> enemies;
-    Acore::AnyUnfriendlyUnitInObjectRangeCheck check(body, body, BreathReach);
-    Acore::UnitListSearcher<Acore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(body, enemies, check);
-    Cell::VisitObjects(body, searcher, BreathReach);
-    SpellInfo const* info = sSpellMgr->GetSpellInfo(spell);
-    if (!info)
-        return;
-    int32 const damage = int32(rider->SpellBaseDamageBonusDone(info->GetSchoolMask()) * 0.4f) +
+    int32 const perTick = int32(rider->SpellBaseDamageBonusDone(SPELL_SCHOOL_MASK_FIRE) * 0.4f) +
         int32(rider->GetLevel()) * 4 + 4;
-    for (Unit* enemy : enemies)
-        if (enemy->IsAlive() && body->isInFront(enemy, BreathArc) && rider->IsValidAttackTarget(enemy))
-            rider->CastCustomSpell(enemy, spell, &damage, nullptr, nullptr, true);
+    int32 const damage = perTick * int32(BreathBudgetTicks) / int32(BreathTicks);
+    body->CastCustomSpell(DragonsBreath, SPELLVALUE_BASE_POINT0, damage, (Unit*)nullptr, true);
 }
 
 void BonkHeads(Player* body, Player* rider)
@@ -331,6 +305,7 @@ void BonkHeads(Player* body, Player* rider)
     std::string const line = "|cffd8b46a[The body]|r BONK! The Melee Head throws, the Ranged Head breathes.";
     Tell(body, line);
     Tell(rider, line);
+    TellBonkReady(body, rider, false);
     if (target)
         ThrowWhatIsWielded(body, target);
     std::lock_guard<std::mutex> lock(racialMutex);
@@ -338,7 +313,6 @@ void BonkHeads(Player* body, Player* rider)
     limit.Gauge = 0;
     limit.Announced = false;
     limit.BreathLeft = BreathTicks;
-    limit.BreathSpell = BreathSpellOf(rider);
 }
 
 void PressBonkHeads(Player* presser)
@@ -383,17 +357,15 @@ void PressBonkHeads(Player* presser)
 
 void BreathTick(Player* body, Player* rider)
 {
-    uint32 spell = 0;
     {
         std::lock_guard<std::mutex> lock(racialMutex);
         auto const found = limitBreaks.find(body->GetGUID().GetCounter());
         if (found == limitBreaks.end() || !found->second.BreathLeft)
             return;
         --found->second.BreathLeft;
-        spell = found->second.BreathSpell;
     }
     if (rider)
-        Breathe(body, rider, spell);
+        Breathe(body, rider);
 }
 
 void RacialTick(Player* player)

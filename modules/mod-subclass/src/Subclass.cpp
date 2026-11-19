@@ -76,6 +76,8 @@ std::string HandleRelicMessage(Player* player, std::vector<std::string_view> con
 void HandlePairMessage(Player* player, std::vector<std::string_view> const& words);
 void SendBotPlans(Player* player);
 void BotPlanDoNow(Player* player, std::string_view botName, uint32 questId);
+void BotPlanMoveUp(Player* player, std::string_view botName, uint32 questId);
+void BotPlanIgnore(Player* player, std::string_view botName, uint32 questId, bool ignore);
 std::string TwinState(Player const* player);
 std::string CyclopsModelState(Player const* player);
 std::string CyclopsPreview(uint32 itemId);
@@ -415,6 +417,7 @@ std::atomic<bool> thinHumanEnabled{ true };
 std::atomic<bool> twoHeadedOgreEnabled{ true };
 std::atomic<bool> twoPlayersEnabled{ true };
 std::atomic<bool> forceBots{ false };
+std::atomic<bool> anyRaceBots{ false };
 std::atomic<bool> travelFormsWholeBody{ true };
 std::atomic<uint32> brotherMirrorDisplay{ 977602 };
 std::vector<Subclass::Pair> pairs;
@@ -455,8 +458,18 @@ Subclass::Settings CurrentSettings()
     return settings;
 }
 
+bool BorrowsTheOgreStory(Player const* player)
+{
+    uint8 const race = player->getRace();
+    WorldSession const* session = player->GetSession();
+    return anyRaceBots && forceBots && session && session->IsBot() && race != Subclass::TwoHeadedOgreRace &&
+        race != Subclass::ThinHumanRace;
+}
+
 Subclass::Character CharacterOf(Player const* player)
 {
+    if (BorrowsTheOgreStory(player))
+        return { Subclass::TwoHeadedOgreRace, GENDER_FEMALE, player->getClass(), player->GetLevel() };
     return { player->getRace(), StoryGenderOf(player), player->getClass(), player->GetLevel() };
 }
 
@@ -700,7 +713,7 @@ bool MainMaySubclass(uint8 classId);
 
 bool MayCarrySubclass(Player const* player)
 {
-    return MainMaySubclass(player->getClass()) && SubclassRaceEnabled(player->getRace());
+    return MainMaySubclass(player->getClass()) && SubclassRaceEnabled(CharacterOf(player).Race);
 }
 
 bool MainMaySubclass(uint8 classId)
@@ -1450,12 +1463,16 @@ void HandleAddonMessage(Player* player, std::string_view message)
             ChatHandler(player->GetSession()).SendSysMessage(refusal);
         SendAddon(player, RelicState(player));
     }
-    else if (!words.empty() && words[0].starts_with("PAIR"))
+    else if (!words.empty() && (words[0].starts_with("PAIR") || words[0].starts_with("COURIER")))
         HandlePairMessage(player, words);
     else if (words.size() == 1 && words[0] == "BOTPLAN")
         SendBotPlans(player);
     else if (words.size() == 3 && words[0] == "BOTPLANNOW")
         BotPlanDoNow(player, words[1], Acore::StringTo<uint32>(words[2]).value_or(0));
+    else if (words.size() == 3 && words[0] == "BOTPLANUP")
+        BotPlanMoveUp(player, words[1], Acore::StringTo<uint32>(words[2]).value_or(0));
+    else if (words.size() == 3 && (words[0] == "BOTPLANIGNORE" || words[0] == "BOTPLANALLOW"))
+        BotPlanIgnore(player, words[1], Acore::StringTo<uint32>(words[2]).value_or(0), words[0] == "BOTPLANIGNORE");
     else if (words.size() == 1 && words[0] == "CYCLOPSECHO")
     {
         EchoCyclopsHelmet(player);
@@ -2372,6 +2389,7 @@ public:
         twoHeadedOgreEnabled = loaded.TwoHeadedOgre;
         twoPlayersEnabled = sConfigMgr->GetOption<bool>("Subclass.TwoPlayers.Enable", true);
         forceBots = loaded.ForceBots;
+        anyRaceBots = sConfigMgr->GetOption<bool>("Subclass.Bots.AnyRace", false);
         travelFormsWholeBody = loaded.TravelFormsWholeBody;
         brotherMirrorDisplay = loaded.BrotherMirrorDisplay;
         std::lock_guard<std::mutex> lock(subclassMutex);

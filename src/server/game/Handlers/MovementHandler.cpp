@@ -426,29 +426,33 @@ void WorldSession::HandleMoverRelocation(MovementInfo& movementInfo, Unit* mover
 {
     SynchronizeMovement(movementInfo);
 
-    // Hardluck ferries (custom WMO transports): the client can keep a player "attached" after falling off the side, so no swim state
-    // and a fall through the water. Detach him and re-sync with a near teleport to his current world position.
-    if (Player* fp = mover->ToPlayer())
+    // Hardluck ferries (custom WMO transports): the client can keep a player attached after he falls off the side,
+    // so he never swims and falls through the water. Detach him and resync with a near teleport.
+    if (Player* fallingPlayer = mover->ToPlayer())
     {
-        if (movementInfo.HasMovementFlag(MOVEMENTFLAG_ONTRANSPORT) && movementInfo.HasMovementFlag(MOVEMENTFLAG_FALLING) && !fp->IsBeingTeleported())
+        if (movementInfo.HasMovementFlag(MOVEMENTFLAG_ONTRANSPORT) && movementInfo.HasMovementFlag(MOVEMENTFLAG_FALLING) &&
+            !fallingPlayer->IsBeingTeleported())
         {
-            if (Transport* ft = fp->GetTransport())
+            Transport* ferry = fallingPlayer->GetTransport();
+            if (ferry && (ferry->GetEntry() == 9900101 || ferry->GetEntry() == 9900102))
             {
-                if (ft->GetEntry() == 9900101 || ft->GetEntry() == 9900102)
+                float localX = movementInfo.transport.pos.GetPositionX();
+                float localY = movementInfo.transport.pos.GetPositionY();
+                float localZ = movementInfo.transport.pos.GetPositionZ();
+                // Hull bounds measured at ship scale 0.45; valid up to scale 1.0.
+                float const k = 1.0f / 0.45f;
+                bool outside = localX < -22.f * k || localX > 19.f * k || localY < -10.5f * k || localY > 7.5f * k ||
+                    localZ < -3.5f * k || (localZ < -1.0f * k && (localY < -7.5f * k || localY > 5.5f * k));
+                if (outside)
                 {
-                    float lx = movementInfo.transport.pos.GetPositionX(), ly = movementInfo.transport.pos.GetPositionY(), lz = movementInfo.transport.pos.GetPositionZ();
-                    const float k = 1.0f / 0.45f; // hull bounds written for scale 0.45; valid up to ship scale 1.0
-                    bool outside = lx < -22.f * k || lx > 19.f * k || ly < -10.5f * k || ly > 7.5f * k || lz < -3.5f * k || (lz < -1.0f * k && (ly < -7.5f * k || ly > 5.5f * k));
-                    if (outside)
-                    {
-                        ft->RemovePassenger(fp);
-                        fp->SetTransport(nullptr);
-                        movementInfo.RemoveMovementFlag(MOVEMENTFLAG_ONTRANSPORT);
-                        movementInfo.transport.Reset();
-                        fp->m_movementInfo.transport.Reset();
-                        fp->NearTeleportTo(movementInfo.pos.GetPositionX(), movementInfo.pos.GetPositionY(), movementInfo.pos.GetPositionZ(), movementInfo.pos.GetOrientation());
-                        return;
-                    }
+                    ferry->RemovePassenger(fallingPlayer);
+                    fallingPlayer->SetTransport(nullptr);
+                    movementInfo.RemoveMovementFlag(MOVEMENTFLAG_ONTRANSPORT);
+                    movementInfo.transport.Reset();
+                    fallingPlayer->m_movementInfo.transport.Reset();
+                    fallingPlayer->NearTeleportTo(movementInfo.pos.GetPositionX(), movementInfo.pos.GetPositionY(),
+                        movementInfo.pos.GetPositionZ(), movementInfo.pos.GetOrientation());
+                    return;
                 }
             }
         }

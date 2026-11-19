@@ -874,7 +874,7 @@ public:
                                                  bool sent) override
     {
         if (sent)
-            SpellbookNotify::Push(player, replacement);
+            SpellbookNotify::Unmute(player, replacement);
         else
             SpellbookNotify::Mute(player, replacement);
     }
@@ -1001,6 +1001,10 @@ namespace Spellbook
             return spells;
 
         for (SpellbookOfferData::Offer const &offer : SpellbookOfferData::Offers)
+            if (offer.ClassId == player->getClass() && offer.FirstSpellId && offer.RequiredLevel > level)
+                spells.push_back(offer.SpellId);
+
+        for (SpellbookTrainerData::Offer const &offer : SpellbookTrainerData::Offers)
             if (offer.ClassId == player->getClass() && offer.FirstSpellId && offer.RequiredLevel > level)
                 spells.push_back(offer.SpellId);
 

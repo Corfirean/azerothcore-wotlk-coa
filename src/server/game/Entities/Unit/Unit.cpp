@@ -23,6 +23,7 @@
 #include "AreaDefines.h"
 #include "ArenaSpectator.h"
 #include "AscensionResilientConstitution.h"
+#include "AscensionTankStances.h"
 #include "Battlefield.h"
 #include "BattlefieldMgr.h"
 #include "Battleground.h"
@@ -2319,32 +2320,9 @@ void Unit::DealMeleeDamage(CalcDamageInfo* damageInfo, bool durabilityLoss)
                                !IsPlayer() && !ToCreature()->IsControlledByPlayer() && !victim->HasInArc(M_PI, this)
                                && (victim->IsPlayer() || !victim->ToCreature()->isWorldBoss()) && !victim->IsVehicle()))
     {
-        // -probability is between 0% and 40%
-        // 20% base chance
-        float Probability = 20.0f;
-
-        // there is a newbie protection, at level 10 just 7% base chance; assuming linear function
-        if (victim->GetLevel() < 30)
-            Probability = 0.65f * victim->GetLevel() + 0.5f;
-
-        uint32 VictimDefense = victim->GetDefenseSkillValue();
-        uint32 VictimAuraDefense = -victim->GetTotalAuraModifier(SPELL_AURA_MOD_ATTACKER_MELEE_CRIT_CHANCE) * 25;
-        uint32 AttackerMeleeSkill = GetUnitMeleeSkill();
-        if (Player const* viewer = victim->GetCharmerOrOwnerPlayerOrPlayerItself())
-            if (uint8 const view = LocalLevelScaling::ViewLevelFor(viewer, ToCreature()))
-                AttackerMeleeSkill = view * 5;
-
-        // xinef: fix daze mechanics
-        float const chancePerSkillPoint = IsClassicPlusCombat(this, victim) ?
-            ClassicPlusCombat::DazeChancePerSkillPoint : 0.1428f;
-        Probability -= ((float)VictimDefense + (float)VictimAuraDefense - AttackerMeleeSkill) * chancePerSkillPoint;
-
-        if (Probability > 40.0f)
-            Probability = 40.0f;
-
         // Daze application
         if (sWorld->getBoolConfig(CONFIG_ENABLE_DAZE))
-            if (roll_chance_f(std::max(0.0f, Probability)))
+            if (roll_chance_f(GetMeleeDazeChance(victim)))
                 CastSpell(victim, 1604, true);
     }
 
@@ -4515,6 +4493,38 @@ int32 Unit::GetAscensionConditionalCombatModifier(Unit const* victim, SpellInfo 
     });
 }
 
+float Unit::GetMeleeDazeChance(Unit const* victim) const
+{
+    if (victim->HasAura(Ascension::TANK_STANCE_CRIT_REDUCTION_AURA))
+        return 0.0f;
+
+    // -probability is between 0% and 40%
+    // 20% base chance
+    float Probability = 20.0f;
+
+    // there is a newbie protection, at level 10 just 7% base chance; assuming linear function
+    if (victim->GetLevel() < 30)
+        Probability = 0.65f * victim->GetLevel() + 0.5f;
+
+    uint32 VictimDefense = victim->GetDefenseSkillValue();
+    uint32 VictimAuraDefense = -victim->GetTotalAuraModifier(SPELL_AURA_MOD_ATTACKER_MELEE_CRIT_CHANCE) * 25;
+    uint32 AttackerMeleeSkill = GetUnitMeleeSkill();
+    if (Creature const* attacker = ToCreature())
+        if (Player const* viewer = victim->GetCharmerOrOwnerPlayerOrPlayerItself())
+            if (uint8 const view = LocalLevelScaling::ViewLevelFor(viewer, attacker))
+                AttackerMeleeSkill = view * 5;
+
+    // xinef: fix daze mechanics
+    float const chancePerSkillPoint = IsClassicPlusCombat(this, victim) ?
+        ClassicPlusCombat::DazeChancePerSkillPoint : 0.1428f;
+    Probability -= ((float)VictimDefense + (float)VictimAuraDefense - AttackerMeleeSkill) * chancePerSkillPoint;
+
+    if (Probability > 40.0f)
+        Probability = 40.0f;
+
+    return std::max(0.0f, Probability);
+}
+
 float Unit::GetUnitCriticalChance(WeaponAttackType attackType, Unit const* victim) const
 {
     float crit;
@@ -5090,6 +5100,10 @@ bool Unit::CanDefendDuringChannel(Unit const* attacker) const
 
     Spell* channel = GetCurrentSpell(CURRENT_CHANNELED_SPELL);
     Spell* generic = GetCurrentSpell(CURRENT_GENERIC_SPELL);
+    if (IsPlayer() && getClass() == CLASS_WITCH_HUNTER && channel && channel->IsChannelActive() &&
+        channel->getState() != SPELL_STATE_FINISHED && channel->GetSpellInfo()->Id == 805751 &&
+        (!generic || generic->getState() == SPELL_STATE_FINISHED))
+        return true;
     return IsPlayer() && getClass() == CLASS_DEMON_HUNTER && channel && channel->IsChannelActive() &&
         channel->getState() != SPELL_STATE_FINISHED && channel->GetSpellInfo()->Id == 800206 &&
         (!generic || generic->getState() == SPELL_STATE_FINISHED);
@@ -8506,6 +8520,11 @@ void Unit::ModifyAuraState(AuraStateType flag, bool apply)
         if (!HasFlag(UNIT_FIELD_AURASTATE, 1 << (flag - 1)))
         {
             SetFlag(UNIT_FIELD_AURASTATE, 1 << (flag - 1));
+
+            // enrage auras are never unapplied when the state drops (see below), so reapplying them stacks their effects
+            if (flag == AURA_STATE_ENRAGE)
+                return;
+
             Unit::AuraMap& tAuras = GetOwnedAuras();
             for (Unit::AuraMap::iterator itr = tAuras.begin(); itr != tAuras.end(); ++itr)
             {
@@ -10129,9 +10148,9 @@ uint32 Unit::SpellDamageBonusTaken(Unit* caster, SpellInfo const* spellProto, ui
         if (coeff <= 0.0f)
         {
             if (caster)
-                coeff = caster->CalculateDefaultCoefficient(spellProto, damagetype) * int32(stack);
+                coeff = caster->CalculateDefaultCoefficient(spellProto, damagetype);
             else
-                coeff = CalculateDefaultCoefficient(spellProto, damagetype) * int32(stack);
+                coeff = CalculateDefaultCoefficient(spellProto, damagetype);
         }
 
         float factorMod = CalculateLevelPenalty(spellProto) * stack;
@@ -11814,7 +11833,7 @@ void Unit::Mount(uint32 mount, uint32 VehicleId, uint32 creatureEntry)
         sScriptMgr->AnticheatSetUnderACKmount(player);
 
         // mount as a vehicle
-        if (VehicleId)
+        if (VehicleId && !sScriptMgr->OnPlayerKeepsOwnVehicle(player))
         {
             if (CreateVehicleKit(VehicleId, creatureEntry))
             {
@@ -12195,7 +12214,8 @@ bool Unit::_IsValidAssistTarget(Unit const* target, SpellInfo const* bySpell) co
         return false;
 
     // can't assist own vehicle or passenger
-    if (m_vehicle)
+    // A player carrying players (a shared body or a passenger mount) stays a friendly player to them.
+    if (m_vehicle && !m_vehicle->GetBase()->IsPlayer())
         if (IsOnVehicle(target) || m_vehicle->GetBase()->IsOnVehicle(target))
             return false;
 
@@ -12450,6 +12470,7 @@ void Unit::UpdateSpeed(UnitMoveType mtype, bool forced)
                     stack_bonus     = GetTotalAuraMultiplier(SPELL_AURA_MOD_SPEED_ALWAYS);
                     non_stack_bonus += GetMaxPositiveAuraModifier(SPELL_AURA_MOD_SPEED_NOT_STACK) / 100.0f;
                 }
+                sScriptMgr->OnUnitUpdateRunSpeed(this, main_speed_mod, stack_bonus, non_stack_bonus);
                 break;
             }
         case MOVE_SWIM:
@@ -13929,10 +13950,19 @@ bool Unit::CanReceivePowerFromSpell(Powers power)
     // Witch Hunter restores both pools; Primalist has secondary Rage even
     // before specialization. Spell restoration does not enable the native
     // automatic Rage formulas, which retain their HasActivePowerType gate.
-    return HasActivePowerType(power) || (IsPlayer() &&
+    return HasActivePowerType(power) || HasNecromancerManaPool(power) || (IsPlayer() &&
         ((getClass() == CLASS_WITCH_HUNTER && (power == POWER_MANA || power == POWER_RAGE)) ||
-            (getClass() == CLASS_NECROMANCER && power == POWER_MANA) ||
             (getClass() == CLASS_WILDWALKER && power == POWER_RAGE)));
+}
+
+bool Unit::HasNecromancerManaPool(Powers power) const
+{
+    return IsPlayer() && getClass() == CLASS_NECROMANCER && power == POWER_MANA;
+}
+
+bool Unit::CanLosePowerToSpell(Powers power)
+{
+    return HasActivePowerType(power) || HasNecromancerManaPool(power);
 }
 
 uint32 Unit::GetCreatePowers(Powers power) const
@@ -14699,7 +14729,8 @@ void Unit::RestoreDisplayId()
     }
 
     // no auras found - set modelid to default
-    SetDisplayId(GetNativeDisplayId());
+    SetDisplayId(GetNativeDisplayId(), GetNativeObjectScale());
+    RecalculateObjectScale();
 }
 
 void Unit::AddComboPoints(Unit* target, int8 count)

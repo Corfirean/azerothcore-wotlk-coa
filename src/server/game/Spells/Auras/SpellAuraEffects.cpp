@@ -43,8 +43,8 @@
 #include "Unit.h"
 #include "Util.h"
 #include "Vehicle.h"
-#include "World.h"
 #include "VenthyrRacials.h"
+#include "World.h"
 #include "WorldPacket.h"
 
 /// @todo: this import is not necessary for compilation and marked as unused by the IDE
@@ -1317,7 +1317,8 @@ bool AuraEffect::CheckEffectProc(AuraApplication* aurApp, ProcEventInfo& eventIn
     {
         case SPELL_AURA_ASCENSION_PROC_PERCENT_EVENT:
             if (GetId() == 277785 || GetId() == 280375 || GetId() == 277082 || GetId() == 280220 ||
-                GetId() == 280225 || GetId() == 280365 || GetId() == 281050 || GetId() == 289261)
+                GetId() == 280225 || GetId() == 280365 || GetId() == 281050 || GetId() == 289261 ||
+                GetId() == 707615)
             {
                 Unit* owner = aurApp->GetTarget();
                 Unit* actor = eventInfo.GetActor();
@@ -1333,7 +1334,7 @@ bool AuraEffect::CheckEffectProc(AuraApplication* aurApp, ProcEventInfo& eventIn
                     return actor && actor != owner && owner->isInFront(actor) &&
                         (eventInfo.GetTypeMask() & (PROC_FLAG_TAKEN_MELEE_AUTO_ATTACK |
                             PROC_FLAG_TAKEN_SPELL_MELEE_DMG_CLASS));
-                if (GetId() == 280365)
+                if (GetId() == 280365 || GetId() == 707615)
                     return target != owner;
                 if (GetId() == 289261)
                     return target != owner && (damage->GetSchoolMask() & SPELL_SCHOOL_MASK_NORMAL);
@@ -7055,7 +7056,7 @@ void AuraEffect::HandlePeriodicManaLeechAuraTick(Unit* target, Unit* caster) con
 {
     Powers PowerType = Powers(GetMiscValue());
 
-    if (!caster || !caster->IsAlive() || !target->IsAlive() || !target->HasActivePowerType(PowerType))
+    if (!caster || !caster->IsAlive() || !target->IsAlive() || !target->CanLosePowerToSpell(PowerType))
         return;
 
     if (target->IsImmunedToAuraPeriodicTick(caster, GetSpellInfo()))
@@ -7214,7 +7215,7 @@ void AuraEffect::HandlePeriodicPowerBurnAuraTick(Unit* target, Unit* caster) con
 {
     Powers PowerType = Powers(GetMiscValue());
 
-    if (!caster || !target->IsAlive() || !target->HasActivePowerType(PowerType))
+    if (!caster || !target->IsAlive() || !target->CanLosePowerToSpell(PowerType))
         return;
 
     if (target->IsImmunedToDamage(caster, GetSpellInfo()))
@@ -7310,7 +7311,8 @@ void AuraEffect::HandleProcTriggerSpellWithValueAuraProc(AuraApplication* aurApp
 void AuraEffect::HandleAscensionPercentEventProc(AuraApplication* aurApp, ProcEventInfo& eventInfo)
 {
     if (GetId() != 277785 && GetId() != 280375 && GetId() != 277082 && GetId() != 280220 &&
-        GetId() != 280225 && GetId() != 280365 && GetId() != 281050 && GetId() != 289261)
+        GetId() != 280225 && GetId() != 280365 && GetId() != 281050 && GetId() != 289261 &&
+        GetId() != 707615)
         return;
     Unit* owner = aurApp->GetTarget();
     Unit* target = (GetId() == 280225 || GetId() == 280365 || GetId() == 289261) ? owner :

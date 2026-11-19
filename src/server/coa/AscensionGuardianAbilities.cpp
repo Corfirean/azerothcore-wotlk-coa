@@ -1,8 +1,8 @@
 /* Copyright (C) 2016+ AzerothCore, GNU AGPL v3. */
 
 #include "AscensionGuardianCompletion.h"
-#include "DBCStores.h"
 #include "AscensionSpecialization.h"
+#include "DBCStores.h"
 #include "EventProcessor.h"
 #include "Map.h"
 #include "MoveSpline.h"

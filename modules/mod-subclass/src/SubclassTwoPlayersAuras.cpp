@@ -5,10 +5,12 @@
 #include "Player.h"
 #include "SpellAuras.h"
 #include "SpellInfo.h"
+#include "SpellMgr.h"
 #include "UnitScript.h"
 #include <algorithm>
 #include <mutex>
 #include <set>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -70,16 +72,54 @@ bool Shared(SpellInfo const* info)
     return true;
 }
 
+bool OtherChoiceOf(SpellInfo const* chosen, SpellInfo const* held)
+{
+    return chosen->Id != held->Id &&
+        sSpellMgr->CheckSpellGroupStackRules(chosen, held) == SPELL_GROUP_STACK_RULE_EXCLUSIVE_FROM_SAME_CASTER;
+}
+
+void DropOtherChoices(Player* head, Player* other, Aura const* chosen)
+{
+    ObjectGuid const caster = chosen->GetCasterGUID();
+    if (caster != head->GetGUID() && caster != other->GetGUID())
+        return;
+    for (Player* holder : { head, other })
+    {
+        std::vector<std::pair<uint32, ObjectGuid>> dropped;
+        for (auto const& [spellId, application] : holder->GetAppliedAuras())
+        {
+            Aura const* held = application->GetBase();
+            ObjectGuid const heldCaster = held->GetCasterGUID();
+            if ((heldCaster == head->GetGUID() || heldCaster == other->GetGUID()) &&
+                OtherChoiceOf(chosen->GetSpellInfo(), held->GetSpellInfo()))
+                dropped.emplace_back(spellId, heldCaster);
+        }
+        for (auto const& [spellId, heldCaster] : dropped)
+            holder->RemoveAurasDueToSpell(spellId, heldCaster);
+    }
+}
+
 void CopyOnto(Player* other, Aura const* original)
 {
     uint32 const spellId = original->GetId();
     Aura* copy = other->GetAura(spellId);
     if (copy && !IsMirror(other, spellId))
+    {
+        int32 const duration = original->GetDuration();
+        if (copy->GetDuration() >= 0 && (duration < 0 || duration > copy->GetDuration()))
+        {
+            copy->SetMaxDuration(duration < 0 ? -1 : std::max(copy->GetMaxDuration(), duration));
+            copy->SetDuration(duration);
+            copy->SetNeedClientUpdateForTargets();
+        }
         return;
+    }
     mirroring = true;
     if (!copy)
     {
-        copy = other->AddAura(spellId, other);
+        Unit* caster = original->GetCaster();
+        bool const casterKeepsOne = original->GetSpellInfo()->IsSingleTarget();
+        copy = (caster && caster->IsInWorld() && !casterKeepsOne ? caster : other)->AddAura(spellId, other);
         if (copy)
             MarkMirror(other, spellId, true);
     }
@@ -100,6 +140,17 @@ void CopyOnto(Player* other, Aura const* original)
 
 void TwoPlayersShareBuffs(Player* first, Player* second)
 {
+    std::vector<std::tuple<time_t, Player*, uint32, ObjectGuid>> choices;
+    for (Player* holder : { first, second })
+        for (auto const& [spellId, aura] : holder->GetOwnedAuras())
+            if (Shared(aura->GetSpellInfo()) && !IsMirror(holder, spellId))
+                choices.emplace_back(aura->GetApplyTime(), holder, spellId, aura->GetCasterGUID());
+    std::sort(choices.begin(), choices.end(), [](auto const& one, auto const& two)
+        { return std::get<0>(one) > std::get<0>(two); });
+    for (auto const& [applied, holder, spellId, caster] : choices)
+        if (Aura const* aura = holder->GetAura(spellId, caster))
+            DropOtherChoices(holder, holder == first ? second : first, aura);
+
     for (auto const& [from, to] : { std::pair<Player*, Player*>(first, second), { second, first } })
     {
         std::vector<Aura*> owned;
@@ -109,6 +160,28 @@ void TwoPlayersShareBuffs(Player* first, Player* second)
         for (Aura* aura : owned)
             CopyOnto(to, aura);
     }
+}
+
+void TwoPlayersKeepSharedBuffsEven(Player* first, Player* second)
+{
+    TwoPlayersShareBuffs(first, second);
+    std::vector<std::pair<Aura*, Aura*>> pairs;
+    for (auto const& [spellId, aura] : first->GetOwnedAuras())
+        if (Shared(aura->GetSpellInfo()))
+            if (Aura* twin = second->GetAura(spellId))
+                pairs.emplace_back(aura, twin);
+    mirroring = true;
+    for (auto [one, two] : pairs)
+    {
+        if (one->GetDuration() < 0 || two->GetDuration() < 0 || one->GetDuration() == two->GetDuration())
+            continue;
+        Aura* shorter = one->GetDuration() < two->GetDuration() ? one : two;
+        Aura const* longer = shorter == one ? two : one;
+        shorter->SetMaxDuration(std::max(shorter->GetMaxDuration(), longer->GetDuration()));
+        shorter->SetDuration(longer->GetDuration());
+        shorter->SetNeedClientUpdateForTargets();
+    }
+    mirroring = false;
 }
 
 void TwoPlayersDropSharedBuffs(Player* holder)
@@ -138,11 +211,13 @@ public:
     void OnAuraApply(Unit* unit, Aura* aura) override
     {
         Player* head = unit ? unit->ToPlayer() : nullptr;
-        if (mirroring || !head || aura->GetOwner() != unit || !Shared(aura->GetSpellInfo()) ||
-            IsMirror(head, aura->GetId()))
+        if (mirroring || !head || aura->GetOwner() != unit || !Shared(aura->GetSpellInfo()))
             return;
         if (Player* other = TwoPlayersSeatedPartner(head))
+        {
+            DropOtherChoices(head, other, aura);
             CopyOnto(other, aura);
+        }
     }
 
     void OnAuraRemove(Unit* unit, AuraApplication* application, AuraRemoveMode mode) override

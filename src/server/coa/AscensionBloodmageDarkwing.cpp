@@ -1,5 +1,6 @@
 /* Copyright (C) 2016+ AzerothCore, GNU AGPL v3. */
 #include "AscensionBloodmageDarkwing.h"
+#include "AscensionSpecialization.h"
 #include "Creature.h"
 #include "EventMap.h"
 #include "ObjectMgr.h"
@@ -76,7 +77,7 @@ class bloodmage_darkwing_bat : public PlayerScript
         CapShadowBats(player, guardian);
         guardian->SetReactState(REACT_PASSIVE);
 
-        if (player->getClass() != CLASS_SON_OF_ARUGAL)
+        if (!UsesAscensionClassMechanics(player, CLASS_SON_OF_ARUGAL))
             return;
 
         CreatureTemplate const* info = guardian->GetCreatureTemplate();

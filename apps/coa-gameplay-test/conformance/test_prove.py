@@ -342,6 +342,12 @@ class ProveHelperTests(unittest.TestCase):
                                    '--scenario', '/o/a.json', '/o/b.json'])
         self.assertEqual(verify_command(spec, 2, [Path('/o/a.json')])[5], 'gameplay')
 
+    def test_verify_command_forwards_the_gameplay_db_workers(self):
+        spec = ProveSpec(Path('/o'), Path('/w'), 2, False, db_workers=4)
+        self.assertEqual(verify_command(spec, 1, [Path('/o/a.json')]),
+                         ['coa-verify', '--worktree', '/w', '--ram', '--stages', 'gameplay',
+                          '--gameplay-db-workers', '4', '--scenario', '/o/a.json'])
+
     def test_verify_report_reads_the_last_line(self):
         directory = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, directory, True)
@@ -567,10 +573,6 @@ class DeclaredClaimRowTests(unittest.TestCase):
                          [(1, 2), (1, 2)])
 
 
-if __name__ == '__main__':
-    unittest.main()
-
-
 class HitRatioPilotTest(unittest.TestCase):
     def verdict(self, label, status='insufficient_trials', **detail):
         return Verdict(label, status, 19.0, 20.0, 18.0, 22.0, 'pilot', 'scenario', 1, 1, 'behaviour_hit_ratio',
@@ -612,3 +614,7 @@ class HitRatioPilotTest(unittest.TestCase):
         pilot = hit_ratio_pilot(['a'], make, make, pilot_trials=20)
         trials, _ = pilot.size([self.verdict('a', status='ok', sized_trials=5, trial_limit=111)])
         self.assertEqual(trials, {'a': 20})
+
+
+if __name__ == '__main__':
+    unittest.main()

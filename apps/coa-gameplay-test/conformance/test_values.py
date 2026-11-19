@@ -7,13 +7,13 @@ import tempfile
 import unittest
 from unittest import mock
 
-from classes import class_spells
-from profile import (CASTER, armed, base_steps, caster_stats_from, class_file_paths, load_class_file, skill_label,
+from classes import ClassSpell, class_spells
+from profile import (CASTER, armed, base_steps, caster_stats_from, class_file_paths, load_class_file, load_fixture_class_file, skill_label,
                     unfit_reason)
 from test_tooltip import FIXTURE_CASTER, FIXTURE_SPELLS, FIXTURE_VARIABLES, write_fixture
 from tooltip import CasterStats, DataSet, Displayed, Records, read_tooltip
-from values import (ALLY, AURA_STATE_HEALTHLESS_35_PERCENT, CALC_AMOUNT_HOOKS_METRIC, CHECKS, FIXTURE_MAX_HEALTH,
-                    GCD_WAIT_MS, GENERIC, TARGET, UNMEASURABLE, UNREADABLE, Expectation, Unmodelled,
+from values import (ALLY, AURA_STATE_FROZEN, AURA_STATE_HEALTHLESS_20_PERCENT, AURA_STATE_HEALTHLESS_35_PERCENT,
+                    CALC_AMOUNT_HOOKS_METRIC, CHECKS, FIXTURE_MAX_HEALTH, GCD_WAIT_MS, GENERIC, TARGET, UNMEASURABLE, UNREADABLE, Expectation, Unmodelled,
                     calc_amount_hooks_label, conditional_extra_values, effect_modifier_label,
                     disabled_foreign_effects, facts_of, fixture_health_step, foreign_aura_grants, foreign_effect,
                     foreign_radius, periodic_reason, required_target_health_steps, sample_labels, value_scenario)
@@ -111,7 +111,7 @@ def measured_labels(scenario):
 
 class ClassFileTest(unittest.TestCase):
     def test_templar_file_names_the_weapon_and_the_known_auras(self):
-        templar = load_class_file(TEMPLAR_CLASS_ID)
+        templar = load_fixture_class_file(TEMPLAR_CLASS_ID)
         self.assertEqual(templar['weapon']['item'], WALKING_STICK)
         self.assertEqual(templar['known_auras'], [CLASS_TUNING_AURA])
         self.assertEqual(templar['probe_auras'], [SCOURGEBANE])
@@ -123,20 +123,20 @@ class ClassFileTest(unittest.TestCase):
         table = DataSet(DBC_DIR).load('Item')[0]
         records = {item: (item_class, subclass) for item, item_class, subclass
                    in (ITEM_RECORD.unpack_from(table.record(row)) for row in range(table.rows))}
-        templar = load_class_file(TEMPLAR_CLASS_ID)
+        templar = load_fixture_class_file(TEMPLAR_CLASS_ID)
         self.assertEqual(records[WALKING_STICK], (2, templar['weapon']['subclass']))
         self.assertEqual(templar['weapon']['subclass'], STAFF_SUBCLASS)
 
-    def test_every_class_file_names_its_class(self):
+    def test_cross_class_guard_every_class_file_names_its_class(self):
         files = class_file_paths()
         self.assertTrue(files)
         for path in files:
             self.assertIn('class_id', json.loads(path.read_text(encoding='utf-8')), path.name)
 
-    def test_class_file_paths_leaves_out_the_clause_ledger(self):
+    def test_cross_class_guard_class_file_paths_leaves_out_the_clause_ledger(self):
         self.assertNotIn('templar_clauses.json', [path.name for path in class_file_paths()])
 
-    def test_unknown_class_is_refused(self):
+    def test_cross_class_guard_unknown_class_is_refused(self):
         with self.assertRaises(ValueError):
             load_class_file(0)
 
@@ -148,7 +148,7 @@ def requirement(item_class=2, subclasses=0, inventory_types=0):
 
 class ArmedTest(unittest.TestCase):
     def setUp(self):
-        self.templar = load_class_file(TEMPLAR_CLASS_ID)
+        self.templar = load_fixture_class_file(TEMPLAR_CLASS_ID)
 
     def test_a_spell_the_main_weapon_fits_keeps_the_class_file(self):
         for fitting in (requirement(-1, ONE_HAND_MASK), requirement(2, TWO_HAND_MASK, TWO_HAND_INVENTORY_MASK),
@@ -186,7 +186,7 @@ class ArmedTest(unittest.TestCase):
 
 class BaseStepsTest(unittest.TestCase):
     def setUp(self):
-        self.steps = base_steps(load_class_file(TEMPLAR_CLASS_ID))
+        self.steps = base_steps(load_fixture_class_file(TEMPLAR_CLASS_ID))
 
     def test_settle_wait_comes_first_then_the_weapon_is_equipped(self):
         self.assertEqual(self.steps[0], {'action': 'wait', 'label': 'settle', 'ms': SETTLE_MS})
@@ -232,7 +232,7 @@ class BaseStepsTest(unittest.TestCase):
         measured.update({f'spell_power {school}': float(school) for school in range(1, SPELL_POWER_SCHOOLS + 1)})
         measured.update({f'stat {stat}': 10.0 + stat for stat in range(STAT_COUNT)})
         measured.update({skill_label(line): 295.0 for line in TEMPLAR_SKILL_LINES[:3]})
-        self.assertEqual(caster_stats_from(measured, load_class_file(TEMPLAR_CLASS_ID)), CasterStats(
+        self.assertEqual(caster_stats_from(measured, load_fixture_class_file(TEMPLAR_CLASS_ID)), CasterStats(
             level=60, ap=313.0, rap=7.0, sp_by_school={school: float(school) for school in range(1, 7)},
             stats={stat: 10.0 + stat for stat in range(STAT_COUNT)},
             skills=dict.fromkeys(TEMPLAR_SKILL_LINES[:3], 295.0), weapon_subclass=STAFF_SUBCLASS, race=HUMAN,
@@ -249,7 +249,7 @@ class BaseStepsTest(unittest.TestCase):
 class ClientDbcValueScenarioTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.class_file = load_class_file(TEMPLAR_CLASS_ID)
+        cls.class_file = load_fixture_class_file(TEMPLAR_CLASS_ID)
         cls.spells = {spell.spell_id: spell for spell in class_spells(DBC_DIR, TEMPLAR_CLASS_ID, HEADER)}
         extra = tuple(entry['spell'] for entry in cls.class_file.get('extra_spells', []))
         cls.extra_spells = {spell.spell_id: spell
@@ -677,6 +677,23 @@ class ClientDbcValueScenarioTest(unittest.TestCase):
         self.assertFalse([item for item in expectations if item.rule.startswith(UNREADABLE)])
         self.assertEqual(len(periodic_totals), 1)
 
+    def test_a_foreign_token_totalled_over_its_own_spell_ticks_is_left_to_the_hit_scenario(self):
+        for rank_id, label, effect_spell in ((500056, '500056 effect_value 500564e0 #0', 500564),
+                                             (680238, '680238 effect_value 681177e0 #4', 681177)):
+            with self.subTest(rank_id=rank_id):
+                spell = ClassSpell(rank_id, str(rank_id), (rank_id,), rank_id, 1, False)
+                scenario, expectations, periodic_totals = value_scenario(self.class_file, spell, rank_id)
+                run.validate(scenario)
+                self.assertNotIn(label, [item.label for item in expectations])
+                self.assertIn({'label': label, 'effect': 0, 'effect_spell': effect_spell}, periodic_totals)
+                self.assertFalse(self.steps_of(scenario, label))
+
+    def test_a_foreign_token_read_per_tick_keeps_its_effect_value_read(self):
+        spell = ClassSpell(500694, '500694', (500694,), 500694, 1, False)
+        scenario, expectations, periodic_totals = value_scenario(self.class_file, spell, 500694)
+        self.assertIn('500694 effect_value 803153e0 #0', [item.label for item in expectations])
+        self.assertNotIn('500694 effect_value 803153e0 #0', [item['label'] for item in periodic_totals])
+
     def test_trailing_digit_on_a_proc_count_token_is_unmeasurable_not_unreadable(self):
         scenario, expectations = self.build(LIGHTKEEPER, LIGHTKEEPER)
         run.validate(scenario)
@@ -789,6 +806,16 @@ class RequiredTargetHealthStepsTest(unittest.TestCase):
         steps = required_target_health_steps(facts, 'leech_before')
         self.assertEqual(steps[0]['target'], 'leech_before')
 
+    def test_a_frozen_target_state_is_set_by_a_frost_nova_fixture_on_the_target(self):
+        facts = replace(facts_of(self.records, TITANSTRIKE_MAX_RANK), target_aura_state=AURA_STATE_FROZEN)
+        self.assertEqual(required_target_health_steps(facts, 'dummy'),
+                         [{'action': 'set_aura', 'actor': CASTER, 'target': 'dummy', 'spell': 122, 'stacks': 1}])
+
+    def test_the_healthless_20_percent_state_sets_the_target_to_15_percent(self):
+        facts = replace(facts_of(self.records, TITANSTRIKE_MAX_RANK),
+                        target_aura_state=AURA_STATE_HEALTHLESS_20_PERCENT)
+        self.assertEqual(required_target_health_steps(facts)[0]['pct'], 15)
+
     def test_an_unmapped_aura_state_raises_unmodelled_instead_of_a_silent_skip(self):
         facts = replace(facts_of(self.records, TITANSTRIKE_MAX_RANK), target_aura_state=99)
         with self.assertRaises(Unmodelled) as raised:
@@ -804,6 +831,69 @@ class FixtureHealthStepTest(unittest.TestCase):
 
     def test_the_actor_is_used_verbatim(self):
         self.assertEqual(fixture_health_step(CASTER, 100)['actor'], CASTER)
+
+
+DECIMATE = 804194
+LESSER_SHADOW_HOUND = 50224
+HOUNDMASTERS_CALL = 802273
+HOUNDMASTER = 705450
+
+
+@unittest.skipUnless(DBC_DIR.is_dir(), f'client DBC set not found at {DBC_DIR}')
+class SummonAuraCarrierTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.class_file = {**load_fixture_class_file(TEMPLAR_CLASS_ID), 'summon_aura_carriers': [
+            {'spell': DECIMATE, 'entry': LESSER_SHADOW_HOUND, 'summon': HOUNDMASTERS_CALL, 'learn': [HOUNDMASTER],
+             'reason': 'test'}]}
+        cls.decimate = ClassSpell(DECIMATE, 'Decimate', (DECIMATE,), DECIMATE, 0, False)
+
+    def build(self, class_file):
+        scenario, expectations, _ = value_scenario(class_file, self.decimate, DECIMATE)
+        return scenario, {item.label: item for item in expectations}
+
+    def reads(self, scenario, label):
+        return [step for step in scenario['steps'] if step.get('label') == label]
+
+    def test_an_aura_applied_to_summons_is_read_on_the_summoned_carrier(self):
+        scenario, expectations = self.build(self.class_file)
+        run.validate(scenario)
+        read, = self.reads(scenario, f'{DECIMATE} aura_duration_ms #0')
+        self.assertEqual((read['actor'], read['metric'], read['entry'], read['spell']),
+                         (CASTER, 'owned_creature_aura_max_duration_ms', LESSER_SHADOW_HOUND, DECIMATE))
+        self.assertTrue(expectations[f'{DECIMATE} aura_duration_ms #0'].rule.startswith('read '))
+        present, = self.reads(scenario, f'{DECIMATE} aura_present')
+        self.assertEqual((present['metric'], present['entry']), ('owned_creature_count', LESSER_SHADOW_HOUND))
+
+    def test_the_carrier_is_summoned_before_the_cast_at_a_placed_dummy(self):
+        scenario, _ = self.build(self.class_file)
+        steps = scenario['steps']
+        casts = [step for step in steps if step.get('action') == 'cast']
+        self.assertEqual([(step['spell'], step.get('target')) for step in casts],
+                         [(HOUNDMASTERS_CALL, TARGET), (DECIMATE, None)])
+        setup = next(step for step in steps if step.get('label', '').startswith('SETUP:'))
+        self.assertLess(steps.index(casts[0]), steps.index(setup))
+        self.assertLess(steps.index(setup), steps.index(casts[1]))
+        self.assertEqual((setup['metric'], setup['entry'], setup['equals']),
+                         ('owned_creature_count', LESSER_SHADOW_HOUND, 1))
+        learned = [step['spell'] for step in steps if step.get('action') == 'learn']
+        self.assertLess(learned.index(HOUNDMASTER), learned.index(HOUNDMASTERS_CALL))
+        self.assertEqual([creature['id'] for creature in scenario['creatures']], [TARGET])
+
+    def test_an_amount_no_owned_metric_reads_is_unmeasurable_and_not_read(self):
+        scenario, expectations = self.build(self.class_file)
+        amount = expectations[f'{DECIMATE} aura_amount e0 #1']
+        self.assertTrue(amount.rule.startswith(UNMEASURABLE))
+        self.assertIn('summons only', amount.rule)
+        self.assertFalse(self.reads(scenario, amount.label))
+
+    def test_mutant_without_the_carrier_reads_the_caster_that_holds_no_application(self):
+        plain = {key: value for key, value in self.class_file.items() if key != 'summon_aura_carriers'}
+        scenario, expectations = self.build(plain)
+        read, = self.reads(scenario, f'{DECIMATE} aura_duration_ms #0')
+        self.assertEqual((read['actor'], read['metric']), (CASTER, 'aura_duration_ms'))
+        self.assertFalse([step for step in scenario['steps'] if step.get('label', '').startswith('SETUP:')])
+        self.assertTrue(expectations[f'{DECIMATE} aura_amount e0 #1'].rule.startswith('read '))
 
 
 if __name__ == '__main__':

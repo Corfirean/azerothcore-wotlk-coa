@@ -6398,7 +6398,7 @@ SpellCastResult Spell::CheckCast(bool strict, uint32* /*param1*/, uint32* /*para
                     // Can be area effect, Check only for players and not check if target - caster (spell can have multiply drain/burn effects)
                     if (m_caster->IsPlayer())
                         if (Unit* target = m_targets.GetUnitTarget())
-                            if (target != m_caster && !target->HasActivePowerType(Powers(m_spellInfo->Effects[i].MiscValue)))
+                            if (target != m_caster && !target->CanLosePowerToSpell(Powers(m_spellInfo->Effects[i].MiscValue)))
                                 return SPELL_FAILED_BAD_TARGETS;
                     break;
                 }
@@ -6534,7 +6534,9 @@ SpellCastResult Spell::CheckCast(bool strict, uint32* /*param1*/, uint32* /*para
                     if (GameObject* go = m_targets.GetGOTarget())
                     {
                         lockId = go->GetGOInfo()->GetLockId();
-                        if (!lockId && go->GetGoType() != GAMEOBJECT_TYPE_DOOR)
+                        if (!lockId && ((go->GetGoType() != GAMEOBJECT_TYPE_DOOR &&
+                            go->GetGoType() != GAMEOBJECT_TYPE_BUTTON) ||
+                            go->HasGameObjectFlag(GO_FLAG_NOT_SELECTABLE)))
                             return SPELL_FAILED_BAD_TARGETS;
                     }
                     else if (Item* itm = m_targets.GetItemTarget())
@@ -6946,7 +6948,7 @@ SpellCastResult Spell::CheckCast(bool strict, uint32* /*param1*/, uint32* /*para
                     if (!m_targets.GetUnitTarget())
                         return SPELL_FAILED_BAD_IMPLICIT_TARGETS;
 
-                    if (!m_targets.GetUnitTarget()->HasActivePowerType(POWER_MANA))
+                    if (!m_targets.GetUnitTarget()->CanLosePowerToSpell(POWER_MANA))
                         return SPELL_FAILED_BAD_TARGETS;
 
                     break;
@@ -7350,7 +7352,11 @@ SpellCastResult Spell::CheckRange(bool strict)
             else if (!targetIsVehicleBase && !m_caster->IsWithinCombatRange(target, max_range))
                 return SPELL_FAILED_OUT_OF_RANGE; //0x5A;
 
-            if (!targetIsVehicleBase && m_caster->IsPlayer() && (m_spellInfo->FacingCasterFlags & SPELL_FACING_FLAG_INFRONT) && !m_caster->HasInArc(static_cast<float>(M_PI), target) && !m_caster->IsWithinBoundaryRadius(target))
+            // A player seated on another player (a shared body or a passenger mount) cannot turn on its
+            // own and its stored facing trails the driver's, so facing is not required of it.
+            bool const ridesAPlayer = m_caster->GetVehicleBase() && m_caster->GetVehicleBase()->IsPlayer();
+
+            if (!targetIsVehicleBase && !ridesAPlayer && m_caster->IsPlayer() && (m_spellInfo->FacingCasterFlags & SPELL_FACING_FLAG_INFRONT) && !m_caster->HasInArc(static_cast<float>(M_PI), target) && !m_caster->IsWithinBoundaryRadius(target))
                 return SPELL_FAILED_UNIT_NOT_INFRONT;
         }
 
