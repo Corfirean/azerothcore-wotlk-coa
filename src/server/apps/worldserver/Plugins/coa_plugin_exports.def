@@ -28,6 +28,7 @@ EXPORTS
     ??$VisitObjects@U?$PlayerListSearcher@VAnyPlayerInObjectRangeCheck@Acore@@@Acore@@@Cell@@SAXPEBVWorldObject@@AEAU?$PlayerListSearcher@VAnyPlayerInObjectRangeCheck@Acore@@@Acore@@M@Z
     ??0?$GenericHash@$1?EVP_sha1@@YAPEBUevp_md_st@@XZ$0BE@@Impl@Acore@@QEAA@XZ
     ??0?$GenericHash@$1?EVP_sha256@@YAPEBUevp_md_st@@XZ$0CA@@Impl@Acore@@QEAA@XZ
+    ??0ALEScript@@IEAA@PEBD@Z
     ??0AccountScript@@IEAA@PEBDV?$vector@GV?$allocator@G@std@@@std@@@Z
     ??0AchievementCriteriaScript@@IEAA@PEBD@Z
     ??0AchievementScript@@IEAA@PEBDV?$vector@GV?$allocator@G@std@@@std@@@Z
@@ -458,6 +459,7 @@ EXPORTS
     ?GetBGObject@Battleground@@QEAAPEAVGameObject@@I@Z
     ?GetBagByPos@Player@@QEBAPEAVBag@@E@Z
     ?GetBagSlot@Item@@QEBAEXZ
+    ?GetBankWithdrawValue@Member@Guild@@QEBAHE@Z
     ?GetBaseReputationOf@ObjectMgr@@QEAAHPEBUFactionEntry@@EE@Z
     ?GetBaseSkillValue@Player@@QEBAGI@Z
     ?GetBattlefieldToZoneId@BattlefieldMgr@@QEAAPEAVBattlefield@@I@Z
@@ -544,6 +546,7 @@ EXPORTS
     ?GetFloorZ@WorldObject@@QEBAMXZ
     ?GetFreeInventorySpace@Player@@QEBAIXZ
     ?GetFreeSlots@Bag@@QEBAIXZ
+    ?GetFullTerrainStatusForPosition@Map@@QEAAXIMMMMAEAUPositionFullTerrainStatus@@V?$optional@E@std@@@Z
     ?GetGOTarget@SpellCastTargets@@QEBAPEAVGameObject@@XZ
     ?GetGOTargetGUID@SpellCastTargets@@QEBA?AVObjectGuid@@XZ
     ?GetGUID@Group@@QEBA?AVObjectGuid@@XZ
@@ -646,6 +649,7 @@ EXPORTS
     ?GetNearPosition@WorldObject@@QEAA?AUPosition@@MM@Z
     ?GetNearestTaxiNode@ObjectMgr@@QEAAIAEBVWorldLocation@@I@Z
     ?GetNearestTaxiNode@ObjectMgr@@QEAAIMMMII@Z
+    ?GetNextQuest@Player@@QEAAPEBVQuest@@VObjectGuid@@PEBV2@@Z
     ?GetNextSpellInChain@SpellMgr@@QEBAII@Z
     ?GetObjectByTypeMask@ObjectAccessor@@YAPEAVObject@@AEBVWorldObject@@AEBVObjectGuid@@I@Z
     ?GetObjectSize@WorldObject@@QEBAMXZ
@@ -668,6 +672,7 @@ EXPORTS
     ?GetPet@Map@@QEAAPEAVPet@@AEBVObjectGuid@@@Z
     ?GetPet@Player@@QEBAPEAVPet@@XZ
     ?GetPetLevelupSpellList@SpellMgr@@QEBAPEBV?$multimap@IIU?$less@I@std@@V?$allocator@U?$pair@$$CBII@std@@@2@@std@@I@Z
+    ?GetPetition@PetitionMgr@@QEBAPEBUPetition@@VObjectGuid@@@Z
     ?GetPetitionByOwnerWithType@PetitionMgr@@QEBAPEBUPetition@@VObjectGuid@@E@Z
     ?GetPhaseByAuras@Unit@@QEBAIXZ
     ?GetPhaseMaskForSpawn@Player@@QEBAIXZ
@@ -883,6 +888,7 @@ EXPORTS
     ?HandleSelfResOpcode@WorldSession@@QEAAXAEAVWorldPacket@@@Z
     ?HandleSellItemOpcode@WorldSession@@QEAAXAEAVSellItem@Item@WorldPackets@@@Z
     ?HandleSetEmblem@Guild@@QEAAXAEBVEmblemInfo@@@Z
+    ?HandleSetMOTD@Guild@@QEAAXPEAVWorldSession@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
     ?HandleSetRankInfo@Guild@@QEAAXEIV?$basic_string_view@DU?$char_traits@D@std@@@std@@I@Z
     ?HandleSetTradeGoldOpcode@WorldSession@@QEAAXAEAVWorldPacket@@@Z
     ?HandleSetTradeItemOpcode@WorldSession@@QEAAXAEAVWorldPacket@@@Z
@@ -904,6 +910,7 @@ EXPORTS
     ?HasFlag@Object@@QEBA_NGI@Z
     ?HasFreeBattlegroundQueueId@Player@@QEBA_NXZ
     ?HasFreeSlots@Battleground@@QEBA_NXZ
+    ?HasFreepickBuild@AscensionFreepick@@YA_NPEBVPlayer@@@Z
     ?HasFriend@PlayerSocial@@QEBA_NAEBVObjectGuid@@@Z
     ?HasGlobalCooldown@GlobalCooldownMgr@@QEBA_NPEBVSpellInfo@@@Z
     ?HasHealSpec@Player@@QEAA_NXZ
@@ -970,6 +977,7 @@ EXPORTS
     ?IsBankPos@Player@@SA_NEE@Z
     ?IsBaseRuneSlotsOnCooldown@Player@@QEBA_NW4RuneType@@@Z
     ?IsBindedNotWith@Item@@QEBA_NPEBVPlayer@@@Z
+    ?IsBloodforged@Bloodforging@@YA_NAEBUItemTemplate@@@Z
     ?IsBot@Player@@QEBA_NXZ
     ?IsCommandAttack@CharmInfo@@QEAA_NXZ
     ?IsCommandFollow@CharmInfo@@QEAA_NXZ
@@ -980,6 +988,7 @@ EXPORTS
     ?IsDungeonBoss@Creature@@QEBA_NXZ
     ?IsEffect@SpellEffectInfo@@QEBA_NW4SpellEffects@@@Z
     ?IsEffect@SpellEffectInfo@@QEBA_NXZ
+    ?IsEmpty@Bag@@QEBA_NXZ
     ?IsEquipmentPos@Player@@SA_NEE@Z
     ?IsEquipped@Item@@QEBA_NXZ
     ?IsExistPet@Player@@QEAA_NXZ
@@ -1124,6 +1133,7 @@ EXPORTS
     ?MoveJump@MotionMaster@@QEAAXMMMMMIPEBVUnit@@V?$optional@M@std@@@Z
     ?MoveKnockbackFrom@MotionMaster@@QEAAXMMMM@Z
     ?MoveKnockbackFromForPlayer@MotionMaster@@QEAAXMMMM@Z
+    ?MoveLand@MotionMaster@@QEAAXIMMMM@Z
     ?MovePoint@MotionMaster@@QEAAXIMMMW4ForcedMovement@@MM_N1W4MovementSlot@@V?$optional@W4AnimTier@@@std@@@Z
     ?MovePointBackwards@MotionMaster@@QEAAXIMMM_N0W4MovementSlot@@M@Z
     ?MoveRandom@MotionMaster@@QEAAXM@Z
@@ -1284,6 +1294,7 @@ EXPORTS
     ?SaveGORespawnTime@Map@@QEAAXIAEA_J@Z
     ?SaveInventoryAndGoldToDB@Player@@QEAAXV?$shared_ptr@V?$Transaction@VCharacterDatabaseConnection@@@@@std@@@Z
     ?SavePetToDB@Pet@@QEAAXW4PetSaveMode@@@Z
+    ?SavePositionInDB@Player@@SAXIMMMMIVObjectGuid@@@Z
     ?SaveRecallPosition@Player@@QEAAXXZ
     ?SaveStayPosition@CharmInfo@@QEAAX_N@Z
     ?SaveToDB@ArenaTeam@@QEAAX_N@Z
@@ -1474,10 +1485,13 @@ EXPORTS
     ?SetStandState@Unit@@QEAAXE@Z
     ?SetStatFlatModifier@Unit@@QEAAXW4UnitMods@@W4UnitModifierFlatType@@M@Z
     ?SetStatInt32Value@Object@@QEAAXGH@Z
+    ?SetStatPctModifier@Unit@@QEAAXW4UnitMods@@W4UnitModifierPctType@@M@Z
     ?SetState@Item@@QEAAXW4ItemUpdateState@@PEAVPlayer@@@Z
+    ?SetStats@Member@Guild@@QEAAXV?$basic_string_view@DU?$char_traits@D@std@@@std@@EEEII@Z
     ?SetSummonPoint@Player@@QEAAXIMMMI_N@Z
     ?SetTalentRank@AscensionClassServiceBridge@@YA_NPEAVPlayer@@AEBUCoATalentEntry@AscensionCompatData@@IAEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
     ?SetTargetIcon@Group@@QEAAXEVObjectGuid@@0@Z
+    ?SetTempSummonType@TempSummon@@QEAAXW4TempSummonType@@@Z
     ?SetTitle@Player@@QEAAXPEBUCharTitlesEntry@@_N@Z
     ?SetTradeItemTarget@SpellCastTargets@@QEAAXPEAVPlayer@@@Z
     ?SetUInt16Value@Object@@QEAAXGEG@Z
@@ -1550,6 +1564,7 @@ EXPORTS
     ?UpdateAI@ScriptedAI@@UEAAXI@Z
     ?UpdateAchievementCriteria@Player@@QEAAXW4AchievementCriteriaTypes@@IIPEAVUnit@@@Z
     ?UpdateAllowedPositionZ@WorldObject@@QEBAXMMAEAMPEAM@Z
+    ?UpdateBankWithdrawValue@Member@Guild@@QEAAXV?$shared_ptr@V?$Transaction@VCharacterDatabaseConnection@@@@@std@@EI@Z
     ?UpdateBid@AuctionHouseSearcher@@QEAAXPEBUAuctionEntry@@@Z
     ?UpdateCraftSkill@Player@@QEAA_NI@Z
     ?UpdateEntry@Creature@@QEAA_NIPEBUCreatureData@@_N1@Z
@@ -1606,12 +1621,17 @@ EXPORTS
     ?addActionButton@Player@@QEAAPEAUActionButton@@EIE@Z
     ?addSpell@Player@@QEAA_NIE_N00@Z
     ?addTalent@Player@@QEAA_NIEE@Z
+    ?addTile@dtNavMesh@@QEAAIPEAEHH_KPEA_K@Z
     ?cancel@Spell@@QEAAX_N@Z
     ?cast@Spell@@QEAAX_N@Z
     ?closestPointOnPoly@dtNavMeshQuery@@QEBAI_KPEBMPEAMPEA_N@Z
     ?closestPointOnPolyBoundary@dtNavMeshQuery@@QEBAI_KPEBMPEAM@Z
     ?detach@thread@boost@@QEAAXXZ
+    ?dtAlloc@@YAPEAX_KW4dtAllocHint@@@Z
+    ?dtAllocNavMesh@@YAPEAVdtNavMesh@@XZ
     ?dtAllocNavMeshQuery@@YAPEAVdtNavMeshQuery@@XZ
+    ?dtFree@@YAXPEAX@Z
+    ?dtFreeNavMesh@@YAXPEAVdtNavMesh@@@Z
     ?dtFreeNavMeshQuery@@YAXPEAVdtNavMeshQuery@@@Z
     ?findDistanceToWall@dtNavMeshQuery@@QEBAI_KPEBMMPEBVdtQueryFilter@@PEAM33@Z
     ?findNearestPoly@dtNavMeshQuery@@QEBAIPEBM0PEBVdtQueryFilter@@PEA_KPEAM@Z
@@ -1630,6 +1650,7 @@ EXPORTS
     ?getRaceMask@Unit@@QEBAIXZ
     ?inLfgDungeonMap@LFGMgr@lfg@@QEAA_NVObjectGuid@@IW4Difficulty@@@Z
     ?inRandomLfgDungeon@Player@@QEAA_NXZ
+    ?init@dtNavMesh@@QEAAIPEBUdtNavMeshParams@@@Z
     ?init@dtNavMeshQuery@@QEAAIPEBVdtNavMesh@@H@Z
     ?instance@AchievementGlobalMgr@@SAPEAV1@XZ
     ?instance@ArenaSeasonMgr@@SAPEAV1@XZ
@@ -1653,6 +1674,7 @@ EXPORTS
     ?instance@RaceMgr@@SAPEAV1@XZ
     ?instance@SpellMgr@@SAPEAV1@XZ
     ?instance@ToCloud9Sidecar@@SAPEAV1@XZ
+    ?instance@TransportMgr@@SAPEAV1@XZ
     ?isAllowedToLoot@Player@@QEAA_NPEBVCreature@@@Z
     ?isBFGroup@Group@@QEBA_NXZ
     ?isBGGroup@Group@@QEBA_NXZ
@@ -1670,6 +1692,7 @@ EXPORTS
     ?moveAlongSurface@dtNavMeshQuery@@QEBAI_KPEBM1PEBVdtQueryFilter@@PEAMPEA_KPEAHH@Z
     ?normalizePlayerName@@YA_NAEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
     ?passFilter@dtQueryFilter@@UEBA_N_KPEBUdtMeshTile@@PEBUdtPoly@@@Z
+    ?passFilter@dtQueryFilterExt@@UEBA_N_KPEBUdtMeshTile@@PEBUdtPoly@@@Z
     ?prepare@Spell@@QEAA?AW4SpellCastResult@@PEBVSpellCastTargets@@PEBVAuraEffect@@@Z
     ?raycast@dtNavMeshQuery@@QEBAI_KPEBM1PEBVdtQueryFilter@@PEAM3PEA_KPEAHH@Z
     ?removeActionButton@Player@@QEAAXE@Z

@@ -922,7 +922,7 @@ end
 
 local twinOutfit = {}
 local ShowTwinPreview
-local twinState = { has = false, out = false, split = false }
+local twinState = { has = false, out = false, split = false, standIn = false, twoPlayers = false }
 Ascension_Subclass.TwinLook = { features = {}, kinds = { { key = "f", title = "Face", choice = "Face" },
     { key = "h", title = "Hair style", choice = "Style" }, { key = "b", title = "Facial hair", choice = "Beard" } } }
 local ShowTwinState
@@ -1877,8 +1877,12 @@ local function Receive(message)
         return
     end
     if command == "TWINSTATE" then
-        local has, out, split = string.match(rest, "^(%d) (%d) (%d)$")
-        twinState = { has = has == "1", out = out == "1", split = split == "1" }
+        local has, out, split, mode = string.match(rest, "^(%d) (%d) (%d)%s*(%d*)$")
+        twinState = { has = has == "1", out = out == "1", split = split == "1", standIn = mode == "1",
+            twoPlayers = mode == "1" or mode == "2" }
+        if ShowDressing then
+            ShowDressing()
+        end
         if ShowTwinState then
             ShowTwinState()
         end
@@ -2110,7 +2114,11 @@ ShowTwinState = function()
         panel.brother:Hide()
         return
     end
-    panel.brother:SetText(twinState.out and "Send your brother home" or "Call your brother back")
+    if twinState.standIn then
+        panel.brother:SetText(twinState.out and "Dress like your brother" or "Wear your own outfit")
+    else
+        panel.brother:SetText(twinState.out and "Send your brother home" or "Call your brother back")
+    end
     panel.brother:Show()
 end
 
@@ -3344,6 +3352,9 @@ local function TakeOffTwin(slots)
     end
     if #looks > 0 then
         Send("TWINLOOK " .. table.concat(looks, " "))
+        if twinState.standIn then
+            Send("TWINWEARING")
+        end
     end
 end
 
@@ -3368,7 +3379,8 @@ local function ShowUndressMenu(anchor)
     if DressesCyclops() then
         return ShowCyclopsMenu(anchor)
     end
-    local entries = { { text = "Take off your twin's", isTitle = true, notCheckable = true } }
+    local entries = { { text = twinState.standIn and "Take off your own" or "Take off your twin's", isTitle = true,
+        notCheckable = true } }
     local worn = {}
     for slot, name in ipairs(TWIN_SLOT_NAMES) do
         if (twinOutfit[slot] or 0) > 0 then
@@ -3378,7 +3390,8 @@ local function ShowUndressMenu(anchor)
         end
     end
     if #worn == 0 then
-        entries[#entries + 1] = { text = "He wears nothing you can take off", disabled = true, notCheckable = true }
+        entries[#entries + 1] = { text = twinState.standIn and "You wear nothing you can take off"
+            or "He wears nothing you can take off", disabled = true, notCheckable = true }
     else
         entries[#entries + 1] = { text = "Everything", notCheckable = true, func = function() TakeOffTwin(worn) end }
     end
@@ -3441,6 +3454,9 @@ local function PlaceTwinApply()
         twinApplyButton:SetText("Apply")
         twinApplyButton:SetScript("OnClick", function()
             local sent = dressingTwin and SendTwinLook() or (not dressingTwin and SendOwnLook())
+            if sent and dressingTwin and twinState.standIn then
+                Send("TWINWEARING")
+            end
             DEFAULT_CHAT_FRAME:AddMessage(sent and "|cffffd100Wardrobe:|r look applied."
                 or "|cffffd100Wardrobe:|r pick something first.")
         end)
@@ -3454,6 +3470,19 @@ local function PlaceTwinApply()
 end
 
 function ShowDressing()
+    if not twinButton then
+        return
+    end
+    if twinState.twoPlayers then
+        if twinState.standIn and twinButton:GetParent():IsVisible() and not twinButton.wearingAsked then
+            twinButton.wearingAsked = true
+            Send("TWINWEARING")
+        end
+        dressingTwin = twinState.standIn
+        twinButton:Hide()
+    else
+        twinButton:Show()
+    end
     local covered = PlaceTwinApply()
     if twinApplyButton then
         if covered and (dressingTwin or DressesCyclops()) then
@@ -3462,7 +3491,8 @@ function ShowDressing()
             twinApplyButton:Hide()
         end
     end
-    local other = DressesCyclops() and "Dressing: Right head" or "Dressing: Your twin"
+    local other = DressesCyclops() and "Dressing: Right head" or twinState.standIn and "Dressing: You"
+        or "Dressing: Your twin"
     local own = DressesCyclops() and "Dressing: Left head" or "Dressing: You"
     twinButton:SetText(dressingTwin and other or own)
     if twinUndressButton then
@@ -3473,7 +3503,7 @@ function ShowDressing()
         end
     end
     if Ascension_Subclass.TwinLook.button then
-        if dressingTwin and not DressesCyclops() then
+        if dressingTwin and not DressesCyclops() and not twinState.standIn then
             Ascension_Subclass.TwinLook.button:Show()
         else
             Ascension_Subclass.TwinLook.button:Hide()
@@ -3514,6 +3544,10 @@ local function AttachTwinButton()
     twinButton:SetFrameStrata(anchor:GetFrameStrata())
     twinButton:SetFrameLevel(anchor:GetFrameLevel() + 20)
     twinButton:SetScript("OnClick", function()
+        if twinState.standIn then
+            Send("TWINWEARING")
+            return
+        end
         dressingTwin = not dressingTwin
         if C_Appearance and C_Appearance.ClearPendingAppearances then
             C_Appearance.ClearPendingAppearances()
@@ -3562,8 +3596,10 @@ local function AttachTwinButton()
     end
     anchor:GetParent():HookScript("OnHide", function()
         dressingTwin = false
+        twinButton.wearingAsked = nil
         ShowDressing()
     end)
+    anchor:GetParent():HookScript("OnShow", ShowDressing)
     ShowDressing()
     return true
 end

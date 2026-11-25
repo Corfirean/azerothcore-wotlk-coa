@@ -1,19 +1,13 @@
 local PREFIX = "SUBCLASS"
-local TWO_PLAYERS_RACE = "Two-Headed Ogre"
-local MALE = 2
-local pairState = "NONE"
+local pairState = "OFF"
 local ownHead = "ANY"
 
 local function Send(message)
     SendAddonMessage(PREFIX, message, "WHISPER", UnitName("player"))
 end
 
-local function IsTwoPlayersBody()
-    return UnitRace("player") == TWO_PLAYERS_RACE and UnitSex("player") == MALE
-end
-
 StaticPopupDialogs["SUBCLASS_PAIR_INVITE"] = {
-    text = "Pair request from %s: ride on their body as the %s?",
+    text = "Pair request from %s: join as their %s?",
     button1 = "Join",
     button2 = "Cancel",
     OnAccept = function()
@@ -32,7 +26,7 @@ StaticPopupDialogs["SUBCLASS_PAIR_INVITE"] = {
 local MENUS = { PLAYER = true, PARTY = true, RAID_PLAYER = true, FRIEND = true, TARGET = true }
 
 hooksecurefunc("UnitPopup_ShowMenu", function(_, which, unit, name)
-    if UIDROPDOWNMENU_MENU_LEVEL ~= 1 or not MENUS[which] or not IsTwoPlayersBody() then
+    if UIDROPDOWNMENU_MENU_LEVEL ~= 1 or not MENUS[which] then
         return
     end
     if pairState ~= "NONE" and pairState ~= "ECHO" then
@@ -43,6 +37,12 @@ hooksecurefunc("UnitPopup_ShowMenu", function(_, which, unit, name)
         return
     end
     local function AddInvite(text, message)
+        for i = 1, DropDownList1.numButtons or 0 do
+            local button = _G["DropDownList1Button" .. i]
+            if button and button:IsShown() and button:GetText() == text then
+                return
+            end
+        end
         local info = UIDropDownMenu_CreateInfo()
         info.text = text
         info.notCheckable = 1
@@ -55,6 +55,25 @@ hooksecurefunc("UnitPopup_ShowMenu", function(_, which, unit, name)
         AddInvite("Pair request", "PAIR")
     end
 end)
+
+hooksecurefunc("UnitPopup_OnClick", function(self)
+    local menu = UIDROPDOWNMENU_INIT_MENU
+    if self.value ~= "WHISPER" or not menu then
+        return
+    end
+    local name = menu.name or (menu.unit and UnitName(menu.unit))
+    if name and not name:find("[%s'&-]") then
+        Send("PAIRWHISPER " .. name)
+    end
+end)
+
+local function WhisperBothHeads(asked, pairName)
+    local editBox = ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow() or DEFAULT_CHAT_FRAME.editBox
+    if editBox and editBox:GetAttribute("chatType") == "WHISPER" and editBox:GetAttribute("tellTarget") == asked then
+        editBox:SetAttribute("tellTarget", pairName)
+        ChatEdit_UpdateHeader(editBox)
+    end
+end
 
 SLASH_SUBCLASSPAIR1 = "/pair"
 SlashCmdList.SUBCLASSPAIR = function(text)
@@ -185,14 +204,20 @@ frame:SetScript("OnEvent", function(_, event, prefix, message, _, sender)
     if prefix ~= PREFIX or sender ~= UnitName("player") then
         return
     end
-    local inviter = message:match("^PAIRINVITE (.+)$")
-    if inviter then
-        StaticPopup_Show("SUBCLASS_PAIR_INVITE", inviter, "Ranged Head")
+    local asked, pairName = message:match("^PAIRWHISPER (%S+) (%S+)$")
+    if asked then
+        WhisperBothHeads(asked, pairName)
         return
     end
-    local body, rider = message:match("^TWOPLAYERS (%S+) (%S+)$")
+    local inviter, inviteKind = message:match("^PAIRINVITE (%S+)%s*(%u*)$")
+    if inviter then
+        StaticPopup_Show("SUBCLASS_PAIR_INVITE", inviter,
+            inviteKind == "TWINS" and "other brother (ranged)" or "Ranged Head")
+        return
+    end
+    local body, rider, kind = message:match("^TWOPLAYERS (%S+) (%S+)%s*(%u*)$")
     if body then
-        Ascension_Subclass.SetOneBody(body, rider)
+        Ascension_Subclass.SetOneBody(body, rider, kind == "TWINS" and " & " or "'")
         return
     end
     local parted = message:match("^TWOPLAYERSOFF (%S+)$")
@@ -265,14 +290,14 @@ local function JoinRaidNames()
     end
 end
 
-function Ascension_Subclass.SetOneBody(body, rider)
+function Ascension_Subclass.SetOneBody(body, rider, separator)
     for name, of in pairs(riders) do
         if of == body then
             riders[name] = nil
             joinedNames[name] = nil
         end
     end
-    joinedNames[body] = rider and body .. "'" .. rider or nil
+    joinedNames[body] = rider and body .. (separator or "'") .. rider or nil
     if rider then
         riders[rider] = body
         joinedNames[rider] = joinedNames[body]

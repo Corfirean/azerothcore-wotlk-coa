@@ -4518,6 +4518,21 @@ public:
             player->SendInitialSpells();
     }
 
+    void SendNewSpellRowBeforeLearning(Player* player, uint32 spellId)
+    {
+        if (!player->IsInWorld() || !ReceivesPatchRows(player))
+            return;
+
+        PreparedPatchRows const& rows = GetPreparedPatchRows();
+        auto const found = rows.SpellRowIndexById.find(spellId);
+        if (!rows.NewSpellIds.contains(spellId) || found == rows.SpellRowIndexById.end())
+            return;
+
+        SpellPatchRow sent = rows.Spells[found->second];
+        ApplyServerSpellSelectors(sent);
+        SendSpellRow(player, sent);
+    }
+
     void SendItemRowOnDemand(Player* player, uint32 itemId)
     {
         if (!ReceivesPatchRows(player))
@@ -6313,6 +6328,12 @@ private:
       Ascension::ClientSpellPatches::Instance().Register(spellId);
     Ascension::ClientSpellPatches::Instance().Register(VAULT_CLIENT_SPELL);
     std::unordered_set<uint32> requested = Ascension::ClientSpellPatches::Instance().GetIds(true);
+    std::filesystem::path const clientSpells = std::filesystem::path(sWorld->GetDataPath()) / "dbc" / "Spell.dbc";
+    std::optional<std::unordered_set<uint32>> const known = LoadDbcIds(clientSpells, SPELL_DBC_FIELD_COUNT);
+    if (known)
+      for (uint32 const id : requested)
+        if (!known->contains(id))
+          newSpellIds.insert(id);
     for (auto const& tier : blacksmithingTiers)
     {
       requested.insert(tier.first);
@@ -6328,9 +6349,7 @@ private:
             "JOIN `skilllineability_dbc` AS `ability` ON `ability`.`Spell` = `spell`.`ID` "
             "JOIN `coa_client_skill_line_ability` AS `streamed` ON `streamed`.`ID` = `ability`.`ID`"))
     {
-      std::filesystem::path const clientSpells =
-          std::filesystem::path(sWorld->GetDataPath()) / "dbc" / "Spell.dbc";
-      if (std::optional<std::unordered_set<uint32>> const known = LoadDbcIds(clientSpells, SPELL_DBC_FIELD_COUNT))
+      if (known)
       {
         uint32 added = 0;
         do {
@@ -9198,17 +9217,34 @@ public:
             "Ascension_SeasonCollection", "Ascension_TicketUI", "Ascension_UIDevelopmentTools", "Ascension_WildCard",
         };
 
+        auto replaceAll = [](std::string_view in, std::string_view from, std::string_view to)
+        {
+            std::string out(in);
+            for (size_t pos = out.find(from); pos != std::string::npos; pos = out.find(from, pos + to.size()))
+                out.replace(pos, from.size(), to);
+            return out;
+        };
+
         std::vector<std::string> names = session->GetClientAddonNames();
-        for (std::string_view addon : ascensionAddons)
+        auto addName = [&names](std::string const& addon)
+        {
             if (std::find(names.begin(), names.end(), addon) == names.end())
                 names.emplace_back(addon);
+        };
+        for (std::string_view addon : ascensionAddons)
+        {
+            addName(std::string(addon));
+            addName(replaceAll(addon, "Ascension", "Descension"));
+        }
 
         WorldPacket packet(SMSG_ASCENSION_SECURE_ADDONS, sizeof(uint32) + names.size() * 32);
         packet << uint32(names.size());
         for (std::string const& name : names)
         {
+            std::string const legacyName = replaceAll(name, "Descension", "Ascension");
             packet << name;
-            packet << uint8(name.starts_with("Blizzard_") || secureAscensionAddons.contains(name));
+            packet << uint8(name.starts_with("Blizzard_") || secureAscensionAddons.contains(name)
+                            || secureAscensionAddons.contains(legacyName));
         }
         session->SendPacket(&packet);
     }
@@ -10721,6 +10757,9 @@ public:
     }
 
   void OnPlayerLearnSpell(Player *player, uint32 spellId) override {
+    if (ascensionCompatConfig.GetConfigValue<bool>(AscensionCompatConfig::ENABLED))
+      AscensionDisplayPatchService::Instance().SendNewSpellRowBeforeLearning(player, spellId);
+
     if (ascensionCompatConfig.GetConfigValue<bool>(AscensionCompatConfig::ENABLED) &&
         IsCharacterAdvancementClass(player) && !AscensionWildcard::IsWildcardHero(player) &&
         std::find(AscensionWildcard::SPECIALIZATION_SWAP_SPELLS.begin(),

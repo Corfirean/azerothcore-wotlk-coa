@@ -21,11 +21,13 @@
 #include "WorldPacket.h"
 #include "WorldScript.h"
 #include "WorldSession.h"
+#include <map>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 using namespace Acore::ChatCommands;
@@ -58,6 +60,9 @@ std::unordered_map<uint32, uint32>& partners = *new std::unordered_map<uint32, u
 std::unordered_map<uint32, bool>& leftHeads = *new std::unordered_map<uint32, bool>;
 std::unordered_map<uint32, PairInvite>& invites = *new std::unordered_map<uint32, PairInvite>;
 std::unordered_map<uint32, std::string>& standInBodies = *new std::unordered_map<uint32, std::string>;
+std::unordered_map<uint32, Subclass::ChosenHead>& chosenHeads = *new std::unordered_map<uint32, Subclass::ChosenHead>;
+std::map<std::pair<uint32, std::string>, Subclass::ChosenHead>& creationHeads =
+    *new std::map<std::pair<uint32, std::string>, Subclass::ChosenHead>;
 
 void SendPairAddon(Player* player, std::string const& message)
 {
@@ -88,6 +93,13 @@ bool IsLeftHead(uint32 guid)
     return found != leftHeads.end() && found->second;
 }
 
+Subclass::ChosenHead ChosenHeadOf(uint32 guid)
+{
+    std::lock_guard<std::mutex> lock(pairMutex);
+    auto const found = chosenHeads.find(guid);
+    return found == chosenHeads.end() ? Subclass::ChosenHead::Any : found->second;
+}
+
 std::string StandInBodyOf(uint32 guid)
 {
     std::lock_guard<std::mutex> lock(pairMutex);
@@ -113,8 +125,10 @@ Subclass::PairHead HeadOf(Player const* player)
     Subclass::SpecializationRoles roles = RolesOfSpecialization(uint16(GetAscensionActiveSpecialization(player)));
     if (!Subclass::HasAnyRole(roles))
         roles = RolesOfClass(player->getClass());
-    return { IsTwoPlayers(player), PartnerOf(player->GetGUID().GetCounter()) != 0, player->GetLevel(), roles,
-        IsAscensionCustomClassId(player->getClass()) };
+    Subclass::PairHead head{ IsTwoPlayers(player), PartnerOf(player->GetGUID().GetCounter()) != 0,
+        player->GetLevel(), roles, IsAscensionCustomClassId(player->getClass()) };
+    head.Chosen = ChosenHeadOf(player->GetGUID().GetCounter());
+    return head;
 }
 
 std::string RefusalText(Subclass::PairRefusal refusal, Player const* left, Player const* right)
@@ -122,9 +136,15 @@ std::string RefusalText(Subclass::PairRefusal refusal, Player const* left, Playe
     switch (refusal)
     {
         case Subclass::PairRefusal::LeftNotTwoPlayers:
-            return left->GetName() + " is not a Two-Players Two-Headed Ogre.";
+            return left->GetName() + " is not a Two-Players character.";
         case Subclass::PairRefusal::RightNotTwoPlayers:
-            return right->GetName() + " is not a Two-Players Two-Headed Ogre.";
+            return right->GetName() + " is not a Two-Players character.";
+        case Subclass::PairRefusal::LeftChoseRanged:
+            return left->GetName() + " was created as the " + Subclass::HeadTitle(left->getRace(true), false) +
+                " and can't send pair requests.";
+        case Subclass::PairRefusal::RightChoseMelee:
+            return right->GetName() + " was created as the " + Subclass::HeadTitle(right->getRace(true), true) +
+                " and can't join as the " + Subclass::HeadTitle(right->getRace(true), false) + ".";
         case Subclass::PairRefusal::LeftPaired:
             return left->GetName() + " is already part of a pair.";
         case Subclass::PairRefusal::RightPaired:
@@ -132,9 +152,11 @@ std::string RefusalText(Subclass::PairRefusal refusal, Player const* left, Playe
         case Subclass::PairRefusal::LevelGap:
             return "The two heads must be within " + std::to_string(Subclass::MaxPairLevelGap) + " levels.";
         case Subclass::PairRefusal::LeftSpecialization:
-            return left->GetName() + " needs a melee or tank specialization to be the Melee Head.";
+            return left->GetName() + " needs a melee or tank specialization to be the " +
+                Subclass::HeadTitle(left->getRace(true), true) + ".";
         case Subclass::PairRefusal::RightSpecialization:
-            return right->GetName() + " needs a caster, healer or ranged specialization to be the Ranged Head.";
+            return right->GetName() + " needs a caster, healer or ranged specialization to be the " +
+                Subclass::HeadTitle(right->getRace(true), false) + ".";
         case Subclass::PairRefusal::LeftClass:
             return left->GetName() + " has an original class. Two-Players heads are CoA classes only.";
         case Subclass::PairRefusal::RightClass:
@@ -154,9 +176,13 @@ std::string StateOf(Player const* player)
         std::string const formerLeft = StandInBodyOf(guid);
         if (!formerLeft.empty())
             return "PAIRSTATE ECHO " + formerLeft;
-        Subclass::SpecializationRoles const roles = HeadOf(player).Roles;
-        return std::string("PAIRSTATE NONE ") + (Subclass::FitsLeftHead(roles) ? "LEFT"
-            : Subclass::FitsRightHead(roles) ? "RIGHT" : "ANY");
+        if (!TwoPlayersEnabled() || !IsTwoPlayers(player))
+            return "PAIRSTATE OFF";
+        Subclass::PairHead const head = HeadOf(player);
+        if (head.Chosen != Subclass::ChosenHead::Any)
+            return std::string("PAIRSTATE NONE ") + (head.Chosen == Subclass::ChosenHead::Left ? "LEFT" : "RIGHT");
+        return std::string("PAIRSTATE NONE ") + (Subclass::FitsLeftHead(head.Roles) ? "LEFT"
+            : Subclass::FitsRightHead(head.Roles) ? "RIGHT" : "ANY");
     }
     CharacterCacheEntry const* other =
         sCharacterCache->GetCharacterCacheByGuid(ObjectGuid::Create<HighGuid::Player>(partner));
@@ -182,10 +208,12 @@ void Invite(Player* left, Player* right)
         invites[right->GetGUID().GetCounter()] = { left->GetGUID().GetCounter(),
             uint64(GameTime::GetGameTimeMS().count()) + InviteMilliseconds };
     }
-    Tell(left, "You sent " + right->GetName() + " a pair request to be your Ranged Head.");
-    Tell(right, left->GetName() + " sends you a pair request to ride as the Ranged Head. Type .pair accept or "
-        ".pair decline.");
-    SendPairAddon(right, "PAIRINVITE " + left->GetName());
+    bool const twins = left->getRace(true) == Subclass::ThinHumanRace;
+    std::string const ranged = Subclass::HeadTitle(left->getRace(true), false);
+    Tell(left, "You sent " + right->GetName() + " a pair request to be your " + ranged + ".");
+    Tell(right, left->GetName() + " sends you a pair request to join as their " + ranged + ". Type .pair accept "
+        "or .pair decline.");
+    SendPairAddon(right, "PAIRINVITE " + left->GetName() + (twins ? " TWINS" : ""));
 }
 
 void ForgetStandInBody(uint32 right)
@@ -269,8 +297,9 @@ void Accept(Player* invitee)
     }
     bool const hadStandInBody = !StandInBodyOf(rightGuid).empty();
     ForgetStandInBody(rightGuid);
-    Tell(left, right->GetName() + " is now your Ranged Head.");
-    Tell(right, "You are now " + left->GetName() + "'s Ranged Head.");
+    std::string const ranged = Subclass::HeadTitle(left->getRace(true), false);
+    Tell(left, right->GetName() + " is now your " + ranged + ".");
+    Tell(right, "You are now " + left->GetName() + "'s " + ranged + ".");
     if (hadStandInBody)
         Tell(right, "The stand-in body and its echo gear are gone. You ride on " + left->GetName() + " now.");
     SendPairAddon(left, StateOf(left));
@@ -293,7 +322,8 @@ void Decline(Player* invitee)
     }
     Tell(invitee, "You declined the invitation.");
     if (Player* inviter = ObjectAccessor::FindPlayerByLowGUID(invite.Inviter))
-        Tell(inviter, invitee->GetName() + " declined to be your Ranged Head.");
+        Tell(inviter, invitee->GetName() + " declined to be your " +
+            Subclass::HeadTitle(inviter->getRace(true), false) + ".");
 }
 
 void Status(Player* player)
@@ -303,13 +333,16 @@ void Status(Player* player)
     std::string const formerLeft = StandInBodyOf(guid);
     if (!partner && !formerLeft.empty())
         Tell(player, "You ride a stand-in body wearing the echo of " + formerLeft + "'s gear. Type .pair echo to see "
-            "it, or find a new Melee Head.");
+            "it, or find a new " + Subclass::HeadTitle(player->getRace(true), true) + ".");
     else if (!partner)
-        Tell(player, "You are not paired with another head.");
+        Tell(player, player->getRace(true) == Subclass::ThinHumanRace ? "You are not paired with another brother." :
+            "You are not paired with another head.");
     else if (IsLeftHead(guid))
-        Tell(player, "You are the Melee Head. Your Ranged Head is " + NameOf(partner) + ".");
+        Tell(player, "You are the " + Subclass::HeadTitle(player->getRace(true), true) + ". Your " +
+            Subclass::HeadTitle(player->getRace(true), false) + " is " + NameOf(partner) + ".");
     else
-        Tell(player, "You are the Ranged Head. Your Melee Head is " + NameOf(partner) + ".");
+        Tell(player, "You are the " + Subclass::HeadTitle(player->getRace(true), false) + ". Your " +
+            Subclass::HeadTitle(player->getRace(true), true) + " is " + NameOf(partner) + ".");
     SendPairAddon(player, StateOf(player));
 }
 
@@ -357,12 +390,31 @@ void Forget(uint32 guid)
     TwoPlayersSeparate(guid, partner);
     if (Player* other = ObjectAccessor::FindPlayerByLowGUID(partner))
     {
+        bool const twins = other->getRace(true) == Subclass::ThinHumanRace;
         if (wasLeft)
-            Tell(other, "Your Melee Head is gone. The echo of their gear is kept for your stand-in body.");
+            Tell(other, "Your " + Subclass::HeadTitle(other->getRace(true), true) +
+                " is gone. The echo of their gear is kept for your stand-in body.");
         else
-            Tell(other, "The other head of your body is gone. The seat is free for a new partner.");
+            Tell(other, twins ? "Your other brother is gone. There is room for a new partner." :
+                "The other head of your body is gone. The seat is free for a new partner.");
         SendPairAddon(other, StateOf(other));
     }
+}
+
+void RememberChosenHead(Player* player)
+{
+    Subclass::ChosenHead head = Subclass::ChosenHead::Any;
+    {
+        std::lock_guard<std::mutex> lock(pairMutex);
+        auto const found = creationHeads.find({ player->GetSession()->GetAccountId(), player->GetName() });
+        if (found == creationHeads.end())
+            return;
+        head = found->second;
+        creationHeads.erase(found);
+        chosenHeads[player->GetGUID().GetCounter()] = head;
+    }
+    CharacterDatabase.Execute("REPLACE INTO `mod_subclass_two_players_head` (`guid`, `head`) VALUES ({}, {})",
+        player->GetGUID().GetCounter(), uint32(head));
 }
 
 void Delete(uint32 guid)
@@ -372,6 +424,11 @@ void Delete(uint32 guid)
         TakeEcho(guid, partner);
     ForgetStandInBody(guid);
     Forget(guid);
+    {
+        std::lock_guard<std::mutex> lock(pairMutex);
+        chosenHeads.erase(guid);
+    }
+    CharacterDatabase.Execute("DELETE FROM `mod_subclass_two_players_head` WHERE `guid` = {}", guid);
 }
 
 void LoadPairs()
@@ -388,6 +445,18 @@ void LoadPairs()
         "`right_guid` INT UNSIGNED NOT NULL, `slot` TINYINT UNSIGNED NOT NULL, `item_entry` INT UNSIGNED NOT NULL, "
         "`enchantments` TEXT NOT NULL, `random_property_id` SMALLINT NOT NULL DEFAULT 0, "
         "PRIMARY KEY (`right_guid`, `slot`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    CharacterDatabase.DirectExecute("CREATE TABLE IF NOT EXISTS `mod_subclass_two_players_head` ("
+        "`guid` INT UNSIGNED NOT NULL, `head` TINYINT UNSIGNED NOT NULL, PRIMARY KEY (`guid`)) "
+        "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    std::unordered_map<uint32, Subclass::ChosenHead> chosen;
+    if (QueryResult result = CharacterDatabase.Query("SELECT `guid`, `head` FROM `mod_subclass_two_players_head`"))
+        do
+        {
+            Field* fields = result->Fetch();
+            uint8 const head = fields[1].Get<uint8>();
+            if (head == uint8(Subclass::ChosenHead::Left) || head == uint8(Subclass::ChosenHead::Right))
+                chosen[fields[0].Get<uint32>()] = Subclass::ChosenHead(head);
+        } while (result->NextRow());
     std::unordered_map<uint32, uint32> loaded;
     std::unordered_map<uint32, bool> heads;
     QueryResult result = CharacterDatabase.Query("SELECT `left_guid`, `right_guid` FROM `mod_subclass_two_players`");
@@ -415,6 +484,7 @@ void LoadPairs()
     partners = std::move(loaded);
     leftHeads = std::move(heads);
     standInBodies = std::move(bodies);
+    chosenHeads = std::move(chosen);
 }
 
 Player* NamedPlayer(ChatHandler* handler, std::string_view name)
@@ -504,8 +574,13 @@ class mod_subclass_pairs_player : public PlayerScript
 {
 public:
     mod_subclass_pairs_player() : PlayerScript("mod_subclass_pairs_player", { PLAYERHOOK_ON_LOGIN,
-        PLAYERHOOK_ON_DELETE })
+        PLAYERHOOK_ON_DELETE, PLAYERHOOK_ON_CREATE })
     {
+    }
+
+    void OnPlayerCreate(Player* player) override
+    {
+        RememberChosenHead(player);
     }
 
     void OnPlayerLogin(Player* player) override
@@ -521,7 +596,9 @@ public:
     }
 };
 
-std::optional<std::string> BodyNameOf(std::string const& joined)
+using Heads = std::pair<std::string, std::string>;
+
+std::optional<Heads> HeadsOf(std::string const& joined)
 {
     auto heads = Subclass::SplitJoinedName(joined);
     if (!heads || !normalizePlayerName(heads->first) || !normalizePlayerName(heads->second))
@@ -534,27 +611,85 @@ std::optional<std::string> BodyNameOf(std::string const& joined)
     if (!right || !sCharacterCache->GetCharacterNameByGuid(ObjectGuid::Create<HighGuid::Player>(right), rightName) ||
         rightName != heads->second)
         return std::nullopt;
-    return heads->first;
+    CharacterCacheEntry const* body = sCharacterCache->GetCharacterCacheByGuid(left);
+    if (!body || joined[joined.find_first_of("'&")] != Subclass::WhisperMark(body->Race))
+        return std::nullopt;
+    return heads;
 }
 
-bool SendWhisperToBody(WorldSession* session, WorldPacket const& packet)
+std::optional<std::string> BodyNameOf(std::string const& joined)
+{
+    std::optional<Heads> const heads = HeadsOf(joined);
+    return heads ? std::optional<std::string>(heads->first) : std::nullopt;
+}
+
+std::optional<Heads> BrothersNamedIn(std::string first, std::string& message)
+{
+    if (message.rfind("& ", 0) != 0 || !normalizePlayerName(first))
+        return std::nullopt;
+    ObjectGuid const guid = sCharacterCache->GetCharacterGuidByName(first);
+    CharacterCacheEntry const* brother = guid ? sCharacterCache->GetCharacterCacheByGuid(guid) : nullptr;
+    if (!brother || brother->Race != Subclass::ThinHumanRace || !IsLeftHead(guid.GetCounter()))
+        return std::nullopt;
+    std::string second;
+    uint32 const partner = PartnerOf(guid.GetCounter());
+    if (!partner || !sCharacterCache->GetCharacterNameByGuid(ObjectGuid::Create<HighGuid::Player>(partner), second))
+        return std::nullopt;
+    std::optional<std::string> const rest = Subclass::WithoutRiderName(message, second);
+    if (!rest)
+        return std::nullopt;
+    message = *rest;
+    return Heads{ first, second };
+}
+
+std::optional<std::string> WhisperNameOf(std::string name)
+{
+    if (!normalizePlayerName(name))
+        return std::nullopt;
+    ObjectGuid const guid = sCharacterCache->GetCharacterGuidByName(name);
+    uint32 const partner = guid ? PartnerOf(guid.GetCounter()) : 0;
+    if (!partner)
+        return std::nullopt;
+    uint32 const left = IsLeftHead(guid.GetCounter()) ? guid.GetCounter() : partner;
+    uint32 const right = left == partner ? guid.GetCounter() : partner;
+    std::string leftName;
+    std::string rightName;
+    CharacterCacheEntry const* body =
+        sCharacterCache->GetCharacterCacheByGuid(ObjectGuid::Create<HighGuid::Player>(left));
+    if (!body || !sCharacterCache->GetCharacterNameByGuid(ObjectGuid::Create<HighGuid::Player>(left), leftName) ||
+        !sCharacterCache->GetCharacterNameByGuid(ObjectGuid::Create<HighGuid::Player>(right), rightName))
+        return std::nullopt;
+    return Subclass::WhisperName(body->Race, leftName, rightName);
+}
+
+void Whisper(WorldSession* session, uint32 language, std::string const& to, std::string const& text)
+{
+    WorldPacket packet(CMSG_MESSAGECHAT, 8 + to.size() + text.size() + 2);
+    packet << uint32(CHAT_MSG_WHISPER) << language << to << text;
+    session->HandleMessagechatOpcode(packet);
+}
+
+bool SendWhisperToBothHeads(WorldSession* session, WorldPacket const& packet)
 {
     WorldPacket read(packet);
     read.rpos(0);
     uint32 type = 0;
     uint32 language = 0;
     read >> type >> language;
-    if (type != CHAT_MSG_WHISPER)
+    if (type != CHAT_MSG_WHISPER || language == LANG_ADDON)
         return false;
     std::string to;
     read >> to;
-    std::optional<std::string> const body = to.find('\'') == std::string::npos ? std::nullopt : BodyNameOf(to);
-    if (!body)
+    std::string text = read.ReadCString(true);
+    std::optional<Heads> const heads =
+        to.find_first_of("'&") != std::string::npos ? HeadsOf(to) : BrothersNamedIn(to, text);
+    if (!heads)
         return false;
-    WorldPacket rewritten(CMSG_MESSAGECHAT, packet.size());
-    rewritten << type << language << *body;
-    rewritten.append(read.contents() + read.rpos(), read.size() - read.rpos());
-    session->HandleMessagechatOpcode(rewritten);
+    std::string const& sender = session->GetPlayer()->GetName();
+    if (heads->first != sender)
+        Whisper(session, language, heads->first, text);
+    if (heads->second != sender && ObjectAccessor::FindPlayerByName(heads->second, false))
+        Whisper(session, language, heads->second, text);
     return true;
 }
 
@@ -564,7 +699,8 @@ bool SendInviteToBody(WorldSession* session, WorldPacket const& packet)
     read.rpos(0);
     std::string name;
     read >> name;
-    std::optional<std::string> const body = name.find('\'') == std::string::npos ? std::nullopt : BodyNameOf(name);
+    std::optional<std::string> const body =
+        name.find_first_of("'&") == std::string::npos ? std::nullopt : BodyNameOf(name);
     if (!body)
         return false;
     WorldPacket rewritten(CMSG_GROUP_INVITE, packet.size());
@@ -589,7 +725,7 @@ public:
             return true;
         try
         {
-            bool const handled = opcode == CMSG_MESSAGECHAT ? SendWhisperToBody(session, packet) :
+            bool const handled = opcode == CMSG_MESSAGECHAT ? SendWhisperToBothHeads(session, packet) :
                 SendInviteToBody(session, packet);
             return !handled;
         }
@@ -627,8 +763,45 @@ bool TwoPlayersIsLeftHead(uint32 guid)
     return IsLeftHead(guid);
 }
 
+bool TakeCreationHead(WorldSession* session, WorldPacket const& packet)
+{
+    if (packet.GetOpcode() != CMSG_CHAR_CREATE || !TwoPlayersEnabled())
+        return false;
+    WorldPacket read(packet);
+    read.rpos(0);
+    std::string name;
+    read >> name;
+    std::size_t const rest = read.rpos();
+    uint8 race = 0;
+    uint8 classId = 0;
+    uint8 gender = 0;
+    read >> race >> classId >> gender;
+    auto const split = Subclass::SplitCreationHead(name);
+    if (!split || !Subclass::IsTwoPlayersBody(race, gender))
+        return false;
+    std::string normalized = split->first;
+    if (normalizePlayerName(normalized))
+    {
+        std::lock_guard<std::mutex> lock(pairMutex);
+        creationHeads[{ session->GetAccountId(), normalized }] = split->second;
+    }
+    WorldPacket rewritten(CMSG_CHAR_CREATE, packet.size());
+    rewritten << split->first;
+    rewritten.append(read.contents() + rest, read.size() - rest);
+    session->HandleCharCreateOpcode(rewritten);
+    return true;
+}
+
 void HandlePairMessage(Player* player, std::vector<std::string_view> const& words)
 {
+    if (words.size() == 2 && words[0] == "PAIRWHISPER")
+    {
+        std::string const name(words[1]);
+        if (TwoPlayersEnabled())
+            if (std::optional<std::string> const pair = WhisperNameOf(name))
+                SendPairAddon(player, "PAIRWHISPER " + name + " " + *pair);
+        return;
+    }
     if (!TwoPlayersEnabled())
     {
         Tell(player, "Two-Players is switched off on this server.");

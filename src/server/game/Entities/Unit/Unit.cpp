@@ -22,6 +22,7 @@
 #include "AbstractFollower.h"
 #include "AreaDefines.h"
 #include "ArenaSpectator.h"
+#include "AscensionBattlegroundCombat.h"
 #include "AscensionResilientConstitution.h"
 #include "AscensionTankStances.h"
 #include "Battlefield.h"
@@ -140,9 +141,11 @@ static bool IsClassicPlusCombat(Unit const* attacker, Unit const* victim)
 
 // The level a creature is fought at by the character behind `opponent`: their own version of it when they have
 // one. Unlike getLevelForTarget it keeps a world boss's real level, which the stock armor and resistance formulas
-// read.
+// read. Two player-controlled units in a widened battleground fight at its top level, as in getLevelForTarget.
 static uint8 ShownCombatLevel(Unit const* unit, Unit const* opponent)
 {
+    if (uint8 const top = AscensionBattlegroundCombat::SharedTopLevel(unit, opponent))
+        return top;
     if (Creature const* creature = unit->ToCreature())
         if (Player const* viewer = opponent ? opponent->GetCharmerOrOwnerPlayerOrPlayerItself() : nullptr)
             if (uint8 const view = LocalLevelScaling::ViewLevelFor(viewer, creature))
@@ -4261,6 +4264,23 @@ SpellMissInfo Unit::SpellHitResult(Unit* victim, Spell const* spell, bool CanRef
     return SPELL_MISS_NONE;
 }
 
+uint8 Unit::getLevelForTarget(WorldObject const* target) const
+{
+    if (target)
+        if (uint8 const top = AscensionBattlegroundCombat::SharedTopLevel(this, target->ToUnit()))
+            return top;
+
+    return GetLevel();
+}
+
+uint8 Unit::getRewardLevelForTarget(WorldObject const* target) const
+{
+    if (target && AscensionBattlegroundCombat::SharedTopLevel(this, target->ToUnit()))
+        return GetLevel();
+
+    return getLevelForTarget(target);
+}
+
 uint32 Unit::GetDefenseSkillValue(Unit const* target) const
 {
     if (IsPlayer())
@@ -4269,6 +4289,8 @@ uint32 Unit::GetDefenseSkillValue(Unit const* target) const
         uint32 value = (target && target->IsPlayer())
                        ? ToPlayer()->GetMaxSkillValue(SKILL_DEFENSE)
                        : ToPlayer()->GetSkillValue(SKILL_DEFENSE);
+        if (uint8 const top = AscensionBattlegroundCombat::SharedTopLevel(this, target))
+            value = std::max<uint32>(value, 5u * top);
         value += uint32(ToPlayer()->GetRatingBonusValue(CR_DEFENSE_SKILL));
         return value;
     }
@@ -4608,8 +4630,14 @@ uint32 Unit::GetWeaponSkillValue (WeaponAttackType attType, Unit const* target) 
         if (attType != BASE_ATTACK && !item)
             return 0;
 
+        uint8 const top = AscensionBattlegroundCombat::SharedTopLevel(this, target);
+
         if (IsInFeralForm())
+        {
+            if (top)
+                return 5u * top;
             return GetMaxSkillValueForLevel();              // always maximized SKILL_FERAL_COMBAT in fact
+        }
 
         // weapon skill or (unarmed for base attack)
         uint32 skill = SKILL_UNARMED;
@@ -4620,6 +4648,8 @@ uint32 Unit::GetWeaponSkillValue (WeaponAttackType attType, Unit const* target) 
         value = (target && target->IsControlledByPlayer())
                 ? player->GetMaxSkillValue(skill)
                 : player->GetSkillValue(skill);
+        if (top)
+            value = std::max<uint32>(value, 5u * top);
         // Modify value from ratings
         value += uint32(player->GetRatingBonusValue(CR_WEAPON_SKILL));
         switch (attType)
@@ -7042,7 +7072,7 @@ uint32 Unit::GetDiseasesByCaster(ObjectGuid casterGUID, uint8 mode)
                     uint32 countMin = aura->GetMaxDuration();
                     uint32 countMax = aura->GetSpellInfo()->GetMaxDuration() + 9000;
 
-                    if (AuraEffect const* epidemic = (*i)->GetCaster()->GetAuraEffectOfRankedSpell(49036, EFFECT_0))
+                    if (AuraEffect const* epidemic = (*i)->GetCaster()->GetAuraEffectOfRankedSpellOrTwin(49036, EFFECT_0))
                         countMax += epidemic->GetAmount();
 
                     if (countMin < countMax)
@@ -9886,6 +9916,10 @@ uint32 Unit::SpellDamageBonusDone(Unit* victim, SpellInfo const* spellProto, uin
         // damage school unchanged for native resistance and damage modifiers.
         DoneAdvertisedBenefit += std::max(SpellBaseDamageBonusDone(SPELL_SCHOOL_MASK_FIRE),
             SpellBaseDamageBonusDone(SPELL_SCHOOL_MASK_NATURE));
+    // CoA: Stormbringer Shock's tooltip scales with the higher of Arcane and Nature spell power.
+    else if (spellProto->SpellFamilyName == 22 && spellProto->GetFirstRankSpell()->Id == 804020)
+        DoneAdvertisedBenefit += std::max(SpellBaseDamageBonusDone(SPELL_SCHOOL_MASK_ARCANE),
+            SpellBaseDamageBonusDone(SPELL_SCHOOL_MASK_NATURE));
     else
         DoneAdvertisedBenefit += SpellBaseDamageBonusDone(spellPowerSchool);
 
@@ -10030,15 +10064,26 @@ float Unit::GetAscensionPvpTuningDamageMultiplier(Unit const* victim, uint32 sch
 {
     // Copied aura 322 means damage against players (e.g. Fire and Ice 1582385,
     // "$s2% against players"). Enable only the reviewed PvP tuning records.
+    // Pets and guardians deal their player owner's PvP tuning against players.
     if (!victim || !victim->IsCharmedOwnedByPlayerOrPlayer())
         return 1.0f;
 
-    return GetTotalAuraMultiplier(SPELL_AURA_ASCENSION_MOD_PVP_DAMAGE_DONE_PCT,
+    float multiplier = GetTotalAuraMultiplier(SPELL_AURA_ASCENSION_MOD_PVP_DAMAGE_DONE_PCT,
         [schoolMask](AuraEffect const* effect)
         {
             return (IsAscensionPvpTuningAura(effect->GetId()) || effect->GetId() == 275097) &&
                 (effect->GetMiscValue() & schoolMask);
         });
+
+    if (!IsPlayer())
+        if (Player const* owner = GetCharmerOrOwnerPlayerOrPlayerItself())
+            multiplier *= owner->GetTotalAuraMultiplier(SPELL_AURA_ASCENSION_MOD_PVP_DAMAGE_DONE_PCT,
+                [schoolMask](AuraEffect const* effect)
+                {
+                    return IsAscensionPvpTuningAura(effect->GetId()) && (effect->GetMiscValue() & schoolMask);
+                });
+
+    return multiplier;
 }
 
 float Unit::GetHealthBasedDamageTakenMultiplier() const
@@ -12207,6 +12252,9 @@ bool Unit::_IsValidAssistTarget(Unit const* target, SpellInfo const* bySpell) co
     // can assist to self
     if (this == target)
         return true;
+
+    if (!sScriptMgr->CanUnitAssist(this, target, bySpell))
+        return false;
 
     // can't assist unattackable units or GMs
     if (target->HasUnitState(UNIT_STATE_UNATTACKABLE)
@@ -14653,7 +14701,10 @@ void Unit::SetDisplayId(uint32 modelId, float displayScale /*=1.f*/)
     SetUInt32Value(UNIT_FIELD_DISPLAYID, modelId);
 
     // Set Gender by modelId
-    if (CreatureModelInfo const* minfo = sObjectMgr->GetCreatureModelInfo(modelId))
+    // CoA: a player back in its native model takes its own gender again; custom race models carry none of their own.
+    if (IsPlayer() && modelId == GetNativeDisplayId())
+        SetByteValue(UNIT_FIELD_BYTES_0, 2, GetByteValue(PLAYER_BYTES_3, 0));
+    else if (CreatureModelInfo const* minfo = sObjectMgr->GetCreatureModelInfo(modelId))
         SetByteValue(UNIT_FIELD_BYTES_0, 2, minfo->gender);
 
     SetObjectScale(displayScale);
@@ -18992,7 +19043,7 @@ void Unit::Whisper(uint32 textId, Player* target, bool isBossWhisper /*= false*/
 bool Unit::CanRestoreMana(SpellInfo const* spellInfo) const
 {
     // Aura of Despair exceptions
-    switch (spellInfo->Id)
+    switch (sSpellMgr->GetSpellTwinSource(spellInfo->Id) == 54428 ? 54428 : spellInfo->Id)
     {
         case 16666: // Demonic Rune
         case 27869: // Dark Rune
@@ -19010,7 +19061,7 @@ bool Unit::CanRestoreMana(SpellInfo const* spellInfo) const
         case 68285: // Improved Leader of the Pack
             return true;
         case 54428: // Divine Plea - only with talent Guarded by the Light
-            return HasSpell(53583);
+            return IsPlayer() ? ToPlayer()->HasSpellOrTwin(53583) : HasSpell(53583);
         default:
             break;
     }
