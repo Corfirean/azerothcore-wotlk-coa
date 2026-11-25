@@ -3,9 +3,11 @@
  */
 
 #include "AllSpellScript.h"
+#include "AscensionCustomResourceData.h"
 #include "AscensionSpecialization.h"
 #include "Chat.h"
 #include "Config.h"
+#include "DBCStores.h"
 #include "GameTime.h"
 #include "Group.h"
 #include "GroupMgr.h"
@@ -55,6 +57,9 @@ void TwoPlayersKeepBotBodyRoaming(Player* body);
 void TwoPlayersBotBodyRides(Player* body, Player* rider, bool halted);
 std::string TwoPlayersBotBodyRideToggle(Player* body, Player* rider);
 void KeepTwoPlayersBrother(Player* player);
+void DropTwinKit(Player* player);
+uint32 TwinsCarryVehicleWanted(Player const* body);
+void TwoPlayersTwinCasts(Player* body, Unit* target, bool positive);
 
 namespace
 {
@@ -178,6 +183,7 @@ bool GiveBodyKit(Player* body)
     if (HasBodyKit(body))
         return true;
     uint32 const vehicle = Subclass::BodyVehicleFor(body->getRace(true));
+    DropTwinKit(body);
     if (body->GetVehicleKit() || !body->CreateVehicleKit(vehicle, 0))
         return false;
     body->GetVehicleKit()->Reset();
@@ -211,7 +217,11 @@ uint32 KitWanted(Player const* body, uint32 mountCreature)
     CreatureTemplate const* mount = mountCreature ? sObjectMgr->GetCreatureTemplate(mountCreature) : nullptr;
     uint32 const carrying = mount && own == Subclass::TwoPlayersVehicle ?
         Subclass::TwoPlayersVehicleCarrying(mount->VehicleId) : 0;
-    return carrying ? carrying : own;
+    if (carrying)
+        return carrying;
+    if (uint32 const twinCarry = TwinsCarryVehicleWanted(body); twinCarry && sVehicleStore.LookupEntry(twinCarry))
+        return twinCarry;
+    return own;
 }
 
 bool RidesHidden(Player const* rider)
@@ -224,12 +234,36 @@ bool LoggingOut(Player const* player)
     return player && player->GetSession() && player->GetSession()->isLogingOut();
 }
 
+constexpr uint32 FreshSeatRefreshMs = 2000;
+std::unordered_map<uint32, uint32>& freshSeats = *new std::unordered_map<uint32, uint32>;
+
+void ShowSeatAgainLater(Player const* rider)
+{
+    std::lock_guard<std::mutex> lock(bodyMutex);
+    freshSeats[rider->GetGUID().GetCounter()] = getMSTime() + FreshSeatRefreshMs;
+}
+
+bool SeatShownAgainNow(Player const* rider)
+{
+    std::lock_guard<std::mutex> lock(bodyMutex);
+    auto const found = freshSeats.find(rider->GetGUID().GetCounter());
+    if (found == freshSeats.end() || int32(found->second - getMSTime()) > 0)
+        return false;
+    freshSeats.erase(found);
+    return true;
+}
+
 void HideRiderApart(Player* rider)
 {
     uint32 const guid = rider->GetGUID().GetCounter();
     uint32 const partnerGuid = TwoPlayersPartnerOf(guid);
     if (!partnerGuid || TwoPlayersIsLeftHead(guid) || !RidesHidden(rider))
         return;
+    if (SeatShownAgainNow(rider) && rider->IsVisible())
+    {
+        rider->SetVisible(false);
+        return;
+    }
     Player* body = ObjectAccessor::FindPlayerByLowGUID(partnerGuid);
     bool const visible = Seated(body, rider) && !LoggingOut(rider) && !LoggingOut(body);
     if (rider->IsVisible() != visible)
@@ -428,7 +462,8 @@ void ShowOneBodyToGroup(Player* body, Player* rider)
     Group* group = body->GetGroup();
     if (!group)
         return;
-    std::string const line = "TWOPLAYERS " + body->GetName() + " " + rider->GetName();
+    std::string const line = "TWOPLAYERS " + body->GetName() + " " + rider->GetName() +
+        (body->getRace(true) == Subclass::ThinHumanRace ? " TWINS" : "");
     for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
     {
         Player* member = ref->GetSource();
@@ -524,7 +559,7 @@ void RevealArrival(Player* rider, bool onlyWhenOverdue)
         rider->SetVisible(true);
 }
 
-void Seat(Player* left, Player* right);
+void Seat(Player* left, Player* right, bool kitSwap = false);
 
 void CarryMountPassengers(Player* body, Player* rider)
 {
@@ -536,11 +571,13 @@ void CarryMountPassengers(Player* body, Player* rider)
         return;
     bool const reseat = rider && Seated(body, rider);
     body->RemoveVehicleKit();
-    if (!body->CreateVehicleKit(wanted, wanted == Subclass::BodyVehicleFor(body->getRace(true)) ? 0 : mountCreature))
+    bool const ownSeats = wanted == Subclass::BodyVehicleFor(body->getRace(true)) ||
+        Subclass::IsTwinsCarryVehicle(wanted);
+    if (!body->CreateVehicleKit(wanted, ownSeats ? 0 : mountCreature))
     {
         GiveBodyKit(body);
         if (reseat)
-            Seat(body, rider);
+            Seat(body, rider, true);
         return;
     }
     body->GetVehicleKit()->Reset();
@@ -548,10 +585,31 @@ void CarryMountPassengers(Player* body, Player* rider)
     SendVehicleData(body, wanted);
     body->GetVehicleKit()->InstallAllAccessories(false);
     if (reseat)
-        Seat(body, rider);
+        Seat(body, rider, true);
 }
 
-void Seat(Player* left, Player* right)
+void ExplainUnseated(Player const* body, Player const* rider)
+{
+    constexpr uint32 ExplainEveryMs = 10000;
+    static std::unordered_map<uint32, uint32> explained;
+    uint32 const now = getMSTime();
+    {
+        std::lock_guard<std::mutex> lock(bodyMutex);
+        uint32& last = explained[body->GetGUID().GetCounter()];
+        if (last && getMSTimeDiff(last, now) < ExplainEveryMs)
+            return;
+        last = now;
+    }
+    Vehicle const* kit = body->GetVehicleKit();
+    Unit const* holder = kit ? kit->GetPassenger(RightHeadSeat) : nullptr;
+    LOG_INFO("module", "mod-subclass: {} could not sit on {}: kit {}, seat {} held by {}, rider in combat {}, "
+        "alive {}, on vehicle {}, {:.1f} yards apart", rider->GetName(), body->GetName(),
+        kit ? kit->GetVehicleInfo()->m_ID : 0, int32(RightHeadSeat), holder ? holder->GetName() : "nobody",
+        rider->IsInCombat(), rider->IsAlive(), rider->GetVehicleBase() ? rider->GetVehicleBase()->GetName() : "none",
+        rider->GetDistance(body));
+}
+
+void Seat(Player* left, Player* right, bool kitSwap)
 {
     if (Seated(left, right) || !GiveBodyKit(left))
         return;
@@ -567,18 +625,20 @@ void Seat(Player* left, Player* right)
         TRIGGERED_FULL_MASK);
     sScriptMgr->AnticheatSetUnderACKmount(right);
     if (!Seated(left, right))
+        ExplainUnseated(left, right);
+    if (!Seated(left, right) || kitSwap)
         return;
+    ShowSeatAgainLater(right);
     Reclaim(left);
     Reclaim(right);
     LendBothWays(left, right);
     TwoPlayersShareBuffs(left, right);
     if (!Greet(left->GetGUID().GetCounter(), true))
         return;
-    bool const piggyback = Subclass::BodyVehicleFor(left->getRace(true)) == Subclass::TwinsTwoPlayersVehicle;
-    Tell(left, right->GetName() + (piggyback ? " rides on your back now." : " is your other head now.") +
+    bool const twins = left->getRace(true) == Subclass::ThinHumanRace;
+    Tell(left, right->GetName() + (twins ? " is your other brother (ranged) now." : " is your other head now.") +
         " Their movement and melee abilities are yours to use.");
-    Tell(right, (piggyback ? "You ride on " + left->GetName() + "'s back now." :
-        "You are " + left->GetName() + "'s other head now.") +
+    Tell(right, "You are " + left->GetName() + (twins ? "'s other brother (ranged) now." : "'s other head now.") +
         " Their ranged spells, casts and buffs are yours to use.");
 }
 
@@ -630,9 +690,11 @@ void CallBotForMissingHead(Player* player, uint32 partnerGuid, bool missing, boo
         return;
     if (!TimeToCallBot(player->GetGUID().GetCounter(), missing) || !TwoPlayersCallBot(player, partnerGuid))
         return;
-    Tell(player, left ? "A bot casts for your Ranged Head until they come back." :
-        "A bot steers your Melee Head's body until they come back. Type /pair stop to hold it still and /pair go "
-        "to let it roam again.");
+    bool const twins = player->getRace(true) == Subclass::ThinHumanRace;
+    Tell(player, left ? "A bot casts for your " + Subclass::HeadTitle(player->getRace(true), false) +
+        " until they come back." : "A bot steers your " + Subclass::HeadTitle(player->getRace(true), true) +
+        (twins ? "" : "'s body") + " until they come back. Type /pair stop to hold it still and /pair go to let it "
+        "roam again.");
 }
 
 bool MarkWaiting(uint32 guid, bool wait)
@@ -648,14 +710,16 @@ void WaitForBody(Player* rider, bool wait, bool botBody)
     {
         rider->SetControlled(true, UNIT_STATE_ROOT);
         if (changed)
-            Tell(rider, "Your Melee Head is offline. The body stands still here until they come back.");
+            Tell(rider, "Your " + Subclass::HeadTitle(rider->getRace(true), true) + " is offline. " +
+                (rider->getRace(true) == Subclass::ThinHumanRace ? "You wait here" : "The body stands still here") +
+                " until they come back.");
         return;
     }
     if (!changed)
         return;
     rider->SetControlled(false, UNIT_STATE_ROOT);
     if (!wait && !botBody)
-        Tell(rider, "Your Melee Head is back.");
+        Tell(rider, "Your " + Subclass::HeadTitle(rider->getRace(true), true) + " is back.");
 }
 
 void KeepTheTwoPlayersBody(Player* player)
@@ -788,6 +852,91 @@ void GhostAlong(Player* rider, Player* body)
             body->GetOrientation());
 }
 
+std::map<std::pair<uint32, uint32>, uint32>& sharedResources = *new std::map<std::pair<uint32, uint32>, uint32>;
+
+uint32 ResourceStacks(Player const* head, uint32 resource)
+{
+    Aura const* aura = head->GetAura(resource);
+    return aura ? aura->GetStackAmount() : 0;
+}
+
+void SetResourceStacks(Player* head, uint32 resource, uint32 stacks, Aura const* source)
+{
+    Aura* aura = head->GetAura(resource);
+    if (!stacks)
+    {
+        if (aura)
+            head->RemoveAurasDueToSpell(resource);
+        return;
+    }
+    if (!aura)
+        aura = head->AddAura(resource, head);
+    if (!aura)
+        return;
+    if (aura->GetStackAmount() != stacks)
+        aura->SetStackAmount(uint8(std::min<uint32>(stacks, UINT8_MAX)));
+    if (source && source->GetDuration() >= 0)
+    {
+        aura->SetMaxDuration(source->GetMaxDuration());
+        aura->SetDuration(source->GetDuration());
+    }
+    aura->SetNeedClientUpdateForTargets();
+}
+
+void ShareClassResources(Player* body, Player* rider)
+{
+    if (body->getClass() != rider->getClass())
+        return;
+    uint32 const bodyGuid = body->GetGUID().GetCounter();
+    for (AscensionCompatData::ResourceDisplay const& resource : AscensionCompatData::ResourceDisplays)
+    {
+        if (resource.ClassId != body->getClass())
+            continue;
+        int32 const onBody = int32(ResourceStacks(body, resource.SpellId));
+        int32 const onRider = int32(ResourceStacks(rider, resource.SpellId));
+        int32 shared = onBody;
+        {
+            std::lock_guard<std::mutex> lock(bodyMutex);
+            auto const found = sharedResources.find({ bodyGuid, resource.SpellId });
+            if (found != sharedResources.end())
+            {
+                int32 const before = int32(found->second);
+                shared = before + (onBody - before) + (onRider - before);
+            }
+            SpellInfo const* info = sSpellMgr->GetSpellInfo(resource.SpellId);
+            int32 const most = resource.DisplayMaximum ? resource.DisplayMaximum :
+                info && info->StackAmount ? int32(info->StackAmount) : INT32_MAX;
+            shared = std::clamp(shared, 0, most);
+            sharedResources[{ bodyGuid, resource.SpellId }] = uint32(shared);
+        }
+        Aura const* changed = onRider != shared ? body->GetAura(resource.SpellId) : rider->GetAura(resource.SpellId);
+        if (onBody != shared)
+            SetResourceStacks(body, resource.SpellId, uint32(shared), rider->GetAura(resource.SpellId));
+        if (onRider != shared)
+            SetResourceStacks(rider, resource.SpellId, uint32(shared), changed);
+    }
+}
+
+void ForgetSharedResources(uint32 bodyGuid)
+{
+    std::lock_guard<std::mutex> lock(bodyMutex);
+    for (auto itr = sharedResources.lower_bound({ bodyGuid, 0 });
+        itr != sharedResources.end() && itr->first.first == bodyGuid;)
+        itr = sharedResources.erase(itr);
+}
+
+void ShareTheBodysRest(Player* rider, Player const* body)
+{
+    for (RestFlag const flag : { REST_FLAG_IN_TAVERN, REST_FLAG_IN_CITY, REST_FLAG_IN_FACTION_AREA })
+    {
+        if (!body->HasRestFlag(flag))
+            rider->RemoveRestFlag(flag);
+        else if (!rider->HasRestFlag(flag) || (flag == REST_FLAG_IN_TAVERN &&
+            rider->GetInnTriggerId() != body->GetInnTriggerId()))
+            rider->SetRestFlag(flag, flag == REST_FLAG_IN_TAVERN ? body->GetInnTriggerId() : 0);
+    }
+}
+
 void KeepTogether(Player* player)
 {
     uint32 const guid = player->GetGUID().GetCounter();
@@ -816,7 +965,10 @@ void KeepTogether(Player* player)
         Greet(left ? guid : partnerGuid, false);
         ForgetTold(guid);
         if (left)
+        {
             ShowTwoAgain(player);
+            ForgetSharedResources(guid);
+        }
         Steered(guid, false);
         if (HasLent(player))
             Reclaim(player);
@@ -841,6 +993,7 @@ void KeepTogether(Player* player)
     {
         if (left)
         {
+            ShareClassResources(body, rider);
             TwoPlayersKeepSharedBuffsEven(body, rider);
             LendBothWays(body, rider);
             UseLentAbilities(body, body);
@@ -849,13 +1002,17 @@ void KeepTogether(Player* player)
         else
         {
             UseLentAbilities(rider, body);
+            ShareTheBodysRest(rider, body);
             if (rider->GetDisplayId() == InvisibleDisplay)
                 rider->RestoreDisplayId();
         }
         return;
     }
     if (left)
+    {
         ShowTwoAgain(body);
+        ForgetSharedResources(guid);
+    }
     if (!Ready(body) || !Ready(rider) || body->GetVehicle())
         return;
     bool const close = SameMap(body, rider) && rider->IsWithinDist(body, SeatReach);
@@ -1129,7 +1286,8 @@ public:
         Player* left = Online(partnerGuid);
         if (!left || left->GetGroup() == group)
             return true;
-        Tell(player, "Your Melee Head handles the group: ask them to invite or join, and you come along.");
+        Tell(player, "Your " + Subclass::HeadTitle(player->getRace(true), true) +
+            " handles the group: ask them to invite or join, and you come along.");
         return false;
     }
 
@@ -1167,18 +1325,6 @@ public:
     }
 };
 
-Player* VisibleRiderOf(Unit* unit)
-{
-    Player* body = unit ? unit->ToPlayer() : nullptr;
-    if (!body || Subclass::BodyVehicleFor(body->getRace(true)) != Subclass::TwinsTwoPlayersVehicle)
-        return nullptr;
-    uint32 const guid = body->GetGUID().GetCounter();
-    if (!TwoPlayersIsLeftHead(guid))
-        return nullptr;
-    Player* rider = Online(TwoPlayersPartnerOf(guid));
-    return Seated(body, rider) ? rider : nullptr;
-}
-
 bool HealsManyAtOnce(SpellInfo const* info)
 {
     if (info->IsAffectingArea())
@@ -1215,7 +1361,7 @@ class mod_subclass_two_players_unit : public UnitScript
 {
 public:
     mod_subclass_two_players_unit() : UnitScript("mod_subclass_two_players_unit", true,
-        { UNITHOOK_ON_DAMAGE, UNITHOOK_MODIFY_MELEE_DAMAGE, UNITHOOK_MODIFY_HEAL_RECEIVED }) { }
+        { UNITHOOK_ON_DAMAGE, UNITHOOK_MODIFY_HEAL_RECEIVED }) { }
 
     void ModifyHealReceived(Unit* healer, Unit* receiver, uint32& heal, SpellInfo const* info) override
     {
@@ -1227,15 +1373,6 @@ public:
         HealInfo bodyHeal(healer, body, heal, info, info->GetSchoolMask());
         heal = 0;
         healer->HealBySpell(bodyHeal);
-    }
-
-    void ModifyMeleeDamage(Unit* /*target*/, Unit* attacker, uint32& /*damage*/) override
-    {
-        Player* rider = VisibleRiderOf(attacker);
-        if (!rider)
-            return;
-        bool const armed = attacker->ToPlayer()->GetWeaponForAttack(BASE_ATTACK, true) != nullptr;
-        rider->HandleEmoteCommand(armed ? EMOTE_ONESHOT_ATTACK1H : EMOTE_ONESHOT_ATTACK_UNARMED);
     }
 
     void OnDamage(Unit* /*attacker*/, Unit* victim, uint32& damage) override
@@ -1265,16 +1402,17 @@ void PayLentShare(Unit* caster, SpellInfo const* info)
         presser->ModifyPower(presser->getPowerType(), -int32(share));
 }
 
-char const* RefusalFor(Subclass::Borrow kind)
+std::string RefusalFor(Subclass::Borrow kind, uint8 race)
 {
     switch (kind)
     {
         case Subclass::Borrow::Movement:
-            return "Only the Melee Head moves the body.";
+            return race == Subclass::ThinHumanRace ? "Only your other brother (melee) leads the way." :
+                "Only the Melee Head moves the body.";
         case Subclass::Borrow::Melee:
-            return "The Melee Head uses the melee abilities.";
+            return "The " + Subclass::HeadTitle(race, true) + " uses the melee abilities.";
         default:
-            return "The Ranged Head uses the ranged spells, casts and buffs.";
+            return "The " + Subclass::HeadTitle(race, false) + " uses the ranged spells, casts and buffs.";
     }
 }
 
@@ -1292,8 +1430,8 @@ public:
             return;
         PayLentShare(caster, info);
         DismountForRider(caster, info);
-        if (Player* rider = VisibleRiderOf(caster))
-            rider->HandleEmoteCommand(info->IsPositive() ? EMOTE_ONESHOT_SPELL_CAST_OMNI : EMOTE_ONESHOT_SPELL_CAST);
+        if (Player* body = BodyOfSeatedRider(caster))
+            TwoPlayersTwinCasts(body, spell->m_targets.GetUnitTarget(), info->IsPositive());
     }
 
     bool CanPrepare(Spell* spell, SpellCastTargets const* targets, AuraEffect const* /*triggeredByAura*/) override
@@ -1319,7 +1457,7 @@ public:
             ClassAbilityOf(presser, info->Id))
         {
             if (!TwoPlayersHeadIsBot(presser))
-                Tell(presser, RefusalFor(kind));
+                Tell(presser, RefusalFor(kind, presser->getRace(true)));
             return false;
         }
         if (!pressedByLeft)
@@ -1344,9 +1482,12 @@ std::string TwoPlayersRide(Player* rider)
     uint32 const guid = rider->GetGUID().GetCounter();
     Player* body = TwoPlayersSeatedPartner(rider);
     if (!body || TwoPlayersIsLeftHead(guid))
-        return "Ride is for the Ranged Head, seated on a bot body.";
+        return rider->getRace(true) == Subclass::ThinHumanRace ?
+            "Ride is for the other brother (ranged), with a bot brother." :
+            "Ride is for the Ranged Head, seated on a bot body.";
     if (!TwoPlayersHeadIsBot(body))
-        return body->GetName() + " walks the body; ask them to mount up.";
+        return body->GetName() + (rider->getRace(true) == Subclass::ThinHumanRace ? " leads the way" :
+            " walks the body") + "; ask them to mount up.";
     return TwoPlayersBotBodyRideToggle(body, rider);
 }
 
@@ -1427,10 +1568,13 @@ std::string TwoPlayersHalt(Player* rider, bool halt)
     uint32 const guid = rider->GetGUID().GetCounter();
     uint32 const partnerGuid = TwoPlayersPartnerOf(guid);
     if (!partnerGuid || TwoPlayersIsLeftHead(guid))
-        return "Only a Ranged Head can stop or start a bot that steers the body.";
+        return rider->getRace(true) == Subclass::ThinHumanRace ?
+            "Only the other brother (ranged) can stop or start a bot brother." :
+            "Only a Ranged Head can stop or start a bot that steers the body.";
     Player* body = Online(partnerGuid);
     if (!TwoPlayersHeadIsBot(body))
-        return "Your Melee Head steers the body, not a bot.";
+        return rider->getRace(true) == Subclass::ThinHumanRace ? "Your other brother (melee) leads, not a bot." :
+            "Your Melee Head steers the body, not a bot.";
     {
         std::lock_guard<std::mutex> lock(bodyMutex);
         if (halt)

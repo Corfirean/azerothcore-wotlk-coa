@@ -685,6 +685,59 @@ TEST(Subclass, AJoinedBodyNameSplitsIntoTheMeleeAndRangedHeads)
     EXPECT_FALSE(SplitJoinedName("'Rogh").has_value());
     EXPECT_FALSE(SplitJoinedName("Grogh'").has_value());
     EXPECT_FALSE(SplitJoinedName("Gro'gh'Rogh").has_value());
+    auto const brothers = SplitJoinedName("Warken&Flarken");
+    ASSERT_TRUE(brothers.has_value());
+    EXPECT_EQ(brothers->first, "Warken");
+    EXPECT_EQ(brothers->second, "Flarken");
+    EXPECT_FALSE(SplitJoinedName("&Flarken").has_value());
+    EXPECT_FALSE(SplitJoinedName("Warken'Flar&ken").has_value());
+}
+
+TEST(Subclass, TheOgreJoinsHerHeadsWithAnApostropheAndTheTwinsWithAnAmpersand)
+{
+    EXPECT_EQ(JoinedName(TwoHeadedOgreRace, "Grogh", "Rogh"), "Grogh'Rogh");
+    EXPECT_EQ(JoinedName(ThinHumanRace, "Warken", "Flarken"), "Warken & Flarken");
+    EXPECT_EQ(HeadTitle(TwoHeadedOgreRace, false), "Ranged Head");
+    EXPECT_EQ(HeadTitle(ThinHumanRace, false), "other brother (ranged)");
+    EXPECT_EQ(HeadTitle(ThinHumanRace, true), "other brother (melee)");
+    EXPECT_EQ(WhisperName(TwoHeadedOgreRace, "Grogh", "Rogh"), "Grogh'Rogh");
+    EXPECT_EQ(WhisperName(ThinHumanRace, "Warken", "Flarken"), "Warken&Flarken");
+}
+
+TEST(Subclass, TheHeadChosenAtCreationRidesOnTheNameAndDecidesWhoSendsThePairRequest)
+{
+    auto const melee = SplitCreationHead("Warken#M");
+    ASSERT_TRUE(melee.has_value());
+    EXPECT_EQ(melee->first, "Warken");
+    EXPECT_EQ(melee->second, ChosenHead::Left);
+    auto const ranged = SplitCreationHead("Flarken Second#R");
+    ASSERT_TRUE(ranged.has_value());
+    EXPECT_EQ(ranged->first, "Flarken Second");
+    EXPECT_EQ(ranged->second, ChosenHead::Right);
+    EXPECT_FALSE(SplitCreationHead("Warken").has_value());
+    EXPECT_FALSE(SplitCreationHead("#M").has_value());
+    EXPECT_FALSE(SplitCreationHead("War#ken#M").has_value());
+    EXPECT_FALSE(SplitCreationHead("Warken#X").has_value());
+
+    PairHead hybrid{ true, false, 1, SpecializationRoles{ true, false, true, false, false } };
+    PairHead chosenMelee = hybrid;
+    chosenMelee.Chosen = ChosenHead::Left;
+    PairHead chosenRanged = hybrid;
+    chosenRanged.Chosen = ChosenHead::Right;
+    EXPECT_EQ(CheckPair(chosenMelee, chosenRanged), PairRefusal::None);
+    EXPECT_EQ(CheckPair(chosenRanged, chosenMelee), PairRefusal::LeftChoseRanged);
+    EXPECT_EQ(CheckPair(hybrid, chosenMelee), PairRefusal::RightChoseMelee);
+    EXPECT_EQ(CheckPair(hybrid, hybrid), PairRefusal::None);
+}
+
+TEST(Subclass, AWhisperToTheFirstBrotherDropsTheSecondBrothersName)
+{
+    EXPECT_EQ(WithoutRiderName("& Flarken hi there", "Flarken"), "hi there");
+    EXPECT_EQ(WithoutRiderName("& flarken  hi", "Flarken"), "hi");
+    EXPECT_EQ(WithoutRiderName("& Flarken", "Flarken"), "");
+    EXPECT_FALSE(WithoutRiderName("& Flarkenson hi", "Flarken").has_value());
+    EXPECT_FALSE(WithoutRiderName("hi & Flarken", "Flarken").has_value());
+    EXPECT_FALSE(WithoutRiderName("& Warken hi", "Flarken").has_value());
 }
 
 TEST(Subclass, BothHeadsOnOneFoeAgreeAndStackUpToTheLimit)
@@ -776,10 +829,10 @@ TEST(Subclass, TheRangedHeadNeedsNoGearButMayNeedEverythingElse)
 TEST(Subclass, TheTwinsCarryTheSecondBrotherOnTheirOwnVisibleSeat)
 {
     EXPECT_EQ(BodyVehicleFor(TwoHeadedOgreRace), TwoPlayersVehicle);
-    EXPECT_EQ(BodyVehicleFor(ThinHumanRace), TwinsTwoPlayersVehicle);
+    EXPECT_EQ(BodyVehicleFor(ThinHumanRace), TwoPlayersVehicle);
 }
 
-TEST(Subclass, TheOgreBodyCarriesTheMountsPassengers)
+TEST(Subclass, BothTwoPlayersBodiesCarryTheMountsPassengers)
 {
     EXPECT_EQ(TwoPlayersVehicleCarrying(DriveKartVehicle), TwoPlayersOnDriveKartVehicle);
     EXPECT_EQ(TwoPlayersVehicleCarrying(HordeTravelersMammothVehicle), TwoPlayersOnHordeMammothVehicle);
@@ -787,7 +840,16 @@ TEST(Subclass, TheOgreBodyCarriesTheMountsPassengers)
     EXPECT_EQ(TwoPlayersVehicleCarrying(0), 0u);
     EXPECT_TRUE(IsBodyVehicle(TwoPlayersOnDriveKartVehicle, TwoHeadedOgreRace));
     EXPECT_TRUE(IsBodyVehicle(TwoPlayersVehicle, TwoHeadedOgreRace));
-    EXPECT_FALSE(IsBodyVehicle(TwoPlayersOnDriveKartVehicle, ThinHumanRace));
+    EXPECT_TRUE(IsBodyVehicle(TwoPlayersOnDriveKartVehicle, ThinHumanRace));
+    EXPECT_EQ(TwinsCarryVehicleFor(9530), 9630u);
+    EXPECT_TRUE(IsBodyVehicle(TwinsCarryVehicleFor(9598), ThinHumanRace));
+    EXPECT_FALSE(IsBodyVehicle(TwinsCarryVehicleFor(9530), TwoHeadedOgreRace));
+    EXPECT_FALSE(IsTwinsCarryVehicle(9600));
+    EXPECT_TRUE(IsFormSeatVehicle(9710));
+    EXPECT_FALSE(IsFormSeatVehicle(9532));
+    EXPECT_TRUE(IsBodyVehicle(TwinsCarryVehicleFor(9718), ThinHumanRace));
+    EXPECT_FALSE(IsTwinsCarryVehicle(9710));
+    EXPECT_FALSE(IsTwinsCarryVehicle(50));
     EXPECT_FALSE(IsBodyVehicle(DriveKartVehicle, TwoHeadedOgreRace));
 }
 

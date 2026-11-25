@@ -74,6 +74,8 @@ void EchoCyclopsHelmet(Player* player);
 std::string RelicState(Player* player);
 std::string HandleRelicMessage(Player* player, std::vector<std::string_view> const& words);
 void HandlePairMessage(Player* player, std::vector<std::string_view> const& words);
+bool TakeCreationHead(WorldSession* session, WorldPacket const& packet);
+bool TwoPlayersEnabled();
 void SendBotPlans(Player* player);
 void BotPlanDoNow(Player* player, std::string_view botName, uint32 questId);
 void BotPlanMoveUp(Player* player, std::string_view botName, uint32 questId);
@@ -354,7 +356,8 @@ void SendCharacterSelectPayload(WorldSession* session, std::string const& payloa
 void AddPairsToCharacterSelect(WorldSession* session, std::string payload)
 {
     session->QueueQueryCallback(CharacterDatabase.AsyncQuery(Acore::StringFormat(
-        "SELECT `c`.`name`, `o`.`name`, `o`.`class`, `c`.`guid` = `t`.`left_guid` FROM `characters` AS `c` "
+        "SELECT `c`.`name`, `o`.`name`, `o`.`class`, `c`.`guid` = `t`.`left_guid`, `c`.`race` "
+        "FROM `characters` AS `c` "
         "JOIN `mod_subclass_two_players` AS `t` ON `c`.`guid` IN (`t`.`left_guid`, `t`.`right_guid`) "
         "JOIN `characters` AS `o` ON `o`.`guid` = IF(`c`.`guid` = `t`.`left_guid`, `t`.`right_guid`, `t`.`left_guid`) "
         "WHERE `c`.`account` = {} AND `c`.`deleteInfos_Name` IS NULL", session->GetAccountId())).WithCallback(
@@ -368,10 +371,13 @@ void AddPairsToCharacterSelect(WorldSession* session, std::string payload)
                     std::string const partner = fields[1].Get<std::string>();
                     uint8 const partnerClass = fields[2].Get<uint8>();
                     bool const left = fields[3].Get<int64>() != 0;
+                    uint8 const race = fields[4].Get<uint8>();
                     payload += (payload.size() > 1 ? "," : "") + CharacterSelectEntry(name,
                         PlainClassName(partnerClass), ClassColorHex(partnerClass),
-                        left ? name + "'" + partner : partner + "'" + name);
+                        left ? Subclass::JoinedName(race, name, partner) : Subclass::JoinedName(race, partner, name));
                 } while (result->NextRow());
+            if (TwoPlayersEnabled())
+                payload += std::string(payload.size() > 1 ? "," : "") + CharacterSelectEntry("#heads", "1", "", "");
             SendCharacterSelectPayload(session, payload + "}");
         }));
 }
@@ -3920,7 +3926,11 @@ public:
             SendTwinGearToCharacterSelect(session);
             SendMutatedToCharacterSelect(session);
         }
-        return !session || (AllowsCreation(session, packet) && KeepsRelicOutOfBank(session, packet));
+        if (!session)
+            return true;
+        if (!AllowsCreation(session, packet))
+            return false;
+        return !TakeCreationHead(session, packet) && KeepsRelicOutOfBank(session, packet);
     }
 };
 

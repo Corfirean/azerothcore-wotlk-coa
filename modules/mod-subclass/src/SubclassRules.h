@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -565,6 +566,23 @@ inline bool FitsRightHead(SpecializationRoles const& roles)
     return roles.Caster || roles.Ranged || roles.Healer;
 }
 
+enum class ChosenHead : std::uint8_t
+{
+    Any,
+    Left,
+    Right
+};
+
+inline std::optional<std::pair<std::string, ChosenHead>> SplitCreationHead(std::string_view name)
+{
+    if (name.size() < 3 || name[name.size() - 2] != '#' || (name.back() != 'M' && name.back() != 'R'))
+        return std::nullopt;
+    std::string_view const base = name.substr(0, name.size() - 2);
+    if (base.find('#') != std::string_view::npos)
+        return std::nullopt;
+    return std::make_pair(std::string(base), name.back() == 'M' ? ChosenHead::Left : ChosenHead::Right);
+}
+
 struct PairHead
 {
     bool TwoPlayers = false;
@@ -572,6 +590,7 @@ struct PairHead
     std::uint8_t Level = 0;
     SpecializationRoles Roles;
     bool CoAClass = true;
+    ChosenHead Chosen = ChosenHead::Any;
 };
 
 enum class PairRefusal
@@ -581,6 +600,8 @@ enum class PairRefusal
     RightNotTwoPlayers,
     LeftPaired,
     RightPaired,
+    LeftChoseRanged,
+    RightChoseMelee,
     LevelGap,
     LeftSpecialization,
     RightSpecialization,
@@ -598,6 +619,10 @@ inline PairRefusal CheckPair(PairHead const& left, PairHead const& right)
         return PairRefusal::LeftPaired;
     if (right.Paired)
         return PairRefusal::RightPaired;
+    if (left.Chosen == ChosenHead::Right)
+        return PairRefusal::LeftChoseRanged;
+    if (right.Chosen == ChosenHead::Left)
+        return PairRefusal::RightChoseMelee;
     if (!left.CoAClass)
         return PairRefusal::LeftClass;
     if (!right.CoAClass)
@@ -625,11 +650,10 @@ constexpr std::uint32_t TwoPlayersBodyDisplay = 985001;
 constexpr std::uint32_t MutatedBodyDisplay = 985002;
 
 constexpr std::uint32_t TwoPlayersVehicle = 9600;
-constexpr std::uint32_t TwinsTwoPlayersVehicle = 9601;
 
-inline std::uint32_t BodyVehicleFor(std::uint8_t race)
+inline std::uint32_t BodyVehicleFor(std::uint8_t /*race*/)
 {
-    return race == ThinHumanRace ? TwinsTwoPlayersVehicle : TwoPlayersVehicle;
+    return TwoPlayersVehicle;
 }
 
 constexpr std::uint32_t HordeTravelersMammothVehicle = 312;
@@ -654,9 +678,33 @@ inline std::uint32_t TwoPlayersVehicleCarrying(std::uint32_t mountVehicle)
     }
 }
 
+constexpr std::uint32_t FirstTwinCarryVehicle = 9530;
+constexpr std::uint32_t LastTwinCarryVehicle = 9599;
+constexpr std::uint32_t TwinsCarryVehicleOffset = 100;
+
+inline std::uint32_t TwinsCarryVehicleFor(std::uint32_t twinVehicle)
+{
+    return twinVehicle + TwinsCarryVehicleOffset;
+}
+
+constexpr std::uint32_t FirstFormSeatVehicle = 9710;
+constexpr std::uint32_t LastFormSeatVehicle = 9769;
+
+inline bool IsFormSeatVehicle(std::uint32_t vehicle)
+{
+    return vehicle >= FirstFormSeatVehicle && vehicle <= LastFormSeatVehicle;
+}
+
+inline bool IsTwinsCarryVehicle(std::uint32_t vehicle)
+{
+    return (vehicle >= FirstTwinCarryVehicle + TwinsCarryVehicleOffset &&
+        vehicle <= LastTwinCarryVehicle + TwinsCarryVehicleOffset) ||
+        IsFormSeatVehicle(vehicle - TwinsCarryVehicleOffset);
+}
+
 inline bool IsBodyVehicle(std::uint32_t vehicle, std::uint8_t race)
 {
-    if (vehicle == BodyVehicleFor(race))
+    if (vehicle == BodyVehicleFor(race) || (race == ThinHumanRace && IsTwinsCarryVehicle(vehicle)))
         return true;
     return BodyVehicleFor(race) == TwoPlayersVehicle && (vehicle == TwoPlayersOnHordeMammothVehicle ||
         vehicle == TwoPlayersOnAllianceMammothVehicle || vehicle == TwoPlayersOnDriveKartVehicle);
@@ -875,11 +923,49 @@ inline bool RangedHeadMayNeed(std::uint32_t itemClass)
     return itemClass != Weapon && itemClass != Armor;
 }
 
+inline std::string JoinedName(std::uint8_t race, std::string const& left, std::string const& right)
+{
+    return left + (race == ThinHumanRace ? " & " : "'") + right;
+}
+
+inline std::string HeadTitle(std::uint8_t race, bool melee)
+{
+    if (race == ThinHumanRace)
+        return melee ? "other brother (melee)" : "other brother (ranged)";
+    return melee ? "Melee Head" : "Ranged Head";
+}
+
+inline char WhisperMark(std::uint8_t race)
+{
+    return race == ThinHumanRace ? '&' : '\'';
+}
+
+inline std::string WhisperName(std::uint8_t race, std::string const& left, std::string const& right)
+{
+    return left + WhisperMark(race) + right;
+}
+
+inline std::optional<std::string> WithoutRiderName(std::string_view message, std::string_view rider)
+{
+    if (rider.empty() || message.size() < rider.size() + 2 || message.substr(0, 2) != "& ")
+        return std::nullopt;
+    std::string_view const named = message.substr(2, rider.size());
+    for (std::size_t i = 0; i < rider.size(); ++i)
+        if (std::tolower(static_cast<unsigned char>(named[i])) != std::tolower(static_cast<unsigned char>(rider[i])))
+            return std::nullopt;
+    std::string_view rest = message.substr(rider.size() + 2);
+    if (!rest.empty() && rest.front() != ' ')
+        return std::nullopt;
+    while (!rest.empty() && rest.front() == ' ')
+        rest.remove_prefix(1);
+    return std::string(rest);
+}
+
 inline std::optional<std::pair<std::string, std::string>> SplitJoinedName(std::string_view joined)
 {
-    std::size_t const mark = joined.find('\'');
+    std::size_t const mark = joined.find_first_of("'&");
     if (mark == std::string_view::npos || mark == 0 || mark + 1 >= joined.size() ||
-        joined.find('\'', mark + 1) != std::string_view::npos)
+        joined.find_first_of("'&", mark + 1) != std::string_view::npos)
         return std::nullopt;
     return std::make_pair(std::string(joined.substr(0, mark)), std::string(joined.substr(mark + 1)));
 }
