@@ -3,7 +3,9 @@ local ROW_HEIGHT = 16
 local REFRESH_SECONDS = 3
 
 local plans, incoming = {}, {}
-local oneBody = false
+local headSide = "NONE"
+local BOTH_HEADS = { LEFT = true, RIGHT = true }
+local RANGED_HEAD = { RIGHT = true }
 
 local panel = CreateFrame("Frame", "CoACBotPlanFrame", UIParent)
 panel:SetWidth(440)
@@ -215,8 +217,8 @@ events:SetScript("OnEvent", function(self, event, prefix, message, _, sender)
     end
     local head = string.match(message, "^PAIRSTATE (%u+)")
     if head then
-        oneBody = head == "LEFT" or head == "RIGHT"
-        if not oneBody and CoACCourierFrame then
+        headSide = head
+        if not BOTH_HEADS[head] and CoACCourierFrame then
             CoACCourierFrame:Hide()
         end
         return
@@ -317,7 +319,7 @@ local function JunkTooltip(self)
 end
 
 local barButtons = {}
-local function BarButton(bar, name, icon, caption, onClick, onEnter, pairOnly)
+local function BarButton(bar, name, icon, caption, onClick, onEnter, heads)
     local button = CreateFrame("Button", name, bar)
     button:SetWidth(34)
     button:SetHeight(34)
@@ -346,12 +348,16 @@ local function BarButton(bar, name, icon, caption, onClick, onEnter, pairOnly)
     button:SetScript("OnLeave", function() GameTooltip:Hide() end)
     barButtons[#barButtons + 1] = button
     button.ours = true
-    button.pairOnly = pairOnly
+    button.heads = heads
+end
+
+local function Offered(button)
+    return not button.heads or button.heads[headSide]
 end
 
 local function PlaceBarButtons(bar)
     for _, button in ipairs(barButtons) do
-        Shown(button, oneBody or not button.pairOnly)
+        Shown(button, Offered(button))
     end
     local places = {}
     for _, child in ipairs({ bar:GetChildren() }) do
@@ -375,7 +381,7 @@ local function PlaceBarButtons(bar)
     end
     local index = 0
     for _, button in ipairs(barButtons) do
-        if oneBody or not button.pairOnly then
+        if Offered(button) then
             index = index + 1
             local x = places[#places] + (step or 0) * index
             if button.x ~= x then
@@ -399,7 +405,7 @@ barWatch:SetScript("OnUpdate", function(self, elapsed)
         BarButton(SquidBotsLiteBar, "CoACBotPlanBarButton", "Interface\\Icons\\INV_Misc_Map_01", "Plans",
             TogglePlans, PlansTooltip)
         BarButton(SquidBotsLiteBar, "CoACBotPlanRideButton", "Interface\\Icons\\Ability_Mount_RidingHorse", "Ride",
-            function() Send("PAIRMOUNT") end, RideTooltip, true)
+            function() Send("PAIRMOUNT") end, RideTooltip, RANGED_HEAD)
         BarButton(SquidBotsLiteBar, "CoACBotPlanJunkButton", "Interface\\Icons\\INV_Misc_Coin_02", "Junk",
             function(_, mouse)
                 if mouse == "RightButton" and CoACCourierToggle then
@@ -407,7 +413,7 @@ barWatch:SetScript("OnUpdate", function(self, elapsed)
                 else
                     Send("PAIRJUNK")
                 end
-            end, JunkTooltip, true)
+            end, JunkTooltip, BOTH_HEADS)
         CoACBotPlanJunkButton:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     end
     if #barButtons > 0 then
