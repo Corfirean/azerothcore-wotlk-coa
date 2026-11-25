@@ -28,7 +28,7 @@ public:
     void OnStartup() override
     {
         auto races = CoARaceAvailability::Parse(
-            sConfigMgr->GetOption<std::string>("CoACustomRaces.MaleOnlyRaceIds", "98,100,103"));
+            sConfigMgr->GetOption<std::string>("CoACustomRaces.MaleOnlyRaceIds", "94,98,100,103"));
         if (!races)
         {
             LOG_ERROR("server.loading",
@@ -37,6 +37,8 @@ public:
         }
         if (races->empty())
             return;
+        // Snagtooth (94, Custom Races 2.0.3) has one body. A configuration written before it keeps the older list.
+        races->insert(94);
         CharacterDatabase.DirectExecute(Acore::StringFormat(
             "UPDATE characters SET gender = 0 WHERE gender = 1 AND race IN ({})", JoinRaces(*races)));
         LOG_INFO("server.loading", "CoA Custom Races: characters of the male-only races {} are male",

@@ -40,9 +40,9 @@ CoACustomRaces.DisabledRaceCatalogSha256 = ""
 
 ###################################################################################################
 #  CoACustomRaces.MaleOnlyRaceIds
-#        Races with only a male model (Drakonid 98/100, Grummle 103). At every server start,
+#        Races with only a male model (Snagtooth 94, Drakonid 98/100, Grummle 103). At every server start,
 #        female characters of these races, players and bots, become male; a female has no body.
 #        Empty turns this off.
-#        Default: "98,100,103"
+#        Default: "94,98,100,103"
 ###################################################################################################
-CoACustomRaces.MaleOnlyRaceIds = "98,100,103"
+CoACustomRaces.MaleOnlyRaceIds = "94,98,100,103"
