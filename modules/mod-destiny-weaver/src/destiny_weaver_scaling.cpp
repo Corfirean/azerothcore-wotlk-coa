@@ -121,7 +121,8 @@ namespace
     {
         std::unordered_set<uint32> WorldMaps;
         std::unordered_map<uint32, LocalLevelScaling::LevelBand> DungeonBands;
-        std::unordered_map<uint32, uint8> DungeonReferenceLevels;
+        /// Classic dungeons only: the level of their ordinary creatures, which content scaling compresses.
+        std::unordered_map<uint32, uint8> DungeonTypicalLevels;
     };
 
     std::atomic<ScalingScope const*> g_scope{nullptr};
@@ -180,6 +181,34 @@ namespace
         return bands;
     }
 
+    /// The flags of a creature nobody can fight.
+    constexpr uint32 NOT_FIGHTABLE =
+        UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_IMMUNE_TO_PC;
+
+    /// The typical authored level of each listed map's creatures, from their regular-difficulty spawns. Service
+    /// NPCs, critters, triggers and creatures that cannot be fought say nothing about a dungeon's level.
+    std::unordered_map<uint32, uint8> TypicalLevels(std::unordered_set<uint32> const& maps)
+    {
+        std::unordered_map<uint32, std::vector<uint8>> spawned;
+        for (auto const& [spawnId, spawn] : sObjectMgr->GetAllCreatureData())
+        {
+            if (!(spawn.spawnMask & 1) || !maps.contains(spawn.mapid))
+                continue;
+
+            CreatureTemplate const* info = sObjectMgr->GetCreatureTemplate(spawn.id);
+            if (!info || info->npcflag || info->type == CREATURE_TYPE_CRITTER || info->maxlevel <= 1 ||
+                (info->flags_extra & CREATURE_FLAG_EXTRA_TRIGGER) || (info->unit_flags & NOT_FIGHTABLE))
+                continue;
+
+            spawned[spawn.mapid].push_back(info->maxlevel);
+        }
+
+        std::unordered_map<uint32, uint8> typical;
+        for (auto& [mapId, levels] : spawned)
+            typical.emplace(mapId, LocalLevelScaling::TypicalDungeonLevel(std::move(levels)));
+        return typical;
+    }
+
     /// The bands come from LFGDungeons.dbc unless DestinyWeaver.Scaling.DungeonBands sets one. The default entries
     /// and every entry with a band of its own scale even when DestinyWeaver.Scaling.DungeonIds leaves them out: a
     /// config written before an entry joined the default list still has the old list. The first config load runs
@@ -200,6 +229,7 @@ namespace
             if (std::find(dungeonIds.begin(), dungeonIds.end(), dungeonId) == dungeonIds.end())
                 dungeonIds.push_back(dungeonId);
 
+        std::unordered_set<uint32> classicMaps;
         for (uint32 dungeonId : dungeonIds)
         {
             LFGDungeonEntry const* dungeon = sLFGDungeonStore.LookupEntry(dungeonId);
@@ -213,15 +243,11 @@ namespace
             if (!inserted)
                 itr->second = LocalLevelScaling::MergeBands(itr->second, band);
             if (dungeon->ExpansionLevel == 0 && dungeon->Difficulty == 0)
-            {
-                uint8 const reference = dungeon->TargetLevel >= 1 && dungeon->TargetLevel <= 60
-                    ? static_cast<uint8>(dungeon->TargetLevel) : 60;
-                auto [referenceItr, referenceInserted] =
-                    scope->DungeonReferenceLevels.try_emplace(dungeon->MapID, reference);
-                if (!referenceInserted)
-                    referenceItr->second = std::max(referenceItr->second, reference);
-            }
+                classicMaps.insert(dungeon->MapID);
         }
+
+        // Empty on the first config load, before the spawns are read; startup publishes the complete scope.
+        scope->DungeonTypicalLevels = TypicalLevels(classicMaps);
 
         LOG_INFO("module.destiny_weaver", "creature scaling covers {} open-world map(s) and {} dungeon map(s)",
                  scope->WorldMaps.size(), scope->DungeonBands.size());
@@ -392,10 +418,9 @@ namespace
         uint32 unitFlags = 0;
         uint32 dynamicFlags = 0;
         ObjectMgr::ChooseCreatureFlags(info, npcFlags, unitFlags, dynamicFlags, creature->GetCreatureData());
-        uint32 const notFightable = UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_IMMUNE_TO_PC;
-        if (!(unitFlags & notFightable))
+        if (!(unitFlags & NOT_FIGHTABLE))
             return true;
-        return creature->HasDynamicFlag(UNIT_DYNFLAG_LEVEL_SCALING) || !creature->HasUnitFlag(UnitFlags(notFightable));
+        return creature->HasDynamicFlag(UNIT_DYNFLAG_LEVEL_SCALING) || !creature->HasUnitFlag(UnitFlags(NOT_FIGHTABLE));
     }
 
     /// Whether a creature offers a service (any npcflag but gossip), read from its spawn and template for
@@ -471,18 +496,22 @@ namespace
             auto const band = scope->DungeonBands.find(map->GetId());
             if (band == scope->DungeonBands.end())
                 return false;
-            auto const reference = scope->DungeonReferenceLevels.find(map->GetId());
-            auto const referenceOwner = LocalLevelScaling::CreatureReferenceLevelOwner.load(std::memory_order_relaxed);
-            uint8 const effectiveReference = reference != scope->DungeonReferenceLevels.end()
-                ? (referenceOwner ? referenceOwner(creature, reference->second) : reference->second) : 60;
-            LocalLevelScaling::LevelBand const effectiveBand = referenceOwner
-                ? LocalLevelScaling::LevelBand{ referenceOwner(creature, band->second.Low),
-                    referenceOwner(creature, band->second.High) } : band->second;
-            level = LocalLevelScaling::ContentScalingActive.load(std::memory_order_relaxed) &&
-                reference != scope->DungeonReferenceLevels.end()
-                ? LocalLevelScaling::ScaleDungeonCreatureLevelForViewer(
-                    own, viewer->GetLevel(), effectiveBand, effectiveReference)
-                : LocalLevelScaling::ScaleDungeonCreatureLevelForViewer(viewer->GetLevel(), band->second);
+            auto const typical = scope->DungeonTypicalLevels.find(map->GetId());
+            if (LocalLevelScaling::ContentScalingActive.load(std::memory_order_relaxed) &&
+                typical != scope->DungeonTypicalLevels.end())
+            {
+                // Content scaling compresses the creatures, and with them the lowest level it admits to the
+                // dungeon. The viewer's own level is never compressed, so the top of the band stays.
+                auto const resolve =
+                    LocalLevelScaling::CreatureReferenceLevelOwner.load(std::memory_order_relaxed);
+                LocalLevelScaling::LevelBand effectiveBand = band->second;
+                if (resolve)
+                    effectiveBand.Low = std::min(effectiveBand.Low, resolve(creature, effectiveBand.Low));
+                level = LocalLevelScaling::ScaleDungeonCreatureLevelForViewer(own, viewer->GetLevel(),
+                    effectiveBand, resolve ? resolve(creature, typical->second) : typical->second);
+            }
+            else
+                level = LocalLevelScaling::ScaleDungeonCreatureLevelForViewer(viewer->GetLevel(), band->second);
         }
         else
         {

@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <optional>
 #include <utility>
+#include <vector>
 
 class Creature;
 class CreatureTemplate;
@@ -411,12 +412,33 @@ inline std::uint8_t ScaleDungeonCreatureLevelForViewer(std::uint8_t playerLevel,
     return std::clamp(playerLevel, band.Low, band.High);
 }
 
-inline std::uint8_t ScaleDungeonCreatureLevelForViewer(std::uint8_t creatureLevel, std::uint8_t playerLevel,
-    LevelBand band, std::uint8_t referenceLevel)
+/// The level of a dungeon's ordinary creatures: the median of the levels its spawns are authored at, or zero
+/// without any. Read from the spawns, not from the dungeon finder entry, whose target level is a placeholder
+/// for Wailing Caverns, Gnomeregan and Uldaman.
+inline std::uint8_t TypicalDungeonLevel(std::vector<std::uint8_t> spawnLevels)
 {
-    int const viewerLevel = std::clamp(playerLevel, band.Low, std::max(band.High, referenceLevel));
-    int const shift = std::min(0, viewerLevel - int(referenceLevel));
-    return static_cast<std::uint8_t>(std::clamp(int(creatureLevel) + shift, 1, 255));
+    if (spawnLevels.empty())
+        return 0;
+
+    auto const middle = spawnLevels.begin() + spawnLevels.size() / 2;
+    std::nth_element(spawnLevels.begin(), middle, spawnLevels.end());
+    return *middle;
+}
+
+/// How far from the viewer a creature may stand for the difference it was authored with.
+inline constexpr int DungeonLevelsBelowViewer = 2;
+inline constexpr int DungeonLevelsAboveViewer = 3;
+
+/// The viewer's rule when creature levels are compressed by content scaling: a creature stands at the viewer's
+/// level, held inside the dungeon's band, keeping its difference from the dungeon's typical level within the
+/// bounds above. A dungeon whose creatures are authored past its band keeps that level for a viewer who has it.
+inline std::uint8_t ScaleDungeonCreatureLevelForViewer(std::uint8_t creatureLevel, std::uint8_t playerLevel,
+    LevelBand band, std::uint8_t typicalLevel)
+{
+    int const viewerLevel = std::clamp(playerLevel, band.Low, std::max(band.High, typicalLevel));
+    int const difference = std::clamp(int(creatureLevel) - int(typicalLevel),
+        -DungeonLevelsBelowViewer, DungeonLevelsAboveViewer);
+    return static_cast<std::uint8_t>(std::clamp(viewerLevel + difference, 1, 255));
 }
 
 /// Item templates that are not in the world database: lifted copies of authored items, made when
