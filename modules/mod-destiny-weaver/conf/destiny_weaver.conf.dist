@@ -76,9 +76,9 @@ DestinyWeaver.Scaling.WorldMaps = "0 1"
 
 DestinyWeaver.Scaling.DungeonIds = "1 2 4 6 8 10 12 14 16 18 20 22 24 26 28 30 32 34 36 38 40 44 51 54 163 164 165 272 273 274 276 601 402 401 45"
 
-# Normal Classic dungeons retain authored creature levels at the finder's target level and above.
-# Below that level, every creature shifts by the same amount, retaining boss and trash level differences.
-# The player cap does not cap creature levels: a level-61 boss remains level 61 for a level-60 viewer.
+# With content scaling active, a normal Classic dungeon's creatures still follow the character's level inside the
+# band: each keeps its difference from the dungeon's typical creature level, at most 2 below the character and
+# 3 above, so bosses stay above trash.
 
 #    DestinyWeaver.Scaling.DungeonBands
 #        Description: Bands that replace the LFGDungeons.dbc band of a dungeon finder entry, as

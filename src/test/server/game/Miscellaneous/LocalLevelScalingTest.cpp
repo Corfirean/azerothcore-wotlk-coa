@@ -28,6 +28,7 @@ using LocalLevelScaling::LevelBand;
 using LocalLevelScaling::MergeBands;
 using LocalLevelScaling::ScaleCreatureLevelForViewer;
 using LocalLevelScaling::ScaleDungeonCreatureLevelForViewer;
+using LocalLevelScaling::TypicalDungeonLevel;
 
 TEST(LocalLevelScalingTest, OpenWorldCreatureAboveViewerKeepsItsLevel)
 {
@@ -57,7 +58,38 @@ TEST(LocalLevelScalingTest, ClassicDungeonAtReferenceLevelRetainsAuthoredLevels)
     EXPECT_EQ(ScaleDungeonCreatureLevelForViewer(58, 60, scholomance, 60), 58);
     EXPECT_EQ(ScaleDungeonCreatureLevelForViewer(61, 60, scholomance, 60), 61);
     EXPECT_EQ(ScaleDungeonCreatureLevelForViewer(63, 60, scholomance, 60), 63);
-    EXPECT_EQ(ScaleDungeonCreatureLevelForViewer(20, 60, { 15, 59 }, 20), 20);
+}
+
+TEST(LocalLevelScalingTest, LowLevelDungeonFollowsAViewerAboveItsOwnCreatures)
+{
+    // Deadmines under content scaling: ordinary creatures at 14, a level-60 Dungeon Finder group.
+    LevelBand const deadmines{ 11, 59 };
+    EXPECT_EQ(ScaleDungeonCreatureLevelForViewer(14, 60, deadmines, 14), 59);
+    EXPECT_EQ(ScaleDungeonCreatureLevelForViewer(16, 60, deadmines, 14), 61);
+    EXPECT_EQ(ScaleDungeonCreatureLevelForViewer(14, 40, deadmines, 14), 40);
+}
+
+TEST(LocalLevelScalingTest, DungeonCreaturesDoNotCollapseBelowALowLevelViewer)
+{
+    // Wailing Caverns: ordinary creatures at 15 stood at level 1 for a level-20 character.
+    LevelBand const wailing{ 11, 59 };
+    EXPECT_EQ(ScaleDungeonCreatureLevelForViewer(15, 20, wailing, 15), 20);
+    EXPECT_EQ(ScaleDungeonCreatureLevelForViewer(14, 20, wailing, 15), 19);
+}
+
+TEST(LocalLevelScalingTest, DungeonLevelDifferencesStayCloseToTheViewer)
+{
+    LevelBand const band{ 15, 59 };
+    EXPECT_EQ(ScaleDungeonCreatureLevelForViewer(1, 30, band, 20), 28);
+    EXPECT_EQ(ScaleDungeonCreatureLevelForViewer(40, 30, band, 20), 33);
+    EXPECT_EQ(ScaleDungeonCreatureLevelForViewer(20, 5, band, 20), 15);
+}
+
+TEST(LocalLevelScalingTest, TypicalDungeonLevelIsTheMedianOfItsSpawns)
+{
+    EXPECT_EQ(TypicalDungeonLevel({ 20, 60, 19, 18, 19 }), 19);
+    EXPECT_EQ(TypicalDungeonLevel({ 52 }), 52);
+    EXPECT_EQ(TypicalDungeonLevel({}), 0);
 }
 
 TEST(LocalLevelScalingTest, ClassicDungeonMixedLevelsRetainCreatureDifferences)
@@ -67,7 +99,7 @@ TEST(LocalLevelScalingTest, ClassicDungeonMixedLevelsRetainCreatureDifferences)
     EXPECT_EQ(ScaleDungeonCreatureLevelForViewer(61, 40, scholomance, 60), 41);
     EXPECT_EQ(ScaleDungeonCreatureLevelForViewer(63, 40, scholomance, 60), 43);
     EXPECT_EQ(ScaleDungeonCreatureLevelForViewer(58, 50, scholomance, 60), 48);
-    EXPECT_EQ(ScaleDungeonCreatureLevelForViewer(1, 20, scholomance, 60), 1);
+    EXPECT_EQ(ScaleDungeonCreatureLevelForViewer(1, 20, scholomance, 60), 18);
     EXPECT_EQ(ScaleDungeonCreatureLevelForViewer(61, 1, scholomance, 60), 21);
     EXPECT_EQ(ScaleDungeonCreatureLevelForViewer(46, 45, { 20, 59 }, 45), 46);
     EXPECT_EQ(ScaleDungeonCreatureLevelForViewer(46, 35, { 20, 59 }, 45), 36);
